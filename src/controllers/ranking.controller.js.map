@@ -1,0 +1,1 @@
+{"version":3,"file":"ranking.controller.js","sourceRoot":"","sources":["ranking.controller.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,UAAU,EAAE,MAAM,gCAAgC,CAAC;AAE5D,MAAM,CAAC,KAAK,UAAU,aAAa,CAAC,IAAa,EAAE,GAAa;IAC9D,MAAM,IAAI,GAAG,MAAM,UAAU,EAAE,CAAC;IAChC,OAAO,GAAG,CAAC,IAAI,CAAC,IAAI,CAAC,CAAC;AACxB,CAAC"}

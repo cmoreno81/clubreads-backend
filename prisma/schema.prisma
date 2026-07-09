@@ -1,0 +1,437 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+//
+// ENUMS
+//
+
+enum ReadingStatus {
+  PENDING
+  READING
+  FINISHED
+  ABANDONED
+  REREADING
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum HistoryEvent {
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  RATING_CHANGED
+  REVIEW_UPDATED
+}
+
+enum ReadingType {
+  FREE
+  CLUBVISION
+}
+
+enum ReadingSessionStatus {
+  ACTIVE
+  FINISHED
+}
+
+//
+// AUTHOR
+//
+
+model Author {
+  id String @id @default(cuid())
+
+  name String @unique
+
+  biography String?
+
+  photoUrl String?
+
+  goodreadsUrl String?
+
+  website String?
+
+  books Book[]
+
+  series Series[]
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  deletedAt DateTime?
+}
+
+//
+// GENRE
+//
+
+model Genre {
+  id String @id @default(cuid())
+
+  name String @unique
+
+  icon String?
+
+  color String?
+
+  books Book[]
+
+  series Series[]
+}
+
+//
+// SERIES
+//
+
+model Series {
+  id String @id @default(cuid())
+
+  name String @unique
+
+  authorId String?
+
+  author Author? @relation(fields: [authorId], references: [id])
+
+  genreId String?
+
+  genre Genre? @relation(fields: [genreId], references: [id])
+
+  totalBooks Int?
+
+  books Book[]
+}
+
+//
+// BOOK
+//
+
+model Book {
+  id String @id @default(cuid())
+
+  title String
+
+  originalTitle String?
+
+  subtitle String?
+
+  authorId String?
+  author   Author? @relation(fields: [authorId], references: [id])
+
+  genreId String
+  genre   Genre  @relation(fields: [genreId], references: [id])
+
+  seriesId String?
+  series   Series? @relation(fields: [seriesId], references: [id])
+
+  seriesOrder String?
+
+  standalone Boolean @default(true)
+
+  isbn String?
+
+  publicationYear Int?
+
+  goodreadsUrl String?
+
+  coverUrl String?
+
+  synopsis String?
+
+  createdById String?
+  createdBy   User?   @relation("CreatedBooks", fields: [createdById], references: [id])
+
+  library Library[]
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  deletedAt            DateTime?
+  readings             Reading[]
+  reviews              Review[]
+  wonClubvisions       Clubvision[]
+  clubvisionCandidates ClubvisionCandidate[]
+  clubvisionResults    ClubvisionResult[]    @relation("ClubvisionWinner")
+
+  @@index([title])
+  @@index([authorId])
+  @@index([genreId])
+  @@index([seriesId])
+}
+
+//
+// USER
+//
+
+model User {
+  id String @id @default(cuid())
+
+  name  String @unique
+  email String @unique
+
+  avatarUrl String?
+
+  createdBooks Book[]    @relation("CreatedBooks")
+  library      Library[]
+  comments     Comment[]
+  reviews      Review[]
+  likes        Like[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clubvisionVotes ClubvisionVote[]
+}
+
+model Like {
+  id String @id @default(cuid())
+
+  commentId String
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([commentId, userId])
+  @@index([userId])
+}
+
+//
+// LIBRARY
+//
+
+model Library {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id])
+
+  status ReadingStatus
+
+  priority Priority @default(MEDIUM)
+
+  startedAt DateTime?
+
+  finishedAt DateTime?
+
+  lastProgress Int?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, bookId])
+  @@index([status])
+}
+
+//
+// READING
+//
+
+model Reading {
+  id String @id @default(cuid())
+
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id])
+
+  type ReadingType
+
+  status ReadingSessionStatus
+
+  chapters Int
+
+  hasPrologue Boolean @default(false)
+
+  hasEpilogue Boolean @default(false)
+
+  startedAt DateTime @default(now())
+
+  finishedAt DateTime?
+
+  conversations Conversation[]
+}
+
+model Conversation {
+  id String @id @default(cuid())
+
+  readingId String
+  reading   Reading @relation(fields: [readingId], references: [id])
+
+  title String
+
+  order Int
+
+  spoiler Boolean @default(false)
+
+  comments Comment[]
+}
+
+//
+// COMMENT
+//
+
+model Comment {
+  id String @id @default(cuid())
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  text String @db.Text
+
+  parentId String?
+  parent   Comment?  @relation("CommentTree", fields: [parentId], references: [id])
+  replies  Comment[] @relation("CommentTree")
+
+  edited    Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  likes     Like[]
+
+  @@index([conversationId])
+  @@index([userId])
+  @@index([parentId])
+}
+
+//
+// REVIEW
+//
+
+model Review {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id])
+
+  rating Int
+
+  review String? @db.Text
+
+  containsSpoilers Boolean @default(false)
+
+  edited Boolean @default(false)
+
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, bookId])
+}
+
+enum ClubvisionStatus {
+  SIN_DATOS
+  VOTACION
+  RESULTADOS
+  LECTURA
+  FINALIZADA
+}
+
+model Clubvision {
+  id String @id @default(cuid())
+
+  status ClubvisionStatus @default(SIN_DATOS)
+
+  title   String?
+  message String?
+
+  openedAt   DateTime?
+  closedAt   DateTime?
+  finishedAt DateTime?
+
+  winnerBookId String?
+  winnerBook   Book?   @relation(fields: [winnerBookId], references: [id])
+
+  candidates ClubvisionCandidate[]
+  votes      ClubvisionVote[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ClubvisionCandidate {
+  id String @id @default(cuid())
+
+  clubvisionId String
+  clubvision   Clubvision @relation(fields: [clubvisionId], references: [id], onDelete: Cascade)
+
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id])
+
+  order Int?
+
+  createdAt       DateTime         @default(now())
+  clubvisionVotes ClubvisionVote[]
+
+  @@unique([clubvisionId, bookId])
+  @@index([clubvisionId])
+  @@index([bookId])
+}
+
+model ClubvisionVote {
+  id String @id @default(cuid())
+
+  clubvisionId String
+  clubvision   Clubvision @relation(fields: [clubvisionId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  candidateId String
+  candidate   ClubvisionCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  position Int
+  points   Int
+
+  createdAt DateTime @default(now())
+
+  @@unique([clubvisionId, userId, candidateId])
+  @@unique([clubvisionId, userId, position])
+  @@index([clubvisionId])
+  @@index([userId])
+}
+
+model ClubvisionResult {
+  id String @id @default(cuid())
+
+  edition String @unique // yyyy-MM
+
+  winnerBookId String?
+  winnerBook   Book?   @relation("ClubvisionWinner", fields: [winnerBookId], references: [id])
+
+  winnerTitle String
+  points      Int
+
+  secondTitle String?
+  thirdTitle  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([edition])
+}
