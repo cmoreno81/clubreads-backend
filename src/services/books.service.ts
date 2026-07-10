@@ -17,6 +17,19 @@ function priorityToFlutter(priority: string) {
   return 'MEDIA';
 }
 
+function priorityFromFlutter(value: unknown): Priority {
+  const priority = String(value ?? '').trim().toUpperCase();
+
+  if (priority === 'ALTA' || priority === 'HIGH') {
+    return Priority.HIGH;
+  }
+
+  if (priority === 'BAJA' || priority === 'LOW') {
+    return Priority.LOW;
+  }
+
+  return Priority.MEDIUM;
+}
 
 function ratingFromFlutter(value?: string | null) {
   const rating = String(value ?? '').trim();
@@ -30,18 +43,79 @@ function ratingFromFlutter(value?: string | null) {
   if (rating === '⭐⭐⭐⭐⭐' || rating === '⭐️⭐️⭐️⭐️⭐️') return 5;
 
   const numeric = Number(rating);
+
   return Number.isNaN(numeric) ? null : numeric;
+}
+
+function ratingToFlutter(rating?: number | null) {
+  if (rating === 0) return '😞';
+  if (!rating) return '';
+
+  return '⭐'.repeat(rating);
 }
 
 function statusFromFlutter(estado: string): ReadingStatus {
   if (estado === 'LEYENDO') return ReadingStatus.READING;
   if (estado === 'FINALIZADO') return ReadingStatus.FINISHED;
   if (estado === 'ABANDONADO') return ReadingStatus.ABANDONED;
+
   if (estado === 'RELECTURA' || estado === 'RELEYENDO') {
     return ReadingStatus.REREADING;
   }
 
   return ReadingStatus.PENDING;
+}
+
+function boolFromFlutter(value: unknown) {
+  const text = String(value ?? '').trim().toLowerCase();
+
+  return (
+    value === true ||
+    text === 'si' ||
+    text === 'sí' ||
+    text === 'true' ||
+    text === '1'
+  );
+}
+
+function buildGoodreadsSearchUrl(title: string) {
+  return `https://www.goodreads.com/search?q=${encodeURIComponent(title)}`;
+}
+
+/**
+ * Permite considerar iguales títulos con:
+ * - mayúsculas diferentes;
+ * - tildes diferentes;
+ * - espacios duplicados;
+ * - espacios al principio o al final.
+ */
+function normalizarTitulo(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Busca un libro sin depender exactamente de mayúsculas,
+ * tildes o espacios.
+ */
+async function buscarLibroPorTitulo(title: string) {
+  const tituloNormalizado = normalizarTitulo(title);
+
+  const libros = await prisma.book.findMany({
+    where: {
+      deletedAt: null,
+    },
+  });
+
+  return (
+    libros.find(
+      (libro) => normalizarTitulo(libro.title) === tituloNormalizado,
+    ) ?? null
+  );
 }
 
 export async function getLibros(usuario: string) {
@@ -53,6 +127,7 @@ export async function getLibros(usuario: string) {
         not: ReadingStatus.FINISHED,
       },
     },
+
     include: {
       book: {
         include: {
@@ -62,6 +137,7 @@ export async function getLibros(usuario: string) {
       },
       user: true,
     },
+
     orderBy: [
       { book: { title: 'asc' } },
       { user: { name: 'asc' } },
@@ -79,9 +155,12 @@ export async function getLibros(usuario: string) {
     leyendo: statusToFlutter(item.status),
     estado: statusToFlutter(item.status),
     valoracion: '',
+
     yaLoTengo:
       usuarioActual !== '' &&
-      item.user.name.trim().toLowerCase() === usuarioActual.toLowerCase(),
+      item.user.name.trim().toLowerCase() ===
+        usuarioActual.toLowerCase(),
+
     goodreads: item.book.goodreadsUrl ?? '',
   }));
 }
@@ -91,8 +170,10 @@ export async function getLibrosFinalizados() {
     where: {
       status: ReadingStatus.FINISHED,
     },
+
     include: {
       user: true,
+
       book: {
         include: {
           genre: true,
@@ -101,6 +182,7 @@ export async function getLibrosFinalizados() {
         },
       },
     },
+
     orderBy: [
       { book: { title: 'asc' } },
       { user: { name: 'asc' } },
@@ -109,7 +191,7 @@ export async function getLibrosFinalizados() {
 
   return library.map((item) => {
     const review = item.book.reviews.find(
-      (review) => review.userId === item.userId,
+      (bookReview) => bookReview.userId === item.userId,
     );
 
     return {
@@ -124,35 +206,62 @@ export async function getLibrosFinalizados() {
       review: review?.review ?? '',
       goodreads: item.book.goodreadsUrl ?? '',
       fecha: item.finishedAt ?? '',
+
       mes: item.finishedAt
-        ? `${String(item.finishedAt.getMonth() + 1).padStart(2, '0')}/${item.finishedAt.getFullYear()}`
+        ? `${String(item.finishedAt.getMonth() + 1).padStart(
+            2,
+            '0',
+          )}/${item.finishedAt.getFullYear()}`
         : '',
     };
   });
 }
 
-export async function anadirLibroExistente(usuario: string, libro: string) {
+export async function anadirLibroExistente(
+  usuario: string,
+  libro: string,
+) {
   const user = await prisma.user.findUnique({
-    where: { name: usuario.trim() },
+    where: {
+      name: usuario.trim(),
+    },
   });
 
-  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+  if (!user) {
+    return {
+      ok: false,
+      mensaje: 'Usuaria no encontrada',
+    };
+  }
 
-  const book = await prisma.book.findFirst({
-    where: { title: libro.trim() },
-  });
+  const book = await buscarLibroPorTitulo(libro);
 
-  if (!book) return { ok: false, mensaje: 'Libro no encontrado' };
+  if (!book) {
+    return {
+      ok: false,
+      mensaje: 'Libro no encontrado',
+    };
+  }
 
-  await prisma.library.upsert({
+  const existingLibrary = await prisma.library.findUnique({
     where: {
       userId_bookId: {
         userId: user.id,
         bookId: book.id,
       },
     },
-    update: {},
-    create: {
+  });
+
+  if (existingLibrary) {
+    return {
+      ok: false,
+      codigo: 'LIBRO_YA_EN_BIBLIOTECA',
+      mensaje: 'Este libro ya está en tu biblioteca',
+    };
+  }
+
+  await prisma.library.create({
+    data: {
       userId: user.id,
       bookId: book.id,
       status: ReadingStatus.PENDING,
@@ -160,10 +269,17 @@ export async function anadirLibroExistente(usuario: string, libro: string) {
     },
   });
 
-  return { ok: true, mensaje: 'Libro añadido' };
+  return {
+    ok: true,
+    codigo: 'LIBRO_EXISTENTE_ANADIDO',
+    mensaje: 'Libro añadido a tu biblioteca',
+  };
 }
 
-export async function iniciarLectura(usuario: string, libro: string) {
+export async function iniciarLectura(
+  usuario: string,
+  libro: string,
+) {
   return actualizarEstado(usuario, libro, 'LEYENDO');
 }
 
@@ -175,27 +291,56 @@ export async function actualizarEstado(
   reflexion?: string,
 ) {
   const user = await prisma.user.findUnique({
-    where: { name: usuario.trim() },
+    where: {
+      name: usuario.trim(),
+    },
   });
 
-  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+  if (!user) {
+    return {
+      ok: false,
+      mensaje: 'Usuaria no encontrada',
+    };
+  }
 
-  const book = await prisma.book.findFirst({
-    where: { title: libro.trim() },
-  });
+  const book = await buscarLibroPorTitulo(libro);
 
-  if (!book) return { ok: false, mensaje: 'Libro no encontrado' };
+  if (!book) {
+    return {
+      ok: false,
+      mensaje: 'Libro no encontrado',
+    };
+  }
 
   const status = statusFromFlutter(estado);
   const now = new Date();
 
+  /*
+   * No reemplazamos startedAt si la lectura ya había comenzado.
+   */
+  const currentLibrary = await prisma.library.findUnique({
+    where: {
+      userId_bookId: {
+        userId: user.id,
+        bookId: book.id,
+      },
+    },
+  });
+
   const statusDates =
     status === ReadingStatus.READING
-      ? { startedAt: now, finishedAt: null }
+      ? {
+          startedAt: currentLibrary?.startedAt ?? now,
+          finishedAt: null,
+        }
       : status === ReadingStatus.FINISHED
-        ? { finishedAt: now }
+        ? {
+            finishedAt: now,
+          }
         : status === ReadingStatus.ABANDONED
-          ? { finishedAt: now }
+          ? {
+              finishedAt: now,
+            }
           : {};
 
   await prisma.library.upsert({
@@ -205,10 +350,12 @@ export async function actualizarEstado(
         bookId: book.id,
       },
     },
+
     update: {
       status,
       ...statusDates,
     },
+
     create: {
       userId: user.id,
       bookId: book.id,
@@ -220,7 +367,10 @@ export async function actualizarEstado(
 
   const rating = ratingFromFlutter(valoracion);
 
-  if (status === ReadingStatus.FINISHED || status === ReadingStatus.ABANDONED) {
+  if (
+    status === ReadingStatus.FINISHED ||
+    status === ReadingStatus.ABANDONED
+  ) {
     await prisma.review.upsert({
       where: {
         userId_bookId: {
@@ -228,20 +378,33 @@ export async function actualizarEstado(
           bookId: book.id,
         },
       },
+
       update: {
-        rating: status === ReadingStatus.ABANDONED ? 0 : rating ?? 0,
+        rating:
+          status === ReadingStatus.ABANDONED
+            ? 0
+            : rating ?? 0,
+
         review: reflexion?.trim() || null,
       },
+
       create: {
         userId: user.id,
         bookId: book.id,
-        rating: status === ReadingStatus.ABANDONED ? 0 : rating ?? 0,
+
+        rating:
+          status === ReadingStatus.ABANDONED
+            ? 0
+            : rating ?? 0,
+
         review: reflexion?.trim() || null,
       },
     });
   }
 
-  return { ok: true };
+  return {
+    ok: true,
+  };
 }
 
 export async function actualizarValoracion(
@@ -250,21 +413,34 @@ export async function actualizarValoracion(
   valoracion: string,
 ) {
   const user = await prisma.user.findUnique({
-    where: { name: usuario.trim() },
+    where: {
+      name: usuario.trim(),
+    },
   });
 
-  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+  if (!user) {
+    return {
+      ok: false,
+      mensaje: 'Usuaria no encontrada',
+    };
+  }
 
-  const book = await prisma.book.findFirst({
-    where: { title: libro.trim() },
-  });
+  const book = await buscarLibroPorTitulo(libro);
 
-  if (!book) return { ok: false, mensaje: 'Libro no encontrado' };
+  if (!book) {
+    return {
+      ok: false,
+      mensaje: 'Libro no encontrado',
+    };
+  }
 
   const rating = ratingFromFlutter(valoracion);
 
   if (rating === null) {
-    return { ok: false, mensaje: 'Valoración no válida' };
+    return {
+      ok: false,
+      mensaje: 'Valoración no válida',
+    };
   }
 
   await prisma.review.upsert({
@@ -274,7 +450,11 @@ export async function actualizarValoracion(
         bookId: book.id,
       },
     },
-    update: { rating },
+
+    update: {
+      rating,
+    },
+
     create: {
       userId: user.id,
       bookId: book.id,
@@ -282,119 +462,223 @@ export async function actualizarValoracion(
     },
   });
 
-  return { ok: true };
-}
-
-function buildGoodreadsSearchUrl(title: string) {
-  return `https://www.goodreads.com/search?q=${encodeURIComponent(title)}`;
-}
-
-function boolFromFlutter(value: unknown) {
-  const text = String(value ?? '').trim().toLowerCase();
-
-  return (
-    value === true ||
-    text === 'si' ||
-    text === 'sí' ||
-    text === 'true' ||
-    text === '1'
-  );
+  return {
+    ok: true,
+  };
 }
 
 export async function crearLibro(data: any) {
-  const usuario = String(data.usuario || '').trim();
-  const title = String(data.libro || data.titulo || data.title || '').trim();
+  console.log('🔥 ENTRANDO EN CREAR LIBRO NUEVO', data);
 
-  if (!usuario) return { ok: false, mensaje: 'Falta la usuaria' };
-  if (!title) return { ok: false, mensaje: 'Falta el título del libro' };
+  const usuario = String(data.usuario || '').trim();
+
+  const title = String(
+    data.libro || data.titulo || data.title || '',
+  )
+    .trim()
+    .replace(/\s+/g, ' ');
+
+  if (!usuario) {
+    return {
+      ok: false,
+      mensaje: 'Falta la usuaria',
+    };
+  }
+
+  if (!title) {
+    return {
+      ok: false,
+      mensaje: 'Falta el título del libro',
+    };
+  }
 
   const user = await prisma.user.findUnique({
-    where: { name: usuario },
+    where: {
+      name: usuario,
+    },
   });
 
-  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+  if (!user) {
+    return {
+      ok: false,
+      mensaje: 'Usuaria no encontrada',
+    };
+  }
 
-  const genreName = String(data.genero || 'Sin género').trim();
+  /*
+   * IMPORTANTE:
+   * Comprobamos primero si el libro ya existe.
+   * No creamos ni modificamos género o saga todavía.
+   */
+  const existingBook = await buscarLibroPorTitulo(title);
+
+  console.log(
+    '📚 LIBRO EXISTENTE:',
+    existingBook
+      ? {
+          id: existingBook.id,
+          title: existingBook.title,
+        }
+      : null,
+  );
+
+  if (existingBook) {
+    const existingLibrary =
+      await prisma.library.findUnique({
+        where: {
+          userId_bookId: {
+            userId: user.id,
+            bookId: existingBook.id,
+          },
+        },
+      });
+
+    /*
+     * La misma usuaria ya lo tenía:
+     * no modificamos libro, género, saga ni prioridad.
+     */
+    if (existingLibrary) {
+      console.log('⛔ LIBRO YA PRESENTE EN SU BIBLIOTECA');
+
+      return {
+        ok: false,
+        codigo: 'LIBRO_YA_EN_BIBLIOTECA',
+        mensaje: 'Este libro ya está en tu biblioteca',
+
+        libro: {
+          id: existingBook.id,
+          titulo: existingBook.title,
+        },
+      };
+    }
+
+    /*
+     * Otra usuaria lo había creado:
+     * reutilizamos Book y creamos exclusivamente Library.
+     */
+    console.log('♻️ AÑADIENDO LIBRO EXISTENTE A OTRA USUARIA');
+
+    await prisma.library.create({
+      data: {
+        userId: user.id,
+        bookId: existingBook.id,
+        status: ReadingStatus.PENDING,
+        priority: priorityFromFlutter(data.prioridad),
+      },
+    });
+
+    return {
+      ok: true,
+      creado: false,
+      codigo: 'LIBRO_EXISTENTE_ANADIDO',
+
+      mensaje:
+        'El libro ya existía en el club y se ha añadido a tu biblioteca',
+
+      libro: {
+        id: existingBook.id,
+        titulo: existingBook.title,
+      },
+    };
+  }
+
+  /*
+   * Solo si el libro no existe creamos género,
+   * saga y el registro Book.
+   */
+  const genreName =
+    String(data.genero || 'Sin género').trim() ||
+    'Sin género';
+
   const seriesName = String(data.saga || '').trim();
   const seriesOrder = String(data.numSaga || '').trim();
-  const standalone = boolFromFlutter(data.autoconclusivo);
-  const goodreadsUrl = String(data.goodreads || data.goodreadsUrl || '').trim();
+
+  const standalone = boolFromFlutter(
+    data.autoconclusivo,
+  );
+
+  const goodreadsUrl = String(
+    data.goodreads || data.goodreadsUrl || '',
+  ).trim();
 
   const genre = await prisma.genre.upsert({
-    where: { name: genreName },
+    where: {
+      name: genreName,
+    },
     update: {},
-    create: { name: genreName },
+    create: {
+      name: genreName,
+    },
   });
 
   const series = seriesName
     ? await prisma.series.upsert({
-        where: { name: seriesName },
-        update: { genreId: genre.id },
-        create: { name: seriesName, genreId: genre.id },
+        where: {
+          name: seriesName,
+        },
+
+        /*
+         * No alteramos una saga existente.
+         */
+        update: {},
+
+        create: {
+          name: seriesName,
+          genreId: genre.id,
+        },
       })
     : null;
 
-  const existing = await prisma.book.findFirst({
-    where: { title },
-  });
+  console.log('🆕 CREANDO LIBRO NUEVO');
 
-  const book = existing
-    ? await prisma.book.update({
-        where: { id: existing.id },
-        data: {
-          genreId: genre.id,
-          seriesId: series?.id ?? null,
-          seriesOrder: seriesOrder || existing.seriesOrder,
-          standalone,
-          goodreadsUrl:
-            goodreadsUrl ||
-            existing.goodreadsUrl ||
-            buildGoodreadsSearchUrl(title),
-        },
-      })
-    : await prisma.book.create({
+  /*
+   * Libro y biblioteca se crean en la misma transacción.
+   */
+  const book = await prisma.$transaction(
+    async (tx) => {
+      const createdBook = await tx.book.create({
         data: {
           title,
           genreId: genre.id,
           seriesId: series?.id ?? null,
           seriesOrder: seriesOrder || null,
           standalone,
-          goodreadsUrl: goodreadsUrl || buildGoodreadsSearchUrl(title),
+
+          goodreadsUrl:
+            goodreadsUrl ||
+            buildGoodreadsSearchUrl(title),
+
+          createdById: user.id,
         },
       });
 
-  await prisma.library.upsert({
-    where: {
-      userId_bookId: {
-        userId: user.id,
-        bookId: book.id,
-      },
+      await tx.library.create({
+        data: {
+          userId: user.id,
+          bookId: createdBook.id,
+          status: ReadingStatus.PENDING,
+
+          priority: priorityFromFlutter(
+            data.prioridad,
+          ),
+        },
+      });
+
+      return createdBook;
     },
-    update: {
-      priority: priorityFromFlutter(data.prioridad),
+  );
+
+  return {
+    ok: true,
+    creado: true,
+    codigo: 'LIBRO_CREADO',
+
+    mensaje:
+      'Libro creado y añadido a tu biblioteca',
+
+    libro: {
+      id: book.id,
+      titulo: book.title,
     },
-    create: {
-      userId: user.id,
-      bookId: book.id,
-      status: ReadingStatus.PENDING,
-      priority: priorityFromFlutter(data.prioridad),
-    },
-  });
-
-  return { ok: true, mensaje: 'Libro añadido' };
-}
-
-function priorityFromFlutter(value: unknown): Priority {
-  const priority = String(value ?? '').trim().toUpperCase();
-
-  if (priority === 'ALTA') return Priority.HIGH;
-  if (priority === 'BAJA') return Priority.LOW;
-
-  return Priority.MEDIUM;
-}
-
-function ratingToFlutter(rating?: number | null) {
-  if (rating === 0) return '😞';
-  if (!rating) return '';
-  return '⭐'.repeat(rating);
+  };
 }

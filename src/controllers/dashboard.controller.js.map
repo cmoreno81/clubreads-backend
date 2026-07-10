@@ -1,1 +1,0 @@
-{"version":3,"file":"dashboard.controller.js","sourceRoot":"","sources":["dashboard.controller.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,YAAY,EAAE,MAAM,kCAAkC,CAAC;AAEhE,MAAM,CAAC,KAAK,UAAU,eAAe,CAAC,IAAa,EAAE,GAAa;IAChE,MAAM,IAAI,GAAG,MAAM,YAAY,EAAE,CAAC;IAClC,OAAO,GAAG,CAAC,IAAI,CAAC,IAAI,CAAC,CAAC;AACxB,CAAC"}
