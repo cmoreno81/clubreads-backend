@@ -12,6 +12,7 @@ import {
   editarRespuestaLectura,
   eliminarRespuestaLectura,
   getConversacionesLibro,
+  marcarConversacionVista,
 } from '../services/readings.service.js';
 
 export async function handleLecturasActivas(_req: Request, res: Response) {
@@ -35,8 +36,15 @@ export async function handleCrearLectura(req: Request, res: Response) {
   return res.json(data);
 }
 
-export async function handleConfiguracionLectura(req: Request, res: Response) {
-  const data = await getConfiguracionLectura(String(req.query.libro || ''));
+export async function handleConfiguracionLectura(
+  req: Request,
+  res: Response,
+) {
+  const data = await getConfiguracionLectura(
+    String(req.query.libro || ''),
+    String(req.query.usuario || ''),
+  );
+
   return res.json(data);
 }
 
@@ -138,5 +146,18 @@ export async function handleEliminarRespuesta(req: Request, res: Response) {
 
 export async function handleConversacionesLibro(req: Request, res: Response) {
   const data = await getConversacionesLibro(String(req.query.libro || ''));
+  return res.json(data);
+}
+
+export async function handleMarcarConversacionVista(
+  req: Request,
+  res: Response,
+) {
+  const data = await marcarConversacionVista({
+    libro: String(req.query.libro || req.body?.libro || ''),
+    capitulo: String(req.query.capitulo || req.body?.capitulo || ''),
+    usuario: String(req.query.usuario || req.body?.usuario || ''),
+  });
+
   return res.json(data);
 }

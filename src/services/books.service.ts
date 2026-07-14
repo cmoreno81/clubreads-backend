@@ -1,5 +1,6 @@
 import { Priority, ReadingStatus } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { findBestBookCover } from './book-cover.service.js';
 
 function statusToFlutter(status: string) {
   if (status === ReadingStatus.READING) return 'LEYENDO';
@@ -144,7 +145,14 @@ export async function getLibros(usuario: string) {
     ],
   });
 
+  console.log(
+  library.slice(0, 3).map((item) => ({
+    title: item.book.title,
+    coverUrl: item.book.coverUrl,
+  })),
+);
   return library.map((item) => ({
+    bookId: item.book.id,
     usuario: item.user.name,
     libro: item.book.title,
     genero: item.book.genre.name,
@@ -162,6 +170,7 @@ export async function getLibros(usuario: string) {
         usuarioActual.toLowerCase(),
 
     goodreads: item.book.goodreadsUrl ?? '',
+    coverUrl: item.book.coverUrl ?? '',
   }));
 }
 
@@ -195,6 +204,7 @@ export async function getLibrosFinalizados() {
     );
 
     return {
+      bookId: item.book.id,
       usuario: item.user.name,
       libro: item.book.title,
       genero: item.book.genre.name,
@@ -206,7 +216,7 @@ export async function getLibrosFinalizados() {
       review: review?.review ?? '',
       goodreads: item.book.goodreadsUrl ?? '',
       fecha: item.finishedAt ?? '',
-
+      coverUrl: item.book.coverUrl ?? '',
       mes: item.finishedAt
         ? `${String(item.finishedAt.getMonth() + 1).padStart(
             2,
@@ -503,7 +513,7 @@ export async function crearLibro(data: any) {
       ok: false,
       mensaje: 'Usuaria no encontrada',
     };
-  }
+  }  
 
   /*
    * IMPORTANTE:
@@ -631,6 +641,28 @@ export async function crearLibro(data: any) {
 
   console.log('🆕 CREANDO LIBRO NUEVO');
 
+  const coverMatch = await findBestBookCover(
+  title,
+);
+
+const automaticCover =
+  coverMatch.safeToApply
+    ? coverMatch.candidate
+    : null;
+
+if (automaticCover) {
+  console.log(
+    '🖼️ PORTADA ENCONTRADA:',
+    automaticCover.title,
+    automaticCover.coverUrl,
+  );
+} else {
+  console.log(
+    '⚠️ SIN PORTADA AUTOMÁTICA SEGURA:',
+    title,
+  );
+}
+
   /*
    * Libro y biblioteca se crean en la misma transacción.
    */
@@ -649,6 +681,15 @@ export async function crearLibro(data: any) {
             buildGoodreadsSearchUrl(title),
 
           createdById: user.id,
+
+          coverUrl:
+            automaticCover?.coverUrl ?? null,
+
+          isbn:
+            automaticCover?.isbn ?? null,
+
+          publicationYear:
+            automaticCover?.publicationYear ?? null,
         },
       });
 
@@ -679,6 +720,339 @@ export async function crearLibro(data: any) {
     libro: {
       id: book.id,
       titulo: book.title,
+    },
+  };
+}
+
+export async function quitarLibroPendientes(
+  usuario: string,
+  libro: string,
+) {
+  const nombreUsuario = usuario.trim();
+  const tituloLibro = libro.trim();
+
+  if (!nombreUsuario) {
+    return {
+      ok: false,
+      codigo: 'FALTA_USUARIO',
+      mensaje: 'Falta la usuaria',
+    };
+  }
+
+  if (!tituloLibro) {
+    return {
+      ok: false,
+      codigo: 'FALTA_LIBRO',
+      mensaje: 'Falta el título del libro',
+    };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: {
+      name: nombreUsuario,
+    },
+  });
+
+  if (!user) {
+    return {
+      ok: false,
+      codigo: 'USUARIO_NO_ENCONTRADO',
+      mensaje: 'Usuaria no encontrada',
+    };
+  }
+
+  const book = await buscarLibroPorTitulo(tituloLibro);
+
+  if (!book) {
+    return {
+      ok: false,
+      codigo: 'LIBRO_NO_ENCONTRADO',
+      mensaje: 'Libro no encontrado',
+    };
+  }
+
+  const libraryItem = await prisma.library.findUnique({
+    where: {
+      userId_bookId: {
+        userId: user.id,
+        bookId: book.id,
+      },
+    },
+  });
+
+  if (!libraryItem) {
+    return {
+      ok: false,
+      codigo: 'LIBRO_NO_EN_BIBLIOTECA',
+      mensaje: 'Este libro no está en tu biblioteca',
+    };
+  }
+
+  /*
+   * Solo permitimos eliminar libros pendientes.
+   * Nunca borramos desde aquí lecturas actuales o históricas.
+   */
+  if (libraryItem.status !== ReadingStatus.PENDING) {
+    return {
+      ok: false,
+      codigo: 'LIBRO_NO_PENDIENTE',
+      mensaje: 'Solo puedes quitar libros que estén en pendientes',
+    };
+  }
+
+  const resultado = await prisma.$transaction(async (tx) => {
+    /*
+     * Eliminamos solamente la relación de esta usuaria.
+     */
+    await tx.library.delete({
+      where: {
+        userId_bookId: {
+          userId: user.id,
+          bookId: book.id,
+        },
+      },
+    });
+
+    /*
+     * Comprobamos si alguna otra usuaria conserva el libro
+     * en su biblioteca, sea cual sea su estado.
+     */
+    const relacionesRestantes = await tx.library.count({
+      where: {
+        bookId: book.id,
+      },
+    });
+
+    if (relacionesRestantes > 0) {
+      return {
+        libroEliminadoDelCatalogo: false,
+        relacionesRestantes,
+      };
+    }
+
+    /*
+     * Aunque no queden relaciones Library, protegemos cualquier
+     * libro que forme parte del historial del club.
+     */
+    const [
+      reviews,
+      readings,
+      clubvisionsGanadas,
+      candidaturasClubvision,
+      resultadosClubvision,
+    ] = await Promise.all([
+      tx.review.count({
+        where: {
+          bookId: book.id,
+        },
+      }),
+
+      tx.reading.count({
+        where: {
+          bookId: book.id,
+        },
+      }),
+
+      tx.clubvision.count({
+        where: {
+          winnerBookId: book.id,
+        },
+      }),
+
+      tx.clubvisionCandidate.count({
+        where: {
+          bookId: book.id,
+        },
+      }),
+
+      tx.clubvisionResult.count({
+        where: {
+          winnerBookId: book.id,
+        },
+      }),
+    ]);
+
+    const tieneHistorial =
+      reviews > 0 ||
+      readings > 0 ||
+      clubvisionsGanadas > 0 ||
+      candidaturasClubvision > 0 ||
+      resultadosClubvision > 0;
+
+    if (tieneHistorial) {
+      return {
+        libroEliminadoDelCatalogo: false,
+        relacionesRestantes: 0,
+      };
+    }
+
+    /*
+     * Nadie lo tiene y nunca formó parte del historial:
+     * podemos eliminar el Book de forma segura.
+     */
+    await tx.book.delete({
+      where: {
+        id: book.id,
+      },
+    });
+
+    return {
+      libroEliminadoDelCatalogo: true,
+      relacionesRestantes: 0,
+    };
+  });
+
+  return {
+    ok: true,
+    codigo: resultado.libroEliminadoDelCatalogo
+      ? 'LIBRO_ELIMINADO_COMPLETAMENTE'
+      : 'LIBRO_QUITADO_DE_PENDIENTES',
+
+    mensaje: resultado.libroEliminadoDelCatalogo
+      ? 'El libro se ha quitado de tus pendientes y del catálogo'
+      : 'El libro se ha quitado de tus pendientes',
+
+    eliminadoDelCatalogo:
+      resultado.libroEliminadoDelCatalogo,
+  };
+}
+
+export async function editarLibro(data: any) {
+  const bookId = String(data.bookId || data.id || '').trim();
+
+  const title = String(
+    data.libro || data.titulo || data.title || '',
+  )
+    .trim()
+    .replace(/\s+/g, ' ');
+
+  if (!bookId) {
+    return {
+      ok: false,
+      codigo: 'FALTA_BOOK_ID',
+      mensaje: 'Falta el identificador del libro',
+    };
+  }
+
+  if (!title) {
+    return {
+      ok: false,
+      codigo: 'FALTA_TITULO',
+      mensaje: 'Falta el título del libro',
+    };
+  }
+
+  const actual = await prisma.book.findFirst({
+    where: {
+      id: bookId,
+      deletedAt: null,
+    },
+  });
+
+  if (!actual) {
+    return {
+      ok: false,
+      codigo: 'LIBRO_NO_ENCONTRADO',
+      mensaje: 'Libro no encontrado',
+    };
+  }
+
+  const tituloNormalizado = normalizarTitulo(title);
+
+  const libros = await prisma.book.findMany({
+    where: {
+      deletedAt: null,
+      id: {
+        not: bookId,
+      },
+    },
+    select: {
+      id: true,
+      title: true,
+    },
+  });
+
+  const duplicado = libros.find(
+    (book) => normalizarTitulo(book.title) === tituloNormalizado,
+  );
+
+  if (duplicado) {
+    return {
+      ok: false,
+      codigo: 'TITULO_DUPLICADO',
+      mensaje: 'Ya existe otro libro con ese título',
+    };
+  }
+
+  const genreName =
+    String(data.genero || 'Sin género').trim() || 'Sin género';
+
+  const seriesName = String(data.saga || '').trim();
+  const seriesOrder = String(data.numSaga || '').trim();
+  const standalone = boolFromFlutter(data.autoconclusivo);
+
+  const goodreadsUrl = String(
+    data.goodreads || data.goodreadsUrl || '',
+  ).trim();
+
+  const coverUrl = String(data.coverUrl || '').trim();
+
+  const genre = await prisma.genre.upsert({
+    where: {
+      name: genreName,
+    },
+    update: {},
+    create: {
+      name: genreName,
+    },
+  });
+
+  const series =
+    !standalone && seriesName
+      ? await prisma.series.upsert({
+          where: {
+            name: seriesName,
+          },
+          update: {},
+          create: {
+            name: seriesName,
+            genreId: genre.id,
+          },
+        })
+      : null;
+
+  const actualizado = await prisma.book.update({
+    where: {
+      id: bookId,
+    },
+    data: {
+      title,
+      genreId: genre.id,
+      standalone,
+
+      seriesId: standalone
+        ? null
+        : series?.id ?? null,
+
+      seriesOrder: standalone
+        ? null
+        : seriesOrder || null,
+
+      goodreadsUrl:
+        goodreadsUrl || buildGoodreadsSearchUrl(title),
+
+      coverUrl: coverUrl || null,
+    },
+  });
+
+  return {
+    ok: true,
+    codigo: 'LIBRO_ACTUALIZADO',
+    mensaje: 'Libro actualizado correctamente',
+    libro: {
+      id: actualizado.id,
+      titulo: actualizado.title,
+      coverUrl: actualizado.coverUrl ?? '',
     },
   };
 }

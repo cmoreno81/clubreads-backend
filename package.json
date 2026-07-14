@@ -11,7 +11,9 @@
     "seed": "tsx prisma/seed.ts",
     "import:sheets": "tsx scripts/import-sheets.ts",
     "audit:import": "tsx scripts/audit-import.ts",
-    "audit:details": "tsx scripts/audit-details.ts"
+    "audit:details": "tsx scripts/audit-details.ts",
+    "covers:preview": "tsx scripts/find-book-covers.ts",
+    "covers:apply": "tsx scripts/find-book-covers.ts --apply"
   },
   "keywords": [],
   "author": "",
@@ -26,7 +28,6 @@
     "express": "^5.2.1",
     "pg": "^8.22.0",
     "prisma": "^7.8.0",
-    "tsx": "^4.23.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -36,6 +37,7 @@
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.23.0",
     "typescript": "^6.0.3"
   }
 }

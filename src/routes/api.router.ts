@@ -19,6 +19,8 @@ import {
   handleActualizarEstado,
   handleActualizarValoracion,
   handleCrearLibro,
+  handleQuitarLibroPendientes,
+  handleEditarLibro,
 } from '../controllers/books.controller.js';
 
 import { handleDashboard } from '../controllers/dashboard.controller.js';
@@ -36,11 +38,16 @@ import {
   handleEditarRespuesta,
   handleEliminarRespuesta,
   handleConversacionesLibro,
+  handleMarcarConversacionVista
 } from '../controllers/readings.controller.js';
 
 import { handleRanking } from '../controllers/ranking.controller.js';
 
-import { handlePerfilUsuario } from '../controllers/perfil.controller.js';
+import {
+  handlePerfilUsuario,
+  handleActualizarFechasLectura,
+  handleActualizarAvatarPerfil,
+} from '../controllers/perfil.controller.js';
 
 import { handleMoodClub } from '../controllers/mood.controller.js';
 
@@ -68,8 +75,14 @@ async function handleApi(req: Request, res: Response) {
       case 'crearLibro':
         return handleCrearLibro(req, res);
 
+      case 'editarLibro':
+        return handleEditarLibro(req, res);  
+
       case 'anadirLibroExistente':
         return handleAnadirLibroExistente(req, res);
+      
+      case 'quitarLibroPendientes':
+        return handleQuitarLibroPendientes(req, res);  
 
       case 'iniciarLectura':
         return handleIniciarLectura(req, res);
@@ -137,11 +150,20 @@ async function handleApi(req: Request, res: Response) {
       case 'perfilUsuario':
         return handlePerfilUsuario(req, res);  
 
+      case 'actualizarFechasLectura':
+        return handleActualizarFechasLectura(req, res);
+
+      case 'actualizarAvatarPerfil':
+        return handleActualizarAvatarPerfil(req, res);  
+
       case 'moodClub':
         return handleMoodClub(req, res);  
 
       case 'tendenciasClub':
         return handleTendenciasClub(req, res);  
+      
+      case 'marcarConversacionVista':
+        return handleMarcarConversacionVista(req, res);  
 
       default:
         return res.status(400).json({

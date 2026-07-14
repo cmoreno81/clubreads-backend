@@ -121,6 +121,20 @@ export async function getDashboard() {
   const clubvision = await getClubvision('');
   const ganador = clubvision.ganador || '';
 
+  const libroActual = ganador
+  ? await prisma.book.findFirst({
+      where: {
+        title: ganador,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        title: true,
+        coverUrl: true,
+      },
+    })
+  : null;
+
   const leyendoLecturaActual = ganador
     ? leyendoAhora
         .filter((item) => item.book.title === ganador)
@@ -263,6 +277,7 @@ export async function getDashboard() {
       totalLeyendo: leyendoLecturaActual.length,
       totalFinalizado: finalizadosLecturaActual.length,
       leyendo: leyendoLecturaActual,
+     coverUrl: libroActual?.coverUrl ?? '',
       finalizado: finalizadosLecturaActual.map((item) => {
         const review = item.book.reviews.find(
           (review) => review.userId === item.userId,

@@ -7,6 +7,8 @@ import {
   actualizarEstado,
   actualizarValoracion,
   crearLibro,
+  quitarLibroPendientes,
+  editarLibro,
 } from '../services/books.service.js';
 
 export async function handleLibros(req: Request, res: Response) {
@@ -62,6 +64,39 @@ export async function handleActualizarEstado(req: Request, res: Response) {
     String(body.valoracion || req.query.valoracion || ''),
     String(body.reflexion || req.query.reflexion || ''),
   );
+
+  return res.json(data);
+}
+
+export async function handleQuitarLibroPendientes(req: Request, res: Response) {
+  const usuario = String(
+    req.body?.usuario ?? req.query.usuario ?? '',
+  );
+
+  const libro = String(
+    req.body?.libro ?? req.query.libro ?? '',
+  );
+
+  const data = await quitarLibroPendientes(
+    usuario,
+    libro,
+  );
+
+  return res.json(data);
+}
+
+export async function handleEditarLibro(
+  req: Request,
+  res: Response,
+) {
+  const data = await editarLibro({
+    ...(req.body ?? {}),
+    bookId:
+      req.body?.bookId ??
+      req.query.bookId ??
+      req.query.id ??
+      '',
+  });
 
   return res.json(data);
 }

@@ -190,6 +190,8 @@ model User {
   reviews      Review[]
   likes        Like[]
 
+  conversationReads ConversationRead[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -273,7 +275,7 @@ model Conversation {
   id String @id @default(cuid())
 
   readingId String
-  reading   Reading @relation(fields: [readingId], references: [id])
+  reading   Reading @relation(fields: [readingId], references: [id], onDelete: Cascade)
 
   title String
 
@@ -282,6 +284,30 @@ model Conversation {
   spoiler Boolean @default(false)
 
   comments Comment[]
+
+  reads ConversationRead[]
+
+  @@index([readingId])
+}
+
+model ConversationRead {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  lastSeenAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, conversationId])
+  @@index([userId])
+  @@index([conversationId])
+  @@index([lastSeenAt])
 }
 
 //

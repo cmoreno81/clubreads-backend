@@ -36,16 +36,30 @@ export async function getRanking() {
   const deseados = new Map<string, number>();
   const leidos = new Map<string, number>();
   const abandonados = new Map<string, number>();
-  const lectoras = new Map<string, number>();
-
+  const lectoras = new Map<
+    string,
+    {
+      total: number;
+      avatarUrl: string;
+    }
+  >();
   for (const item of library) {
     if (item.status !== ReadingStatus.FINISHED) {
       deseados.set(item.book.title, (deseados.get(item.book.title) ?? 0) + 1);
     }
 
     if (item.status === ReadingStatus.FINISHED) {
-      leidos.set(item.book.title, (leidos.get(item.book.title) ?? 0) + 1);
-      lectoras.set(item.user.name, (lectoras.get(item.user.name) ?? 0) + 1);
+      leidos.set(
+        item.book.title,
+        (leidos.get(item.book.title) ?? 0) + 1,
+      );
+
+      const lectoraActual = lectoras.get(item.user.name);
+
+      lectoras.set(item.user.name, {
+        total: (lectoraActual?.total ?? 0) + 1,
+        avatarUrl: item.user.avatarUrl ?? '',
+      });
     }
 
     if (item.status === ReadingStatus.ABANDONED) {
@@ -101,11 +115,15 @@ export async function getRanking() {
       .sort((a, b) => b.total - a.total),
   );
 
-  const topLectoras = top(
-    Array.from(lectoras.entries())
-      .map(([usuario, total]) => ({ usuario, total }))
-      .sort((a, b) => b.total - a.total),
-  );
+const topLectoras = top(
+  Array.from(lectoras.entries())
+    .map(([usuario, datos]) => ({
+      usuario,
+      total: datos.total,
+      avatarUrl: datos.avatarUrl,
+    }))
+    .sort((a, b) => b.total - a.total),
+);
 
   const mejorValorados = top(
     Array.from(valoraciones.entries())

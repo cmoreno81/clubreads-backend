@@ -25,37 +25,60 @@ function tiempoRelativo(fecha: Date) {
   });
 }
 
-function buildChapters(reading: {
-  conversations: {
-    title: string;
-    order: number;
-    comments: {
-      deletedAt: Date | null;
-      createdAt: Date;
-      user: { name: string };
-      likes: { id: string }[];
-      replies: {
+function buildChapters(
+  reading: {
+    conversations: {
+      title: string;
+      order: number;
+      reads: {
+        lastSeenAt: Date;
+      }[];
+      comments: {
         deletedAt: Date | null;
         createdAt: Date;
+        userId: string;
         user: { name: string };
         likes: { id: string }[];
+        replies: {
+          deletedAt: Date | null;
+          createdAt: Date;
+          userId: string;
+          user: { name: string };
+          likes: { id: string }[];
+        }[];
       }[];
     }[];
-  }[];
-}) {
+  },
+  userId: string | null,
+) {
   return reading.conversations
     .sort((a, b) => a.order - b.order)
     .map((conversation) => {
       let comentarios = 0;
+      let respuestas = 0;
       let likes = 0;
+
+      let nuevosComentarios = 0;
+      let nuevasRespuestas = 0;
       let ultimaFecha: Date | null = null;
       let ultimoUsuario = '';
+
+      const lastSeenAt = conversation.reads[0]?.lastSeenAt ?? null;
 
       for (const comment of conversation.comments) {
         if (comment.deletedAt) continue;
 
-        comentarios++;
-        likes += comment.likes.length;
+          comentarios++;
+          likes += comment.likes.length;
+
+          const esNuevo =
+            userId !== null &&
+            comment.userId !== userId &&
+            (!lastSeenAt || comment.createdAt > lastSeenAt);
+
+          if (esNuevo) {
+            nuevosComentarios++;
+}
 
         if (!ultimaFecha || comment.createdAt > ultimaFecha) {
           ultimaFecha = comment.createdAt;
@@ -65,8 +88,17 @@ function buildChapters(reading: {
         for (const reply of comment.replies) {
           if (reply.deletedAt) continue;
 
-          comentarios++;
-          likes += reply.likes.length;
+            respuestas++;
+            likes += reply.likes.length;
+
+            const respuestaNueva =
+              userId !== null &&
+              reply.userId !== userId &&
+              (!lastSeenAt || reply.createdAt > lastSeenAt);
+
+            if (respuestaNueva) {
+              nuevasRespuestas++;
+            }
 
           if (!ultimaFecha || reply.createdAt > ultimaFecha) {
             ultimaFecha = reply.createdAt;
@@ -78,14 +110,18 @@ function buildChapters(reading: {
       return {
         nombre: conversation.title,
         comentarios,
+        respuestas,
         likes,
+        nuevosComentarios,
+        nuevasRespuestas,
+        nuevosTotal: nuevosComentarios + nuevasRespuestas,
+        tieneNovedades: nuevosComentarios + nuevasRespuestas > 0,
         ultimaActividad: ultimaFecha
           ? `💬 ${ultimoUsuario} comentó ${tiempoRelativo(ultimaFecha)}`
           : '',
       };
     });
 }
-
 export async function getLecturasActivas() {
   const readingBooks = await prisma.library.groupBy({
     by: ['bookId'],
@@ -131,6 +167,7 @@ export async function getLecturasActivas() {
 
   const resultado: {
     libro: string;
+    coverUrl: string;
     lectoras: number;
     configurada: boolean;
     comentarios: number;
@@ -176,6 +213,7 @@ export async function getLecturasActivas() {
 
     resultado.push({
       libro: reading.book.title,
+      coverUrl: reading.book.coverUrl ?? '',
       lectoras,
       configurada: true,
       comentarios,
@@ -220,6 +258,7 @@ export async function getLecturasActivas() {
 
     resultado.push({
       libro: book.title,
+      coverUrl: book.coverUrl ?? '',
       lectoras: lectura._count.userId,
       configurada: false,
       comentarios: 0,
@@ -253,6 +292,7 @@ export async function getLecturasActivas() {
 
       resultado.unshift({
         libro: latestResult.winnerTitle,
+        coverUrl: book?.coverUrl ?? '',
         lectoras,
         configurada: false,
         comentarios: 0,
@@ -354,8 +394,23 @@ export async function crearLectura(data: {
   return { ok: true };
 }
 
-export async function getConfiguracionLectura(libro: string) {
+export async function getConfiguracionLectura(
+  libro: string,
+  usuarioActual: string,
+) {
   const title = libro.trim();
+  const nombreUsuario = usuarioActual.trim();
+
+  const user = nombreUsuario
+    ? await prisma.user.findUnique({
+        where: {
+          name: nombreUsuario,
+        },
+        select: {
+          id: true,
+        },
+      })
+    : null;
 
   const reading = await prisma.reading.findFirst({
     where: {
@@ -363,8 +418,21 @@ export async function getConfiguracionLectura(libro: string) {
       status: ReadingSessionStatus.ACTIVE,
     },
     include: {
+      book: true,
       conversations: {
         include: {
+          reads: {
+            where: user
+              ? {
+                  userId: user.id,
+                }
+              : {
+                  id: '__sin_usuario__',
+                },
+            select: {
+              lastSeenAt: true,
+            },
+          },
           comments: {
             include: {
               user: true,
@@ -388,6 +456,7 @@ export async function getConfiguracionLectura(libro: string) {
       prologo: false,
       epilogo: false,
       capitulosDisponibles: [],
+      coverUrl: '',
     };
   }
 
@@ -395,7 +464,84 @@ export async function getConfiguracionLectura(libro: string) {
     capitulos: reading.chapters,
     prologo: reading.hasPrologue,
     epilogo: reading.hasEpilogue,
-    capitulosDisponibles: buildChapters(reading),
+    capitulosDisponibles: buildChapters(reading, user?.id ?? null),
+    coverUrl: reading.book.coverUrl ?? '',
+  };
+}
+
+export async function marcarConversacionVista(data: {
+  libro: string;
+  capitulo: string;
+  usuario: string;
+}) {
+  const libro = data.libro.trim();
+  const capitulo = data.capitulo.trim();
+  const usuario = data.usuario.trim();
+
+  if (!libro || !capitulo || !usuario) {
+    return {
+      ok: false,
+      mensaje: 'Faltan datos',
+    };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: {
+      name: usuario,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!user) {
+    return {
+      ok: false,
+      mensaje: 'Usuaria no encontrada',
+    };
+  }
+
+  const conversation = await prisma.conversation.findFirst({
+    where: {
+      title: capitulo,
+      reading: {
+        status: ReadingSessionStatus.ACTIVE,
+        book: {
+          title: libro,
+        },
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!conversation) {
+    return {
+      ok: false,
+      mensaje: 'Capítulo no encontrado',
+    };
+  }
+
+  await prisma.conversationRead.upsert({
+    where: {
+      userId_conversationId: {
+        userId: user.id,
+        conversationId: conversation.id,
+      },
+    },
+    update: {
+      lastSeenAt: new Date(),
+    },
+    create: {
+      userId: user.id,
+      conversationId: conversation.id,
+      lastSeenAt: new Date(),
+    },
+  });
+
+  return {
+    ok: true,
   };
 }
 
@@ -444,7 +590,33 @@ export async function getComentariosLectura(
       comentarios: [],
     };
   }
+  const usuario = usuarioActual.trim();
 
+if (usuario) {
+  const user = await prisma.user.findUnique({
+    where: { name: usuario },
+    select: { id: true },
+  });
+
+  if (user) {
+    await prisma.conversationRead.upsert({
+      where: {
+        userId_conversationId: {
+          userId: user.id,
+          conversationId: conversation.id,
+        },
+      },
+      update: {
+        lastSeenAt: new Date(),
+      },
+      create: {
+        userId: user.id,
+        conversationId: conversation.id,
+        lastSeenAt: new Date(),
+      },
+    });
+  }
+}
   return {
     ok: true,
     capitulo,
