@@ -1,13 +1,8 @@
 import { ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
+import { ratingToFlutter } from '../utils/rating.utils.js';
 
-function ratingToFlutter(rating?: number | null) {
-  if (rating === 0) return '😞';
-  if (!rating) return '';
-
-  return '⭐'.repeat(rating);
-}
 
 function fechaToFlutter(fecha?: Date | null) {
   if (!fecha) return '';
