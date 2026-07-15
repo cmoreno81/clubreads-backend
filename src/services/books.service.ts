@@ -94,7 +94,10 @@ function normalizarTitulo(value: string) {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
+    .replace(/[’‘`´]/g, "'")
+    .replace(/[–—]/g, '-')
+    .replace(/\u00A0/g, ' ')
+    .toLocaleLowerCase('es')
     .trim()
     .replace(/\s+/g, ' ');
 }
@@ -103,18 +106,37 @@ function normalizarTitulo(value: string) {
  * Busca un libro sin depender exactamente de mayúsculas,
  * tildes o espacios.
  */
-async function buscarLibroPorTitulo(title: string) {
-  const tituloNormalizado = normalizarTitulo(title);
+async function buscarLibroPorTitulo(
+  titulo: string,
+) {
+  const tituloNormalizado = normalizarTitulo(titulo);
+
+  if (!tituloNormalizado) {
+    return null;
+  }
 
   const libros = await prisma.book.findMany({
     where: {
       deletedAt: null,
     },
+    select: {
+      id: true,
+      title: true,
+      genreId: true,
+      seriesId: true,
+      seriesOrder: true,
+      standalone: true,
+      goodreadsUrl: true,
+      coverUrl: true,
+      isbn: true,
+      publicationYear: true,
+    },
   });
 
   return (
     libros.find(
-      (libro) => normalizarTitulo(libro.title) === tituloNormalizado,
+      (libro) =>
+        normalizarTitulo(libro.title) === tituloNormalizado,
     ) ?? null
   );
 }
@@ -976,13 +998,17 @@ export async function editarLibro(data: any) {
     (book) => normalizarTitulo(book.title) === tituloNormalizado,
   );
 
-  if (duplicado) {
-    return {
-      ok: false,
-      codigo: 'TITULO_DUPLICADO',
-      mensaje: 'Ya existe otro libro con ese título',
-    };
-  }
+if (duplicado) {
+  return {
+    ok: false,
+    codigo: 'TITULO_DUPLICADO',
+    mensaje: `Ya existe el libro "${duplicado.title}" en el catálogo`,
+    libroExistente: {
+      id: duplicado.id,
+      titulo: duplicado.title,
+    },
+  };
+}
 
   const genreName =
     String(data.genero || 'Sin género').trim() || 'Sin género';
@@ -1021,29 +1047,34 @@ export async function editarLibro(data: any) {
         })
       : null;
 
-  const actualizado = await prisma.book.update({
-    where: {
-      id: bookId,
-    },
-    data: {
-      title,
-      genreId: genre.id,
-      standalone,
+const actualizado = await prisma.book.update({
+  where: {
+    id: bookId,
+  },
+  data: {
+    title,
+    genreId: genre.id,
+    standalone,
 
-      seriesId: standalone
-        ? null
-        : series?.id ?? null,
+    seriesId: standalone
+      ? null
+      : series?.id ?? null,
 
-      seriesOrder: standalone
-        ? null
-        : seriesOrder || null,
+    seriesOrder: standalone
+      ? null
+      : seriesOrder || null,
 
-      goodreadsUrl:
-        goodreadsUrl || buildGoodreadsSearchUrl(title),
+    goodreadsUrl:
+      goodreadsUrl ||
+      actual.goodreadsUrl ||
+      buildGoodreadsSearchUrl(title),
 
-      coverUrl: coverUrl || null,
-    },
-  });
+    coverUrl:
+      coverUrl ||
+      actual.coverUrl ||
+      null,
+  },
+});
 
   return {
     ok: true,
