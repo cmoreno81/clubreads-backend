@@ -354,7 +354,7 @@ model Review {
   bookId String
   book   Book   @relation(fields: [bookId], references: [id])
 
-  rating Int
+  rating Float
 
   review String? @db.Text
 

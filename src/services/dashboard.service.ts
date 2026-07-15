@@ -1,5 +1,6 @@
 import { prisma } from '../prisma.js';
 import { getClubvision } from './clubvision.service.js';
+import { ratingToFlutter } from '../utils/rating.utils.js';
 
 function ratingAverage(ratings: number[]) {
   if (ratings.length === 0) return '0';
@@ -40,11 +41,6 @@ function getMood(valoracionMedia: string) {
   return 'El club está preparando nuevas lecturas.';
 }
 
-function ratingToFlutter(rating?: number | null) {
-  if (rating === 0) return '😞';
-  if (!rating) return '';
-  return '⭐'.repeat(rating);
-}
 
 export async function getDashboard() {
   const month = currentMonthKey();

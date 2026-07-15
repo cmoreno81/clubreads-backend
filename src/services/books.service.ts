@@ -1,6 +1,10 @@
 import { Priority, ReadingStatus } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { findBestBookCover } from './book-cover.service.js';
+import {
+  ratingFromFlutter,
+  ratingToFlutter,
+} from '../utils/rating.utils.js';
 
 function statusToFlutter(status: string) {
   if (status === ReadingStatus.READING) return 'LEYENDO';
@@ -32,28 +36,7 @@ function priorityFromFlutter(value: unknown): Priority {
   return Priority.MEDIUM;
 }
 
-function ratingFromFlutter(value?: string | null) {
-  const rating = String(value ?? '').trim();
 
-  if (!rating) return null;
-
-  if (rating === '⭐' || rating === '⭐️') return 1;
-  if (rating === '⭐⭐' || rating === '⭐️⭐️') return 2;
-  if (rating === '⭐⭐⭐' || rating === '⭐️⭐️⭐️') return 3;
-  if (rating === '⭐⭐⭐⭐' || rating === '⭐️⭐️⭐️⭐️') return 4;
-  if (rating === '⭐⭐⭐⭐⭐' || rating === '⭐️⭐️⭐️⭐️⭐️') return 5;
-
-  const numeric = Number(rating);
-
-  return Number.isNaN(numeric) ? null : numeric;
-}
-
-function ratingToFlutter(rating?: number | null) {
-  if (rating === 0) return '😞';
-  if (!rating) return '';
-
-  return '⭐'.repeat(rating);
-}
 
 function statusFromFlutter(estado: string): ReadingStatus {
   if (estado === 'LEYENDO') return ReadingStatus.READING;
