@@ -18,6 +18,7 @@ datasource db {
 enum ReadingStatus {
   PENDING
   READING
+  PAUSED
   FINISHED
   ABANDONED
   REREADING
@@ -231,6 +232,10 @@ model Library {
   priority Priority @default(MEDIUM)
 
   startedAt DateTime?
+
+  pausedAt DateTime?
+
+  pauseReason String? @db.Text
 
   finishedAt DateTime?
 

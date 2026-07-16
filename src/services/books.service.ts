@@ -8,9 +8,10 @@ import {
 
 function statusToFlutter(status: string) {
   if (status === ReadingStatus.READING) return 'LEYENDO';
+  if (status === ReadingStatus.PAUSED) return 'PAUSADO';
   if (status === ReadingStatus.FINISHED) return 'FINALIZADO';
   if (status === ReadingStatus.ABANDONED) return 'ABANDONADO';
-  if (status === ReadingStatus.REREADING) return 'RELEYENDO';
+  if (status === ReadingStatus.REREADING) return 'RELECTURA';
 
   return 'PENDIENTE';
 }
@@ -38,11 +39,13 @@ function priorityFromFlutter(value: unknown): Priority {
 
 
 
-function statusFromFlutter(estado: string): ReadingStatus {
+function statusFromFlutter(value: string) {
+  const estado = value.trim().toUpperCase();
+
   if (estado === 'LEYENDO') return ReadingStatus.READING;
+  if (estado === 'PAUSADO') return ReadingStatus.PAUSED;
   if (estado === 'FINALIZADO') return ReadingStatus.FINISHED;
   if (estado === 'ABANDONADO') return ReadingStatus.ABANDONED;
-
   if (estado === 'RELECTURA' || estado === 'RELEYENDO') {
     return ReadingStatus.REREADING;
   }
@@ -150,12 +153,6 @@ export async function getLibros(usuario: string) {
     ],
   });
 
-  console.log(
-  library.slice(0, 3).map((item) => ({
-    title: item.book.title,
-    coverUrl: item.book.coverUrl,
-  })),
-);
   return library.map((item) => ({
     bookId: item.book.id,
     usuario: item.user.name,
@@ -168,7 +165,9 @@ export async function getLibros(usuario: string) {
     leyendo: statusToFlutter(item.status),
     estado: statusToFlutter(item.status),
     valoracion: '',
-
+    fechaAlta: item.book.createdAt.toISOString(),
+    pausedAt: item.pausedAt?.toISOString() ?? '',
+    pauseReason: item.pauseReason ?? '',
     yaLoTengo:
       usuarioActual !== '' &&
       item.user.name.trim().toLowerCase() ===
@@ -217,6 +216,7 @@ export async function getLibrosFinalizados() {
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
       valoracion: ratingToFlutter(review?.rating),
+      fechaAlta: item.book.createdAt.toISOString(),
       resena: review?.review ?? '',
       review: review?.review ?? '',
       goodreads: item.book.goodreadsUrl ?? '',
@@ -304,6 +304,7 @@ export async function actualizarEstado(
   estado: string,
   valoracion?: string,
   reflexion?: string,
+  motivoPausa?: string,
 ) {
   const user = await prisma.user.findUnique({
     where: {
@@ -342,21 +343,46 @@ export async function actualizarEstado(
     },
   });
 
-  const statusDates =
-    status === ReadingStatus.READING
+const statusDates =
+  status === ReadingStatus.READING
+    ? {
+        startedAt: currentLibrary?.startedAt ?? now,
+        finishedAt: null,
+        pausedAt: null,
+        pauseReason: null,
+      }
+    : status === ReadingStatus.PAUSED
       ? {
           startedAt: currentLibrary?.startedAt ?? now,
           finishedAt: null,
+          pausedAt: now,
+          pauseReason: motivoPausa?.trim() || null,
         }
-      : status === ReadingStatus.FINISHED
+      : status === ReadingStatus.REREADING
         ? {
-            finishedAt: now,
+            startedAt: currentLibrary?.startedAt ?? now,
+            finishedAt: null,
+            pausedAt: null,
+            pauseReason: null,
           }
-        : status === ReadingStatus.ABANDONED
+        : status === ReadingStatus.FINISHED
           ? {
               finishedAt: now,
+              pausedAt: null,
+              pauseReason: null,
             }
-          : {};
+          : status === ReadingStatus.ABANDONED
+            ? {
+                finishedAt: now,
+                pausedAt: null,
+                pauseReason: null,
+              }
+            : {
+                startedAt: null,
+                finishedAt: null,
+                pausedAt: null,
+                pauseReason: null,
+              };
 
   await prisma.library.upsert({
     where: {
@@ -483,8 +509,6 @@ export async function actualizarValoracion(
 }
 
 export async function crearLibro(data: any) {
-  console.log('🔥 ENTRANDO EN CREAR LIBRO NUEVO', data);
-
   const usuario = String(data.usuario || '').trim();
 
   const title = String(
@@ -527,16 +551,6 @@ export async function crearLibro(data: any) {
    */
   const existingBook = await buscarLibroPorTitulo(title);
 
-  console.log(
-    '📚 LIBRO EXISTENTE:',
-    existingBook
-      ? {
-          id: existingBook.id,
-          title: existingBook.title,
-        }
-      : null,
-  );
-
   if (existingBook) {
     const existingLibrary =
       await prisma.library.findUnique({
@@ -553,7 +567,6 @@ export async function crearLibro(data: any) {
      * no modificamos libro, género, saga ni prioridad.
      */
     if (existingLibrary) {
-      console.log('⛔ LIBRO YA PRESENTE EN SU BIBLIOTECA');
 
       return {
         ok: false,
@@ -571,7 +584,6 @@ export async function crearLibro(data: any) {
      * Otra usuaria lo había creado:
      * reutilizamos Book y creamos exclusivamente Library.
      */
-    console.log('♻️ AÑADIENDO LIBRO EXISTENTE A OTRA USUARIA');
 
     await prisma.library.create({
       data: {
@@ -644,7 +656,6 @@ export async function crearLibro(data: any) {
       })
     : null;
 
-  console.log('🆕 CREANDO LIBRO NUEVO');
 
   const coverMatch = await findBestBookCover(
   title,

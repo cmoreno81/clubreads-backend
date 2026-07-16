@@ -57,13 +57,14 @@ export async function handleActualizarValoracion(req: Request, res: Response) {
 export async function handleActualizarEstado(req: Request, res: Response) {
   const body = req.body ?? {};
 
-  const data = await actualizarEstado(
-    String(body.usuario || req.query.usuario || ''),
-    String(body.libro || req.query.libro || ''),
-    String(body.estado || req.query.estado || ''),
-    String(body.valoracion || req.query.valoracion || ''),
-    String(body.reflexion || req.query.reflexion || ''),
-  );
+const data = await actualizarEstado(
+  String(body.usuario || req.query.usuario || ''),
+  String(body.libro || req.query.libro || ''),
+  String(body.estado || req.query.estado || ''),
+  String(body.valoracion || req.query.valoracion || ''),
+  String(body.reflexion || req.query.reflexion || ''),
+  String(body.motivoPausa || req.query.motivoPausa || ''),
+);
 
   return res.json(data);
 }
