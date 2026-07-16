@@ -98,19 +98,30 @@ export async function getDashboard() {
     (a, b) => b[1] - a[1],
   )[0];
 
-  const leyendoPorUsuario = new Map<string, string[]>();
-
+  const leyendoPorUsuario = new Map<
+    string,
+    {
+      libros: string[];
+      avatarUrl: string;
+    }
+  >();
   for (const item of leyendoAhora) {
-    const libros = leyendoPorUsuario.get(item.user.name) ?? [];
-    libros.push(item.book.title);
-    leyendoPorUsuario.set(item.user.name, libros);
+    const actual = leyendoPorUsuario.get(item.user.name) ?? {
+      libros: [],
+      avatarUrl: item.user.avatarUrl ?? '',
+    };
+
+    actual.libros.push(item.book.title);
+
+    leyendoPorUsuario.set(item.user.name, actual);
   }
 
   const leyendoAhoraResponse = Array.from(leyendoPorUsuario.entries()).map(
-    ([usuario, libros]) => ({
+    ([usuario, datos]) => ({
       usuario,
-      libros,
-      total: libros.length,
+      libros: datos.libros,
+      total: datos.libros.length,
+      avatarUrl: datos.avatarUrl,
     }),
   );
 
