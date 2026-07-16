@@ -125,11 +125,16 @@ export async function getPerfilUsuario(usuario: string) {
     0,
   );
 
-  const terminados = biblioteca
-    .filter(
-      (item) => item.status === ReadingStatus.FINISHED,
-    )
-    .map((item) => {
+const terminados = biblioteca
+  .filter((item) => {
+    const review = item.book.reviews[0];
+
+    return (
+      item.status === ReadingStatus.FINISHED &&
+      review?.rating !== 0
+    );
+  })
+  .map((item) => {
       const review = item.book.reviews[0];
 
       return {
@@ -186,15 +191,17 @@ export async function getPerfilUsuario(usuario: string) {
    * TypeScript no tiene `.where`, así que calculamos la media
    * de forma explícita.
    */
-  const valoresRating = biblioteca
-    .filter(
-      (item) => item.status === ReadingStatus.FINISHED,
-    )
-    .map((item) => item.book.reviews[0]?.rating)
-    .filter(
-      (rating): rating is number =>
-        typeof rating === 'number' && rating > 0,
+const valoresRating = biblioteca
+  .filter((item) => {
+    const review = item.book.reviews[0];
+
+    return (
+      item.status === ReadingStatus.FINISHED &&
+      typeof review?.rating === 'number' &&
+      review.rating > 0
     );
+  })
+  .map((item) => item.book.reviews[0]!.rating);
 
   const media =
     valoresRating.length === 0
