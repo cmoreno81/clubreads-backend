@@ -5,7 +5,10 @@ import {
   ratingFromFlutter,
   ratingToFlutter,
 } from '../utils/rating.utils.js';
-
+import {
+  subirAvatarDesdeBase64,
+  subirAvatarDesdeUrl,
+} from './cloudinary.service.js';
 
 function fechaToFlutter(fecha?: Date | null) {
   if (!fecha) return '';
@@ -478,26 +481,12 @@ export async function actualizarAvatarPerfil(params: {
   avatarUrl: string;
 }) {
   const usuario = params.usuario.trim();
-  const avatarUrl = params.avatarUrl.trim();
+  const avatarRecibido = params.avatarUrl.trim();
 
   if (!usuario) {
     return {
       ok: false,
       mensaje: 'Falta la usuaria',
-    };
-  }
-
-  /*
-   * Permitimos una cadena vacía para poder eliminar la foto.
-   */
-  if (
-    avatarUrl &&
-    !avatarUrl.startsWith('https://') &&
-    !avatarUrl.startsWith('http://')
-  ) {
-    return {
-      ok: false,
-      mensaje: 'La URL de la imagen no es válida',
     };
   }
 
@@ -517,20 +506,83 @@ export async function actualizarAvatarPerfil(params: {
     };
   }
 
-  await prisma.user.update({
-    where: {
-      id: user.id,
-    },
-    data: {
-      avatarUrl: avatarUrl || null,
-    },
-  });
+  /*
+   * Una cadena vacía elimina la foto actual.
+   */
+  if (!avatarRecibido) {
+    await prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        avatarUrl: null,
+      },
+    });
 
-  return {
-    ok: true,
-    mensaje: avatarUrl
-      ? 'Foto de perfil actualizada'
-      : 'Foto de perfil eliminada',
-    avatarUrl,
-  };
+    return {
+      ok: true,
+      mensaje: 'Foto de perfil eliminada',
+      avatarUrl: '',
+    };
+  }
+
+  try {
+    let avatarCloudinary: string;
+
+    /*
+     * Imagen seleccionada desde la galería de Flutter.
+     */
+    if (avatarRecibido.startsWith('data:image/')) {
+      const resultado = await subirAvatarDesdeBase64({
+        imageBase64: avatarRecibido,
+        usuario,
+      });
+
+      avatarCloudinary = resultado.url;
+    } else {
+      /*
+       * Imagen pegada desde Internet.
+       */
+      const uri = new URL(avatarRecibido);
+
+      if (uri.protocol !== 'https:' && uri.protocol !== 'http:') {
+        return {
+          ok: false,
+          mensaje: 'La URL de la imagen no es válida',
+        };
+      }
+
+      const resultado = await subirAvatarDesdeUrl({
+        imageUrl: avatarRecibido,
+        usuario,
+      });
+
+      avatarCloudinary = resultado.url;
+    }
+
+    await prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        avatarUrl: avatarCloudinary,
+      },
+    });
+
+    return {
+      ok: true,
+      mensaje: 'Foto de perfil actualizada',
+      avatarUrl: avatarCloudinary,
+    };
+  } catch (error) {
+    console.error('Error actualizando avatar:', error);
+
+    return {
+      ok: false,
+      mensaje:
+        error instanceof Error
+          ? error.message
+          : 'No se ha podido procesar la imagen',
+    };
+  }
 }
