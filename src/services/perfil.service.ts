@@ -110,6 +110,17 @@ export async function getPerfilUsuario(usuario: string) {
     ],
   });
 
+  const esAbandonado = (
+  item: (typeof biblioteca)[number],
+) => {
+  const review = item.book.reviews[0];
+
+  return (
+    item.status === ReadingStatus.ABANDONED ||
+    review?.rating === 0
+  );
+};
+
   const comentarios = await prisma.comment.findMany({
     where: {
       userId: user.id,
@@ -126,46 +137,33 @@ export async function getPerfilUsuario(usuario: string) {
   );
 
 const terminados = biblioteca
-  .filter((item) => {
+  .filter(
+    (item) =>
+      item.status === ReadingStatus.FINISHED &&
+      !esAbandonado(item),
+  )
+  .map((item) => {
     const review = item.book.reviews[0];
 
-    return (
-      item.status === ReadingStatus.FINISHED &&
-      review?.rating !== 0
-    );
-  })
-  .map((item) => {
-      const review = item.book.reviews[0];
-
-      return {
-        libraryId: item.id,
-        bookId: item.bookId,
-
-        libro: item.book.title,
-        genero: item.book.genre.name,
-
-        fechaInicio: fechaToFlutter(item.startedAt),
-        fechaFin: fechaToFlutter(item.finishedAt),
-
-        valoracion: ratingToFlutter(review?.rating),
-        resena: review?.review ?? '',
-        coverUrl: item.book.coverUrl ?? '',
-      };
-    });
-
-  const abandonados = biblioteca
-    .filter((item) => {
-      const review = item.book.reviews[0];
-
-      return (
-        item.status === ReadingStatus.ABANDONED ||
-        review?.rating === 0
-      );
-    })
-    .map((item) => ({
+    return {
+      libraryId: item.id,
+      bookId: item.bookId,
       libro: item.book.title,
       genero: item.book.genre.name,
-    }));
+      fechaInicio: fechaToFlutter(item.startedAt),
+      fechaFin: fechaToFlutter(item.finishedAt),
+      valoracion: ratingToFlutter(review?.rating),
+      resena: review?.review ?? '',
+      coverUrl: item.book.coverUrl ?? '',
+    };
+  });
+
+const abandonados = biblioteca
+  .filter(esAbandonado)
+  .map((item) => ({
+    libro: item.book.title,
+    genero: item.book.genre.name,
+  }));
 
   const leyendo = biblioteca
     .filter(
