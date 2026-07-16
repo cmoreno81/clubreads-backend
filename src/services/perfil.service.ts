@@ -1,7 +1,10 @@
 import { ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
-import { ratingToFlutter } from '../utils/rating.utils.js';
+import {
+  ratingFromFlutter,
+  ratingToFlutter,
+} from '../utils/rating.utils.js';
 
 
 function fechaToFlutter(fecha?: Date | null) {
@@ -250,6 +253,8 @@ export async function actualizarFechasLectura(params: {
   libraryId: string;
   fechaInicio: unknown;
   fechaFin: unknown;
+  valoracion?: unknown;
+  resena?: unknown;
 }) {
   const usuario = params.usuario.trim();
   const libraryId = params.libraryId.trim();
@@ -314,6 +319,7 @@ export async function actualizarFechasLectura(params: {
       },
       select: {
         id: true,
+        bookId: true,
         status: true,
       },
     });
@@ -329,25 +335,132 @@ export async function actualizarFechasLectura(params: {
       return {
         ok: false,
         mensaje:
-          'Solo se pueden editar las fechas de libros terminados',
+          'Solo se pueden editar libros terminados',
       };
     }
 
-    const actualizada = await prisma.library.update({
-      where: {
-        id: lectura.id,
-      },
-      data: {
-        startedAt: fechaInicio,
-        finishedAt: fechaFin,
-      },
+    const valoracionFueEnviada =
+      params.valoracion !== undefined;
+
+    const resenaFueEnviada =
+      params.resena !== undefined;
+
+    const textoValoracion = valoracionFueEnviada
+      ? String(params.valoracion ?? '').trim()
+      : '';
+
+    const textoResena = resenaFueEnviada
+      ? String(params.resena ?? '').trim()
+      : '';
+
+    const rating = valoracionFueEnviada
+      ? ratingFromFlutter(textoValoracion)
+      : undefined;
+
+    /*
+     * Permitimos borrar la valoración enviando una cadena vacía.
+     * En ese caso eliminamos la Review si tampoco queda reseña.
+     */
+    await prisma.$transaction(async (tx) => {
+      await tx.library.update({
+        where: {
+          id: lectura.id,
+        },
+        data: {
+          startedAt: fechaInicio,
+          finishedAt: fechaFin,
+        },
+      });
+
+      if (!valoracionFueEnviada && !resenaFueEnviada) {
+        return;
+      }
+
+      const reviewActual = await tx.review.findUnique({
+        where: {
+          userId_bookId: {
+            userId: user.id,
+            bookId: lectura.bookId,
+          },
+        },
+      });
+
+      const ratingFinal = valoracionFueEnviada
+        ? rating
+        : reviewActual?.rating;
+
+      const resenaFinal = resenaFueEnviada
+        ? textoResena || null
+        : reviewActual?.review ?? null;
+
+      /*
+       * Si no queda ni valoración ni reseña, eliminamos la review.
+       * Esto permite usar "Quitar valoración" de forma real.
+       */
+      if (
+        ratingFinal === undefined ||
+        ratingFinal === null
+      ) {
+        if (!resenaFinal) {
+          if (reviewActual) {
+            await tx.review.delete({
+              where: {
+                id: reviewActual.id,
+              },
+            });
+          }
+
+          return;
+        }
+
+        /*
+         * El modelo Review exige rating. Si existe reseña pero se ha
+         * quitado la valoración, conservamos el rating anterior cuando
+         * sea posible. Si no existía, no creamos una Review inválida.
+         */
+        if (!reviewActual) {
+          throw new Error(
+            'No se puede guardar una reseña sin valoración',
+          );
+        }
+      }
+
+      await tx.review.upsert({
+        where: {
+          userId_bookId: {
+            userId: user.id,
+            bookId: lectura.bookId,
+          },
+        },
+        update: {
+          rating: ratingFinal ?? reviewActual!.rating,
+          review: resenaFinal,
+          edited: true,
+          deletedAt: null,
+        },
+        create: {
+          userId: user.id,
+          bookId: lectura.bookId,
+          rating: ratingFinal!,
+          review: resenaFinal,
+          edited: true,
+        },
+      });
     });
 
     return {
       ok: true,
-      mensaje: 'Fechas de lectura actualizadas',
-      fechaInicio: fechaToFlutter(actualizada.startedAt),
-      fechaFin: fechaToFlutter(actualizada.finishedAt),
+      mensaje: 'Lectura actualizada correctamente',
+      fechaInicio: fechaToFlutter(fechaInicio),
+      fechaFin: fechaToFlutter(fechaFin),
+      valoracion:
+        valoracionFueEnviada && rating != null
+          ? ratingToFlutter(rating)
+          : undefined,
+      resena:
+        resenaFueEnviada
+          ? textoResena
+          : undefined,
     };
   } catch (error) {
     return {
@@ -355,7 +468,7 @@ export async function actualizarFechasLectura(params: {
       mensaje:
         error instanceof Error
           ? error.message
-          : 'No se han podido actualizar las fechas',
+          : 'No se ha podido actualizar la lectura',
     };
   }
 }

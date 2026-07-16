@@ -23,6 +23,16 @@ export async function handleActualizarFechasLectura(
 ) {
   const body = req.body ?? {};
 
+  const valoracionRecibida =
+    Object.prototype.hasOwnProperty.call(body, 'valoracion')
+      ? body.valoracion
+      : req.query.valoracion;
+
+  const resenaRecibida =
+    Object.prototype.hasOwnProperty.call(body, 'resena')
+      ? body.resena
+      : req.query.resena;
+
   const data = await actualizarFechasLectura({
     usuario: String(
       body.usuario ?? req.query.usuario ?? '',
@@ -34,6 +44,16 @@ export async function handleActualizarFechasLectura(
       body.fechaInicio ?? req.query.fechaInicio ?? '',
     fechaFin:
       body.fechaFin ?? req.query.fechaFin ?? '',
+
+    /*
+     * `undefined` significa que la APK antigua no ha enviado
+     * estos campos y, por tanto, debemos conservarlos.
+     *
+     * Una cadena vacía sí significa que la nueva APK quiere
+     * eliminar la valoración o la reseña.
+     */
+    valoracion: valoracionRecibida,
+    resena: resenaRecibida,
   });
 
   return res.json(data);
