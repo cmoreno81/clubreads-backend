@@ -456,24 +456,47 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
     };
   }
 
+  const normalizedVotes = votos.map((vote) => vote.trim()).filter(Boolean);
+  const uniqueVotes = new Set(normalizedVotes);
+
+  if (normalizedVotes.length !== 5 || uniqueVotes.size !== 5) {
+    return {
+      ok: false,
+      mensaje: 'Debes votar exactamente cinco libros diferentes',
+    };
+  }
+
+  const candidates = await prisma.clubvisionCandidate.findMany({
+    where: {
+      clubvisionId: clubvision.id,
+      book: {
+        title: { in: normalizedVotes },
+      },
+    },
+    include: { book: true },
+  });
+
+  const candidatesByTitle = new Map(
+    candidates.map((candidate) => [candidate.book.title, candidate]),
+  );
+
+  if (
+    candidates.length !== 5 ||
+    normalizedVotes.some((title) => !candidatesByTitle.has(title))
+  ) {
+    return {
+      ok: false,
+      mensaje: 'La papeleta contiene libros que no son candidatos',
+    };
+  }
+
   await prisma.$transaction(async (tx) => {
-    for (let i = 0; i < votos.length; i++) {
+    for (let i = 0; i < normalizedVotes.length; i++) {
       const points = POINTS_BY_POSITION[i];
-      if (points === undefined) break;
+      const title = normalizedVotes[i];
+      if (points === undefined || !title) break;
 
-      const title = votos[i]?.trim() ?? '';
-      if (!title) continue;
-
-      const candidate = await tx.clubvisionCandidate.findFirst({
-        where: {
-          clubvisionId: clubvision.id,
-          book: {
-            title,
-          },
-        },
-      });
-
-      if (!candidate) continue;
+      const candidate = candidatesByTitle.get(title)!;
 
       await tx.clubvisionVote.create({
         data: {
