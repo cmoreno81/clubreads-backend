@@ -138,9 +138,7 @@ export async function getPerfilUsuario(usuario: string) {
 
 const terminados = biblioteca
   .filter(
-    (item) =>
-      item.status === ReadingStatus.FINISHED &&
-      !esAbandonado(item),
+    (item) => item.status === ReadingStatus.FINISHED,
   )
   .map((item) => {
     const review = item.book.reviews[0];
@@ -159,11 +157,24 @@ const terminados = biblioteca
   });
 
 const abandonados = biblioteca
-  .filter(esAbandonado)
-  .map((item) => ({
-    libro: item.book.title,
-    genero: item.book.genre.name,
-  }));
+  .filter(
+    (item) => item.status === ReadingStatus.ABANDONED,
+  )
+  .map((item) => {
+    const review = item.book.reviews[0];
+
+    return {
+      libraryId: item.id,
+      bookId: item.bookId,
+      libro: item.book.title,
+      genero: item.book.genre.name,
+      fechaInicio: fechaToFlutter(item.startedAt),
+      fechaFin: fechaToFlutter(item.finishedAt),
+      valoracion: ratingToFlutter(review?.rating),
+      resena: review?.review ?? '',
+      coverUrl: item.book.coverUrl ?? '',
+    };
+  });
 
   const leyendo = biblioteca
     .filter(
