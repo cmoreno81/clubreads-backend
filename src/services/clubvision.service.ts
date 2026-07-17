@@ -353,6 +353,7 @@ export async function getComoVotaron() {
     string,
     {
       usuaria: string;
+      avatarUrl: string;
       votos: {
         puntos: number;
         libro: string;
@@ -362,10 +363,11 @@ export async function getComoVotaron() {
 
   for (const voto of votos) {
     if (!grouped.has(voto.userId)) {
-      grouped.set(voto.userId, {
-        usuaria: voto.user.name,
-        votos: [],
-      });
+        grouped.set(voto.userId, {
+          usuaria: voto.user.name,
+          avatarUrl: voto.user.avatarUrl ?? '',
+          votos: [],
+        });
     }
 
     grouped.get(voto.userId)!.votos.push({
