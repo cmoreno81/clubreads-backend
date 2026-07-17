@@ -384,7 +384,22 @@ const statusDates =
                 pauseReason: null,
               };
 
-  await prisma.library.upsert({
+
+const rating = ratingFromFlutter(valoracion);
+
+if (
+  status === ReadingStatus.FINISHED &&
+  (rating === null || rating <= 0)
+) {
+  return {
+    ok: false,
+    mensaje:
+      'Los libros finalizados necesitan una valoración mayor que 0',
+  };
+}
+
+await prisma.$transaction(async (tx) => {
+  await tx.library.upsert({
     where: {
       userId_bookId: {
         userId: user.id,
@@ -404,15 +419,12 @@ const statusDates =
       priority: Priority.MEDIUM,
       ...statusDates,
     },
-  });
+  }); 
 
-  const rating = ratingFromFlutter(valoracion);
+  if (status === ReadingStatus.FINISHED) {
+   const finalRating = rating as number;
 
-  if (
-    status === ReadingStatus.FINISHED ||
-    status === ReadingStatus.ABANDONED
-  ) {
-    await prisma.review.upsert({
+    await tx.review.upsert({
       where: {
         userId_bookId: {
           userId: user.id,
@@ -421,28 +433,57 @@ const statusDates =
       },
 
       update: {
-        rating:
-          status === ReadingStatus.ABANDONED
-            ? 0
-            : rating ?? 0,
-
+        rating: finalRating,
         review: reflexion?.trim() || null,
       },
 
       create: {
         userId: user.id,
         bookId: book.id,
-
-        rating:
-          status === ReadingStatus.ABANDONED
-            ? 0
-            : rating ?? 0,
-
+        rating: finalRating,
         review: reflexion?.trim() || null,
       },
     });
+
+    return;
   }
 
+  if (status === ReadingStatus.ABANDONED) {
+    await tx.review.upsert({
+      where: {
+        userId_bookId: {
+          userId: user.id,
+          bookId: book.id,
+        },
+      },
+
+      update: {
+        rating: 0,
+        review: null,
+      },
+
+      create: {
+        userId: user.id,
+        bookId: book.id,
+        rating: 0,
+        review: null,
+      },
+    });
+
+    return;
+  }
+
+  /*
+   * Pendiente, leyendo, pausado o relectura:
+   * eliminamos cualquier valoración histórica.
+   */
+  await tx.review.deleteMany({
+    where: {
+      userId: user.id,
+      bookId: book.id,
+    },
+  });
+});
   return {
     ok: true,
   };
@@ -476,6 +517,7 @@ export async function actualizarValoracion(
   }
 
   const rating = ratingFromFlutter(valoracion);
+
 
   if (rating === null) {
     return {
