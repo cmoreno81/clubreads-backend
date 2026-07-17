@@ -2,14 +2,32 @@ import { prisma } from '../prisma.js';
 
 const POINTS_BY_POSITION = [12, 10, 8, 7, 6] as const;
 
+function getNow() {
+  const simulatedDate = process.env.SIMULATED_DATE?.trim();
+
+  if (!simulatedDate) {
+    return new Date();
+  }
+
+  const parsedDate = new Date(simulatedDate);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    throw new Error(
+      `SIMULATED_DATE no es una fecha válida: ${simulatedDate}`,
+    );
+  }
+
+  return parsedDate;
+}
+
 function getCurrentEdition() {
-  const now = new Date();
+  const now = getNow();
+
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
 async function getCalculatedClubvisionStatus(clubvisionId: string) {
-  const day = new Date().getDate();
-
+  const day = getNow().getDate();
   const totalUsuarios = await prisma.user.count();
 
   const votosUsuarios = await prisma.clubvisionVote.groupBy({
@@ -31,9 +49,9 @@ async function getCalculatedClubvisionStatus(clubvisionId: string) {
 export async function getClubvision(usuario: string) {
   const idVotacion = getCurrentEdition();
 
-  const clubvision = await prisma.clubvision.findFirst({
-    orderBy: {
-      createdAt: 'desc',
+  const clubvision = await prisma.clubvision.findUnique({
+    where: {
+      edition: getCurrentEdition(),
     },
   });
 
@@ -186,9 +204,9 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
     };
   }
 
-  const clubvision = await prisma.clubvision.findFirst({
-    orderBy: {
-      createdAt: 'desc',
+  const clubvision = await prisma.clubvision.findUnique({
+    where: {
+      edition: getCurrentEdition(),
     },
   });
 
@@ -265,8 +283,10 @@ export async function getMiVoto(usuario: string) {
     return { encontrado: false };
   }
 
-  const clubvision = await prisma.clubvision.findFirst({
-    orderBy: { createdAt: 'desc' },
+  const clubvision = await prisma.clubvision.findUnique({
+    where: {
+      edition: getCurrentEdition(),
+    },
   });
 
   if (!clubvision) {
@@ -323,8 +343,10 @@ export async function getMiVoto(usuario: string) {
 }
 
 export async function getComoVotaron() {
-  const clubvision = await prisma.clubvision.findFirst({
-    orderBy: { createdAt: 'desc' },
+  const clubvision = await prisma.clubvision.findUnique({
+    where: {
+      edition: getCurrentEdition(),
+    },
   });
 
   if (!clubvision) {

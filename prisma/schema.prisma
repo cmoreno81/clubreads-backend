@@ -387,6 +387,8 @@ enum ClubvisionStatus {
 model Clubvision {
   id String @id @default(cuid())
 
+  edition String @unique // yyyy-MM
+
   status ClubvisionStatus @default(SIN_DATOS)
 
   title   String?
