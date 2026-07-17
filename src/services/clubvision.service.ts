@@ -3,9 +3,10 @@ import { prisma } from '../prisma.js';
 const POINTS_BY_POSITION = [12, 10, 8, 7, 6] as const;
 
 function getNow() {
+  const isProduction = process.env.NODE_ENV === 'production';
   const simulatedDate = process.env.SIMULATED_DATE?.trim();
 
-  if (!simulatedDate) {
+  if (isProduction || !simulatedDate) {
     return new Date();
   }
 
@@ -141,9 +142,9 @@ export async function getClubvision(usuario: string) {
     usuarias: candidate.book.library.map((entry) => entry.user.name),
   }));
 
-  const winner = await prisma.clubvisionResult.findFirst({
-    orderBy: {
-      edition: 'desc',
+  const winner = await prisma.clubvisionResult.findUnique({
+    where: {
+      edition: getCurrentEdition(),
     },
   });
 
