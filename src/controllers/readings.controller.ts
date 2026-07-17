@@ -91,6 +91,7 @@ export async function handleToggleLikeComentario(req: Request, res: Response) {
   const data = await toggleLikeComentario(
     String(req.query.comentarioId || req.query.id || req.body?.comentarioId || req.body?.id || ''),
     String(req.query.usuario || req.body?.usuario || ''),
+    String(req.query.reaccion || req.body?.reaccion || 'LIKE'),
   );
 
   return res.json(data);

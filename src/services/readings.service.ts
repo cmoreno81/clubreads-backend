@@ -600,6 +600,7 @@ export async function getComentariosLectura(
     };
   }
   const usuario = usuarioActual.trim();
+  let usuarioId = '';
 
 if (usuario) {
   const user = await prisma.user.findUnique({
@@ -608,6 +609,7 @@ if (usuario) {
   });
 
   if (user) {
+    usuarioId = user.id;
     await prisma.conversationRead.upsert({
       where: {
         userId_conversationId: {
@@ -637,9 +639,11 @@ if (usuario) {
       fecha: comment.createdAt.toLocaleString('es-ES'),
       comentario: comment.text,
       likes: comment.likes.length,
+      reacciones: contarReacciones(comment.likes),
+      miReaccion: comment.likes.find((like) => like.userId === usuarioId)?.reaction ?? null,
       editado: comment.edited,
       eliminado: false,
-      miLike: comment.likes.some((like) => like.userId === usuarioActual),
+      miLike: comment.likes.some((like) => like.userId === usuarioId),
       esMio: comment.user.name === usuarioActual,
       avatarUrl: comment.user.avatarUrl ?? '',
       respuestas: comment.replies.map((reply) => ({
@@ -649,7 +653,9 @@ if (usuario) {
         fecha: reply.createdAt.toLocaleString('es-ES'),
         respuesta: reply.text,
         likes: reply.likes.length,
-        miLike: reply.likes.some((like) => like.userId === usuarioActual),
+        reacciones: contarReacciones(reply.likes),
+        miReaccion: reply.likes.find((like) => like.userId === usuarioId)?.reaction ?? null,
+        miLike: reply.likes.some((like) => like.userId === usuarioId),
         editado: reply.edited,
         eliminado: false,
         esMia: reply.user.name === usuarioActual,
@@ -745,6 +751,7 @@ export async function responderComentarioLectura(data: {
 export async function toggleLikeComentario(
   comentarioId: string,
   usuario: string,
+  reaccion: string = 'LIKE',
 ) {
   const idComentario = comentarioId.trim();
 
@@ -771,20 +778,28 @@ export async function toggleLikeComentario(
     },
   });
 
-  if (existing) {
+  const reaction = normalizarReaccion(reaccion);
+
+  if (existing?.reaction === reaction) {
     await prisma.like.delete({
       where: { id: existing.id },
+    });
+  } else if (existing) {
+    await prisma.like.update({
+      where: { id: existing.id },
+      data: { reaction },
     });
   } else {
     await prisma.like.create({
       data: {
         commentId: idComentario,
         userId: user.id,
+        reaction,
       },
     });
   }
 
-  const totalLikes = await prisma.like.count({
+  const reactions = await prisma.like.findMany({
     where: {
       commentId: idComentario,
     },
@@ -792,9 +807,24 @@ export async function toggleLikeComentario(
 
   return {
     ok: true,
-    miLike: !existing,
-    likes: totalLikes,
+    miLike: existing?.reaction !== reaction,
+    miReaccion: existing?.reaction === reaction ? null : reaction,
+    likes: reactions.length,
+    reacciones: contarReacciones(reactions),
   };
+}
+
+function normalizarReaccion(reaccion: string) {
+  const permitidas = ['LIKE', 'AGREE', 'ANGRY', 'FUNNY'] as const;
+  const valor = reaccion.trim().toUpperCase();
+  return permitidas.find((tipo) => tipo === valor) ?? 'LIKE';
+}
+
+function contarReacciones(reacciones: Array<{ reaction: string }>) {
+  return reacciones.reduce<Record<string, number>>((totales, item) => {
+    totales[item.reaction] = (totales[item.reaction] ?? 0) + 1;
+    return totales;
+  }, { LIKE: 0, AGREE: 0, ANGRY: 0, FUNNY: 0 });
 }
 
 export async function editarComentarioLectura(

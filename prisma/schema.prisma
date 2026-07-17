@@ -42,6 +42,13 @@ enum ReadingType {
   CLUBVISION
 }
 
+enum ReactionType {
+  LIKE
+  AGREE
+  ANGRY
+  FUNNY
+}
+
 enum ReadingSessionStatus {
   ACTIVE
   FINISHED
@@ -207,6 +214,8 @@ model Like {
 
   userId String
   user   User   @relation(fields: [userId], references: [id])
+
+  reaction ReactionType @default(LIKE)
 
   createdAt DateTime @default(now())
 
