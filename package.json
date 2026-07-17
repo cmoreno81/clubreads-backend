@@ -12,6 +12,7 @@
     "import:sheets": "tsx scripts/import-sheets.ts",
     "audit:import": "tsx scripts/audit-import.ts",
     "audit:details": "tsx scripts/audit-details.ts",
+    "clubvision:open": "tsx scripts/open-clubvision.ts",
     "covers:preview": "tsx scripts/find-book-covers.ts",
     "covers:apply": "tsx scripts/find-book-covers.ts --apply"
   },

@@ -103,6 +103,14 @@ async function getOrCreateCurrentClubvision() {
   });
 }
 
+export async function openScheduledClubvision() {
+  const { day } = getClubvisionCalendar();
+
+  if (day !== 1) return null;
+
+  return getOrCreateCurrentClubvision();
+}
+
 async function getCalculatedClubvisionStatus(clubvisionId: string) {
   const { day } = getClubvisionCalendar();
   const totalUsuarios = await prisma.user.count();
