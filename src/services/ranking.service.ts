@@ -23,15 +23,6 @@ export async function getRanking() {
     },
   });
 
-  const reviewsAbandonados = await prisma.review.findMany({
-    where: {
-      rating: 0,
-      deletedAt: null,
-    },
-    include: {
-      book: true,
-    },
-  });
 
   const deseados = new Map<string, number>();
   const leidos = new Map<string, number>();
@@ -43,11 +34,14 @@ export async function getRanking() {
       avatarUrl: string;
     }
   >();
-  for (const item of library) {
-    if (item.status !== ReadingStatus.FINISHED) {
-      deseados.set(item.book.title, (deseados.get(item.book.title) ?? 0) + 1);
-    }
 
+for (const item of library) {
+    if (item.status === ReadingStatus.PENDING) {
+      deseados.set(
+        item.book.title,
+        (deseados.get(item.book.title) ?? 0) + 1,
+      );
+    }
     if (item.status === ReadingStatus.FINISHED) {
       leidos.set(
         item.book.title,
@@ -70,12 +64,6 @@ export async function getRanking() {
     }
   }
 
-  for (const review of reviewsAbandonados) {
-    abandonados.set(
-      review.book.title,
-      (abandonados.get(review.book.title) ?? 0) + 1,
-    );
-  }
 
   const valoraciones = new Map<
     string,
