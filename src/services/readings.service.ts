@@ -1,5 +1,6 @@
 import { ReadingSessionStatus, ReadingType, ReadingStatus } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { synchronizeCurrentClubvision } from './clubvision.service.js';
 
 function tipoFromFlutter(tipo: string): ReadingType {
   return tipo === 'OFICIAL' ? ReadingType.CLUBVISION : ReadingType.FREE;
@@ -123,6 +124,7 @@ function buildChapters(
     });
 }
 export async function getLecturasActivas() {
+  await synchronizeCurrentClubvision();
   const readingBooks = await prisma.library.groupBy({
     by: ['bookId'],
     where: {
@@ -274,7 +276,14 @@ export async function getLecturasActivas() {
     },
   });
 
-  if (latestResult?.winnerTitle) {
+  const resultClubvision = latestResult
+    ? await prisma.clubvision.findUnique({
+        where: { edition: latestResult.edition },
+        select: { status: true },
+      })
+    : null;
+
+  if (latestResult?.winnerTitle && resultClubvision?.status === 'LECTURA') {
     const yaExiste = resultado.some(
       (item) =>
         item.libro.trim().toLowerCase() ===

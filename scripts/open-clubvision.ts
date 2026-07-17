@@ -7,7 +7,7 @@ async function main() {
   const clubvision = await openScheduledClubvision();
 
   if (!clubvision) {
-    console.log('Clubvisión: hoy no es día 1 en Europe/Madrid');
+    console.log('Clubvisión: no hay una edición que sincronizar');
     return;
   }
 
@@ -16,7 +16,7 @@ async function main() {
   });
 
   console.log(
-    `Clubvisión ${clubvision.edition} preparada con ${candidateCount} candidatas`,
+    `Clubvisión ${clubvision.edition} sincronizada con ${candidateCount} candidatas`,
   );
 }
 
