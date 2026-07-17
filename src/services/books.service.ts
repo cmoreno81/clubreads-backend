@@ -175,6 +175,7 @@ export async function getLibros(usuario: string) {
 
     goodreads: item.book.goodreadsUrl ?? '',
     coverUrl: item.book.coverUrl ?? '',
+    avatarUrl: item.user.avatarUrl ?? '',
   }));
 }
 
@@ -222,6 +223,7 @@ export async function getLibrosFinalizados() {
       goodreads: item.book.goodreadsUrl ?? '',
       fecha: item.finishedAt ?? '',
       coverUrl: item.book.coverUrl ?? '',
+      avatarUrl: item.user.avatarUrl ?? '',
       mes: item.finishedAt
         ? `${String(item.finishedAt.getMonth() + 1).padStart(
             2,
