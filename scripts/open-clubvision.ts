@@ -2,6 +2,8 @@ import { prisma } from '../src/prisma.js';
 import { openScheduledClubvision } from '../src/services/clubvision.service.js';
 
 async function main() {
+  await prisma.$queryRaw`SELECT 1`;
+
   const clubvision = await openScheduledClubvision();
 
   if (!clubvision) {
