@@ -632,6 +632,7 @@ if (usuario) {
       eliminado: false,
       miLike: comment.likes.some((like) => like.userId === usuarioActual),
       esMio: comment.user.name === usuarioActual,
+      avatarUrl: comment.user.avatarUrl ?? '',
       respuestas: comment.replies.map((reply) => ({
         id: reply.id,
         comentarioId: comment.id,
@@ -643,6 +644,7 @@ if (usuario) {
         editado: reply.edited,
         eliminado: false,
         esMia: reply.user.name === usuarioActual,
+        avatarUrl: reply.user.avatarUrl ?? '',
       })),
     })),
   };
