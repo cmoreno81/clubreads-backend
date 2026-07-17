@@ -1,3 +1,4 @@
+import { ReadingStatus } from '@prisma/client';
 import { prisma } from '../prisma.js';
 
 const POINTS_BY_POSITION = [12, 10, 8, 7, 6] as const;
@@ -21,14 +22,89 @@ function getNow() {
   return parsedDate;
 }
 
-function getCurrentEdition() {
-  const now = getNow();
+function getClubvisionCalendar() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(getNow());
 
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return {
+    edition: `${values.year}-${values.month}`,
+    day: Number(values.day),
+  };
+}
+
+function getCurrentEdition() {
+  return getClubvisionCalendar().edition;
+}
+
+async function getOrCreateCurrentClubvision() {
+  const { edition, day } = getClubvisionCalendar();
+  const existing = await prisma.clubvision.findUnique({
+    where: { edition },
+  });
+
+  if (existing || day > 2) return existing;
+
+  return prisma.$transaction(async (tx) => {
+    const clubvision = await tx.clubvision.upsert({
+      where: { edition },
+      update: {},
+      create: {
+        edition,
+        status: 'VOTACION',
+        title: '🎤 Clubvisión abierta',
+        message: '🗳️ Ya puedes votar',
+        openedAt: getNow(),
+      },
+    });
+
+    const previousWinners = await tx.clubvisionResult.findMany({
+      where: {
+        edition: { not: edition },
+        winnerBookId: { not: null },
+      },
+      select: { winnerBookId: true },
+      distinct: ['winnerBookId'],
+    });
+
+    const excludedBookIds = previousWinners.flatMap((result) =>
+      result.winnerBookId ? [result.winnerBookId] : [],
+    );
+    const eligibleCandidates = await tx.library.groupBy({
+      by: ['bookId'],
+      where: {
+        status: ReadingStatus.PENDING,
+        ...(excludedBookIds.length > 0
+          ? { bookId: { notIn: excludedBookIds } }
+          : {}),
+      },
+      _count: { userId: true },
+      having: {
+        userId: {
+          _count: { gte: 2 },
+        },
+      },
+    });
+
+    await tx.clubvisionCandidate.createMany({
+      data: eligibleCandidates.map((candidate) => ({
+        clubvisionId: clubvision.id,
+        bookId: candidate.bookId,
+      })),
+      skipDuplicates: true,
+    });
+
+    return clubvision;
+  });
 }
 
 async function getCalculatedClubvisionStatus(clubvisionId: string) {
-  const day = getNow().getDate();
+  const { day } = getClubvisionCalendar();
   const totalUsuarios = await prisma.user.count();
 
   const votosUsuarios = await prisma.clubvisionVote.groupBy({
@@ -50,11 +126,7 @@ async function getCalculatedClubvisionStatus(clubvisionId: string) {
 export async function getClubvision(usuario: string) {
   const idVotacion = getCurrentEdition();
 
-  const clubvision = await prisma.clubvision.findUnique({
-    where: {
-      edition: getCurrentEdition(),
-    },
-  });
+  const clubvision = await getOrCreateCurrentClubvision();
 
   const totalUsuarios = await prisma.user.count();
 
@@ -123,6 +195,9 @@ export async function getClubvision(usuario: string) {
         include: {
           genre: true,
           library: {
+            where: {
+              status: ReadingStatus.PENDING,
+            },
             include: {
               user: true,
             },
@@ -205,11 +280,7 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
     };
   }
 
-  const clubvision = await prisma.clubvision.findUnique({
-    where: {
-      edition: getCurrentEdition(),
-    },
-  });
+  const clubvision = await getOrCreateCurrentClubvision();
 
   if (!clubvision) {
     return {

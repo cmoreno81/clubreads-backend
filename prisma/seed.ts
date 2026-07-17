@@ -74,6 +74,7 @@ async function main() {
 
   const clubvision = await prisma.clubvision.create({
     data: {
+      edition: '2026-07',
       status: ClubvisionStatus.VOTACION,
       title: '🎤 Clubvisión abierta',
       message: '🗳️ Ya puedes votar',

@@ -391,9 +391,9 @@ function normalizeEdition(value: string): string {
 async function getOrCreateCurrentClubvision() {
   const edition = getCurrentEdition();
 
-  const existing = await prisma.clubvision.findFirst({
-    orderBy: {
-      createdAt: 'desc',
+  const existing = await prisma.clubvision.findUnique({
+    where: {
+      edition,
     },
   });
 
@@ -401,6 +401,7 @@ async function getOrCreateCurrentClubvision() {
 
   return prisma.clubvision.create({
     data: {
+      edition,
       status: 'VOTACION',
       title: '🎤 Clubvisión abierta',
       message: '🗳️ Ya puedes votar',
