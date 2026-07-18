@@ -47,6 +47,11 @@ enum ReactionType {
   AGREE
   ANGRY
   FUNNY
+  THUMBS_UP
+  CRY
+  WOW
+  SWEAR
+  CLAP
 }
 
 enum ReadingSessionStatus {

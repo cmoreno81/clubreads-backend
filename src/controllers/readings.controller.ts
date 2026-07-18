@@ -16,6 +16,11 @@ import {
 } from '../services/readings.service.js';
 
 export async function handleLecturasActivas(_req: Request, res: Response) {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    Pragma: 'no-cache',
+    Expires: '0',
+  });
   const data = await getLecturasActivas();
   return res.json(data);
 }

@@ -815,7 +815,17 @@ export async function toggleLikeComentario(
 }
 
 function normalizarReaccion(reaccion: string) {
-  const permitidas = ['LIKE', 'AGREE', 'ANGRY', 'FUNNY'] as const;
+  const permitidas = [
+    'LIKE',
+    'AGREE',
+    'ANGRY',
+    'FUNNY',
+    'THUMBS_UP',
+    'CRY',
+    'WOW',
+    'SWEAR',
+    'CLAP',
+  ] as const;
   const valor = reaccion.trim().toUpperCase();
   return permitidas.find((tipo) => tipo === valor) ?? 'LIKE';
 }
@@ -824,7 +834,17 @@ function contarReacciones(reacciones: Array<{ reaction: string }>) {
   return reacciones.reduce<Record<string, number>>((totales, item) => {
     totales[item.reaction] = (totales[item.reaction] ?? 0) + 1;
     return totales;
-  }, { LIKE: 0, AGREE: 0, ANGRY: 0, FUNNY: 0 });
+  }, {
+    LIKE: 0,
+    AGREE: 0,
+    ANGRY: 0,
+    FUNNY: 0,
+    THUMBS_UP: 0,
+    CRY: 0,
+    WOW: 0,
+    SWEAR: 0,
+    CLAP: 0,
+  });
 }
 
 export async function editarComentarioLectura(
