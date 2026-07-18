@@ -310,9 +310,18 @@ export async function actualizarProgresoLectura(
   progreso: number,
   comentario: string,
   paginaActual?: number,
+  paginasTotales?: number,
 ) {
   let porcentaje = Math.round(Number(progreso));
   const paginaFueEnviada = paginaActual !== undefined;
+  const totalFueEnviado = paginasTotales !== undefined;
+  const totalEnviado = Number(paginasTotales);
+  if (
+    totalFueEnviado &&
+    (!Number.isInteger(totalEnviado) || totalEnviado <= 0)
+  ) {
+    return { ok: false, mensaje: 'El número de páginas no es válido' };
+  }
   if (
     !paginaFueEnviada &&
     (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > 100)
@@ -335,7 +344,9 @@ export async function actualizarProgresoLectura(
   let pagina: number | null = null;
   if (paginaFueEnviada) {
     pagina = Math.round(Number(paginaActual));
-    const totalPaginas = lectura.book.totalPages;
+    const totalPaginas = totalFueEnviado
+      ? totalEnviado
+      : lectura.book.totalPages;
     if (!totalPaginas) {
       return { ok: false, mensaje: 'El libro no tiene páginas configuradas' };
     }
@@ -348,15 +359,25 @@ export async function actualizarProgresoLectura(
     porcentaje = Math.round((pagina / totalPaginas) * 100);
   }
 
-  await prisma.library.update({
-    where: { id: lectura.id },
-    data: {
-      lastProgress: porcentaje,
-      currentPage: pagina,
-      progressNote: comentario.trim() || null,
-      progressUpdatedAt: new Date(),
-    },
-  });
+  await prisma.$transaction([
+    prisma.library.update({
+      where: { id: lectura.id },
+      data: {
+        lastProgress: porcentaje,
+        currentPage: pagina,
+        progressNote: comentario.trim() || null,
+        progressUpdatedAt: new Date(),
+      },
+    }),
+    ...(totalFueEnviado
+      ? [
+          prisma.book.update({
+            where: { id: lectura.bookId },
+            data: { totalPages: totalEnviado },
+          }),
+        ]
+      : []),
+  ]);
   return { ok: true, progreso: porcentaje, paginaActual: pagina };
 }
 

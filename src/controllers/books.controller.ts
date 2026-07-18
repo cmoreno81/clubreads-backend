@@ -30,6 +30,9 @@ export async function handleActualizarProgresoLectura(
     body.paginaActual === undefined && req.query.paginaActual === undefined
       ? undefined
       : Number(body.paginaActual ?? req.query.paginaActual),
+    body.paginasTotales === undefined && req.query.paginasTotales === undefined
+      ? undefined
+      : Number(body.paginasTotales ?? req.query.paginasTotales),
   );
   return res.json(data);
 }
