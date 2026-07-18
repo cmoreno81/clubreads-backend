@@ -49,7 +49,10 @@ import {
   handleActualizarAvatarPerfil,
 } from '../controllers/perfil.controller.js';
 
-import { handleMoodClub } from '../controllers/mood.controller.js';
+import {
+  handleMoodClub,
+  handleRegistrarMoodClub,
+} from '../controllers/mood.controller.js';
 
 import { handleTendenciasClub } from '../controllers/tendencias.controller.js';
 
@@ -158,6 +161,9 @@ async function handleApi(req: Request, res: Response) {
 
       case 'moodClub':
         return handleMoodClub(req, res);  
+
+      case 'registrarMoodClub':
+        return handleRegistrarMoodClub(req, res);
 
       case 'tendenciasClub':
         return handleTendenciasClub(req, res);  

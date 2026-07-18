@@ -1,135 +1,212 @@
+import { ClubMood, ReadingStatus } from '@prisma/client';
+
 import { prisma } from '../prisma.js';
+
+const MOODS = Object.values(ClubMood);
+
+function inicioSemana() {
+  const ahora = new Date();
+  const dia = ahora.getUTCDay() || 7;
+  const inicio = new Date(ahora);
+  inicio.setUTCDate(ahora.getUTCDate() - dia + 1);
+  inicio.setUTCHours(0, 0, 0, 0);
+  return inicio;
+}
+
+function claveSemana(fecha = inicioSemana()) {
+  return fecha.toISOString().slice(0, 10);
+}
 
 function tiempoRelativo(fecha: Date) {
   const diffMin = Math.floor((Date.now() - fecha.getTime()) / 60000);
-
   if (diffMin < 1) return 'ahora';
   if (diffMin < 60) return `hace ${diffMin} min`;
-
   const horas = Math.floor(diffMin / 60);
   if (horas < 24) return `hace ${horas} h`;
   if (horas < 48) return 'ayer';
-
-  return fecha.toLocaleDateString('es-ES', {
-    day: 'numeric',
-    month: 'short',
-  });
+  return fecha.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
 }
 
-export async function getMoodClub() {
-  const comentarios = await prisma.comment.findMany({
+function moodValido(valor: string): ClubMood | null {
+  const mood = valor.trim().toUpperCase() as ClubMood;
+  return MOODS.includes(mood) ? mood : null;
+}
+
+function textoMood(mood: ClubMood) {
+  const textos: Record<ClubMood, string> = {
+    HOOKED: 'completamente enganchado',
+    SHOCKED: 'en shock',
+    CRYING: 'emocionalmente destrozado',
+    ANGRY: 'enfadado con sus lecturas',
+    LAUGHING: 'especialmente divertido',
+    BLOCKED: 'algo bloqueado',
+  };
+  return textos[mood];
+}
+
+export async function registrarMoodClub(usuario: string, valor: string) {
+  const nombre = usuario.trim();
+  const mood = moodValido(valor);
+
+  if (!nombre || !mood) return { ok: false, mensaje: 'Datos no válidos' };
+
+  const user = await prisma.user.findUnique({ where: { name: nombre } });
+  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+
+  await prisma.clubMoodVote.upsert({
     where: {
-      deletedAt: null,
+      userId_weekKey: { userId: user.id, weekKey: claveSemana() },
     },
-    include: {
-      user: true,
-      conversation: {
+    update: { mood },
+    create: { userId: user.id, weekKey: claveSemana(), mood },
+  });
+
+  return { ok: true };
+}
+
+export async function getMoodClub(usuarioActual = '') {
+  const desde = inicioSemana();
+  const weekKey = claveSemana(desde);
+
+  const [comentarios, terminados, leyendo, lecturasActivas, votos] =
+    await Promise.all([
+      prisma.comment.findMany({
+        where: { deletedAt: null, createdAt: { gte: desde } },
         include: {
-          reading: {
-            include: {
-              book: true,
-            },
+          user: true,
+          likes: true,
+          replies: { where: { deletedAt: null }, select: { id: true } },
+          conversation: {
+            include: { reading: { include: { book: true } } },
           },
         },
-      },
-    },
-    orderBy: {
-      createdAt: 'desc',
-    },
-    take: 10,
-  });
+        orderBy: { createdAt: 'desc' },
+        take: 60,
+      }),
+      prisma.library.findMany({
+        where: { status: ReadingStatus.FINISHED, finishedAt: { gte: desde } },
+        include: { user: true, book: true },
+        orderBy: { finishedAt: 'desc' },
+        take: 20,
+      }),
+      prisma.library.findMany({
+        where: { status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] } },
+        select: { userId: true },
+      }),
+      prisma.reading.count({ where: { status: 'ACTIVE' } }),
+      prisma.clubMoodVote.findMany({
+        where: { weekKey },
+        include: { user: { select: { name: true } } },
+      }),
+    ]);
 
-  const terminados = await prisma.library.findMany({
-    where: {
-      status: 'FINISHED',
-      finishedAt: {
-        not: null,
-      },
-    },
-    include: {
-      user: true,
-      book: true,
-    },
-    orderBy: {
-      finishedAt: 'desc',
-    },
-    take: 5,
-  });
+  const distribucion = Object.fromEntries(MOODS.map((mood) => [mood, 0]));
+  for (const voto of votos) distribucion[voto.mood]++;
+
+  const miMood = votos.find((voto) => voto.user.name === usuarioActual.trim())?.mood ?? null;
+  const dominante = MOODS.reduce<ClubMood | null>((mejor, mood) => {
+    if (!mejor || distribucion[mood] > distribucion[mejor]) return mood;
+    return mejor;
+  }, null);
+
+  const comentarioDestacado = [...comentarios]
+    .filter((comentario) => !comentario.parentId)
+    .sort(
+      (a, b) =>
+        b.likes.length + b.replies.length * 2 -
+        (a.likes.length + a.replies.length * 2),
+    )[0];
+
+  const actividadPorLibro = new Map<
+    string,
+    { libro: string; coverUrl: string; comentarios: number; reacciones: number }
+  >();
+  for (const comentario of comentarios) {
+    const book = comentario.conversation.reading.book;
+    const actual = actividadPorLibro.get(book.id) ?? {
+      libro: book.title,
+      coverUrl: book.coverUrl ?? '',
+      comentarios: 0,
+      reacciones: 0,
+    };
+    actual.comentarios++;
+    actual.reacciones += comentario.likes.length;
+    actividadPorLibro.set(book.id, actual);
+  }
+  const libroActivo = [...actividadPorLibro.values()].sort(
+    (a, b) =>
+      b.comentarios + b.reacciones - (a.comentarios + a.reacciones),
+  )[0];
+
+  const reaccionesSemana = comentarios.reduce(
+    (total, comentario) => total + comentario.likes.length,
+    0,
+  );
 
   const actividadEventos = [
-  ...comentarios.map((c) => ({
-    fecha: c.createdAt,
-    icono: c.parentId ? '↩️' : '💬',
-    texto: c.parentId
-      ? `${c.user.name} respondió en ${c.conversation.reading.book.title} ${tiempoRelativo(c.createdAt)}`
-      : `${c.user.name} comentó en ${c.conversation.reading.book.title} ${tiempoRelativo(c.createdAt)}`,
-  })),
-
-  ...terminados.slice(0, 3).map((l) => ({
-    fecha: l.finishedAt!,
-    icono: '📚',
-    texto: `${l.user.name} terminó ${l.book.title} ${tiempoRelativo(l.finishedAt!)}`,
-  })),
-];
+    ...comentarios.slice(0, 10).map((comentario) => ({
+      fecha: comentario.createdAt,
+      icono: comentario.parentId ? '↩️' : '💬',
+      texto: comentario.parentId
+        ? `${comentario.user.name} respondió en ${comentario.conversation.reading.book.title} ${tiempoRelativo(comentario.createdAt)}`
+        : `${comentario.user.name} comentó en ${comentario.conversation.reading.book.title} ${tiempoRelativo(comentario.createdAt)}`,
+      tipo: 'COMENTARIO',
+      libro: comentario.conversation.reading.book.title,
+      capitulo: comentario.conversation.title,
+    })),
+    ...terminados.slice(0, 5).map((lectura) => ({
+      fecha: lectura.finishedAt!,
+      icono: '📚',
+      texto: `${lectura.user.name} terminó ${lectura.book.title} ${tiempoRelativo(lectura.finishedAt!)}`,
+      tipo: 'LIBRO',
+      libro: lectura.book.title,
+      capitulo: '',
+    })),
+  ];
 
   const actividad = actividadEventos
     .sort((a, b) => b.fecha.getTime() - a.fecha.getTime())
     .slice(0, 10)
-    .map(({ icono, texto }) => ({
-      icono,
-      texto,
-    }));
-
-  const comentariosSemana = await prisma.comment.count({
-    where: {
-      deletedAt: null,
-      createdAt: {
-        gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-      },
-    },
-  });
-
-  const lecturasActivas = await prisma.reading.count({
-    where: {
-      status: 'ACTIVE',
-    },
-  });
+    .map(({ fecha: _, ...evento }) => evento);
 
   const estados: string[] = [];
-
-  if (comentariosSemana >= 10) estados.push('🔥 Debate caliente');
-  if (comentariosSemana >= 5) estados.push('💬 Mucha conversación');
+  if (comentarios.length >= 10) estados.push('🔥 Debate caliente');
+  if (reaccionesSemana >= 10) estados.push('✨ Muchas reacciones');
   if (lecturasActivas > 0) estados.push('📚 Club en marcha');
   if (estados.length === 0) estados.push('😌 Semana tranquila');
 
-  let titular = 'Semana tranquila entre lecturas.';
-  let narrador =
-    'El club está en modo lectura pausada. A veces las mejores conversaciones llegan después de unos cuantos capítulos.';
-
-  const ultimoTerminado = terminados[0];
-
-  if (comentariosSemana >= 10) {
-    titular = 'El club está que arde entre teorías, respuestas y comentarios.';
-    narrador =
-      'Hay movimiento, hay debate y hay lectoras entrando al barro. Esta semana el club está especialmente vivo.';
-  } else if (comentariosSemana >= 5) {
-    titular = 'Las conversaciones empiezan a coger ritmo.';
-    narrador =
-      'Varias lectoras han pasado por los capítulos para dejar impresiones. Se nota que la lectura está avanzando.';
-  } else if (ultimoTerminado) {
-    titular = `${ultimoTerminado.user.name} acaba de cerrar una lectura.`;
-    narrador =
-      'El club sigue sumando libros terminados. Poco a poco, las estanterías personales van contando la historia del mes.';
-  }
+  const titular =
+    dominante && votos.length > 0
+      ? `Esta semana el club está ${textoMood(dominante)}.`
+      : comentarios.length >= 5
+        ? 'Las conversaciones están cogiendo ritmo.'
+        : 'Semana tranquila entre lecturas.';
 
   return {
     titular,
-    narrador,
+    narrador: comentarios.length >= 10
+      ? 'Hay teorías, respuestas y emociones cruzándose entre capítulos. El club está especialmente vivo.'
+      : 'Cada comentario, reacción y página terminada va construyendo la historia de esta semana.',
     estados,
     actividad,
+    moodSemanal: { miMood, total: votos.length, distribucion },
     resumen: {
-      comentariosSemana,
+      comentariosSemana: comentarios.length,
+      reaccionesSemana,
+      terminadosSemana: terminados.length,
+      lectorasActivas: new Set(leyendo.map((item) => item.userId)).size,
       lecturasActivas,
     },
+    conversacionDestacada: comentarioDestacado
+      ? {
+          usuario: comentarioDestacado.user.name,
+          texto: comentarioDestacado.text,
+          libro: comentarioDestacado.conversation.reading.book.title,
+          capitulo: comentarioDestacado.conversation.title,
+          reacciones: comentarioDestacado.likes.length,
+          respuestas: comentarioDestacado.replies.length,
+        }
+      : null,
+    libroActivo: libroActivo ?? null,
   };
 }

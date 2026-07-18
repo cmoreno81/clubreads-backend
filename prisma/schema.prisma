@@ -54,6 +54,15 @@ enum ReactionType {
   CLAP
 }
 
+enum ClubMood {
+  HOOKED
+  SHOCKED
+  CRYING
+  ANGRY
+  LAUGHING
+  BLOCKED
+}
+
 enum ReadingSessionStatus {
   ACTIVE
   FINISHED
@@ -209,6 +218,23 @@ model User {
   updatedAt DateTime @updatedAt
 
   clubvisionVotes ClubvisionVote[]
+  moodVotes       ClubMoodVote[]
+}
+
+model ClubMoodVote {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  weekKey String
+  mood    ClubMood
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, weekKey])
+  @@index([weekKey])
 }
 
 model Like {
