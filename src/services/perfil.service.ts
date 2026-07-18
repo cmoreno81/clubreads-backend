@@ -178,11 +178,17 @@ const abandonados = biblioteca
 
   const leyendo = biblioteca
     .filter(
-      (item) => item.status === ReadingStatus.READING,
+      (item) =>
+        item.status === ReadingStatus.READING ||
+        item.status === ReadingStatus.REREADING,
     )
     .map((item) => ({
+      libraryId: item.id,
+      bookId: item.bookId,
       libro: item.book.title,
       genero: item.book.genre.name,
+      fechaInicio: fechaToFlutter(item.startedAt),
+      coverUrl: item.book.coverUrl ?? '',
     }));
 
   const pendientes = biblioteca
@@ -350,12 +356,20 @@ export async function actualizarFechasLectura(params: {
       };
     }
 
-    if (lectura.status !== ReadingStatus.FINISHED) {
+    const esLecturaActiva =
+      lectura.status === ReadingStatus.READING ||
+      lectura.status === ReadingStatus.REREADING;
+
+    if (lectura.status !== ReadingStatus.FINISHED && !esLecturaActiva) {
       return {
         ok: false,
         mensaje:
-          'Solo se pueden editar libros terminados',
+          'Solo se pueden editar lecturas activas o terminadas',
       };
+    }
+
+    if (esLecturaActiva && !fechaInicio) {
+      return { ok: false, mensaje: 'La fecha de inicio es obligatoria' };
     }
 
     const valoracionFueEnviada =
@@ -387,9 +401,11 @@ export async function actualizarFechasLectura(params: {
         },
         data: {
           startedAt: fechaInicio,
-          finishedAt: fechaFin,
+          finishedAt: esLecturaActiva ? null : fechaFin,
         },
       });
+
+      if (esLecturaActiva) return;
 
       if (!valoracionFueEnviada && !resenaFueEnviada) {
         return;

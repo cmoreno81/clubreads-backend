@@ -5,8 +5,23 @@ function top<T>(items: T[], limit = 10) {
   return items.slice(0, limit);
 }
 
-export async function getRanking() {
+export async function getRanking(anioSolicitado = new Date().getFullYear()) {
+  const anio = Number.isInteger(anioSolicitado) && anioSolicitado >= 2000
+    ? anioSolicitado
+    : new Date().getFullYear();
+  const desde = new Date(Date.UTC(anio, 0, 1));
+  const hasta = new Date(Date.UTC(anio + 1, 0, 1));
+
   const library = await prisma.library.findMany({
+    where: {
+      OR: [
+        { status: ReadingStatus.PENDING },
+        {
+          status: { in: [ReadingStatus.FINISHED, ReadingStatus.ABANDONED] },
+          finishedAt: { gte: desde, lt: hasta },
+        },
+      ],
+    },
     include: {
       user: true,
       book: true,
@@ -20,8 +35,15 @@ export async function getRanking() {
     },
     include: {
       book: true,
+      user: true,
     },
   });
+
+  const finalizadosDelAnio = new Set(
+    library
+      .filter((item) => item.status === ReadingStatus.FINISHED)
+      .map((item) => `${item.userId}:${item.bookId}`),
+  );
 
 
   const deseados = new Map<string, number>();
@@ -74,6 +96,7 @@ for (const item of library) {
   >();
 
   for (const review of reviews) {
+    if (!finalizadosDelAnio.has(`${review.userId}:${review.bookId}`)) continue;
     const current = valoraciones.get(review.book.title) ?? {
       suma: 0,
       total: 0,
@@ -125,6 +148,7 @@ const topLectoras = top(
   );
 
   return {
+    anio,
     masDeseados,
     masLeidos,
     mejorValorados,
