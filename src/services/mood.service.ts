@@ -90,11 +90,11 @@ export async function getMoodClub(usuarioActual = '') {
         orderBy: { createdAt: 'desc' },
         take: 60,
       }),
-      prisma.library.count({
-        where: { status: ReadingStatus.FINISHED, finishedAt: { gte: desde } },
+      prisma.readingCompletion.count({
+        where: { isReread: false, finishedAt: { gte: desde } },
       }),
-      prisma.library.findMany({
-        where: { status: ReadingStatus.FINISHED, finishedAt: { not: null } },
+      prisma.readingCompletion.findMany({
+        where: { isReread: false },
         include: { user: true, book: true },
         orderBy: { finishedAt: 'desc' },
         take: 10,

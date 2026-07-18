@@ -470,7 +470,10 @@ const statusDates =
         }
       : status === ReadingStatus.REREADING
         ? {
-            startedAt: currentLibrary?.startedAt ?? now,
+            startedAt:
+              currentLibrary?.status === ReadingStatus.REREADING
+                ? currentLibrary.startedAt ?? now
+                : fechaInicioEditada ?? now,
             finishedAt: null,
             pausedAt: null,
             pauseReason: null,
@@ -534,6 +537,20 @@ await prisma.$transaction(async (tx) => {
 
   if (status === ReadingStatus.FINISHED) {
    const finalRating = rating as number;
+
+    if (currentLibrary?.status !== ReadingStatus.FINISHED) {
+      await tx.readingCompletion.create({
+        data: {
+          userId: user.id,
+          bookId: book.id,
+          startedAt: statusDates.startedAt,
+          finishedAt: statusDates.finishedAt as Date,
+          isReread: currentLibrary?.status === ReadingStatus.REREADING,
+          rating: finalRating,
+          review: reflexion?.trim() || null,
+        },
+      });
+    }
 
     await tx.review.upsert({
       where: {

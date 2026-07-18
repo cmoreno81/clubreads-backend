@@ -45,10 +45,9 @@ function getMood(valoracionMedia: string) {
 export async function getDashboard() {
   const month = currentMonthKey();
 
-  const finishedBooks = await prisma.library.findMany({
+  const finishedBooks = await prisma.readingCompletion.findMany({
     where: {
-      status: 'FINISHED',
-      finishedAt: { not: null },
+      isReread: false,
     },
     include: {
       user: true,
@@ -64,7 +63,7 @@ export async function getDashboard() {
 
   const leyendoAhora = await prisma.library.findMany({
     where: {
-      status: 'READING',
+      status: { in: ['READING', 'REREADING'] },
     },
     include: {
       user: true,
@@ -82,8 +81,6 @@ export async function getDashboard() {
   const contadorUsuarios = new Map<string, number>();
 
   for (const item of finishedBooks) {
-    if (!item.finishedAt) continue;
-
     const itemMonth = `${String(item.finishedAt.getMonth() + 1).padStart(2, '0')}/${item.finishedAt.getFullYear()}`;
 
     if (itemMonth !== month) continue;

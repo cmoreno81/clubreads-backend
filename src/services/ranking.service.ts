@@ -17,7 +17,7 @@ export async function getRanking(anioSolicitado = new Date().getFullYear()) {
       OR: [
         { status: ReadingStatus.PENDING },
         {
-          status: { in: [ReadingStatus.FINISHED, ReadingStatus.ABANDONED] },
+          status: ReadingStatus.ABANDONED,
           finishedAt: { gte: desde, lt: hasta },
         },
       ],
@@ -28,22 +28,16 @@ export async function getRanking(anioSolicitado = new Date().getFullYear()) {
     },
   });
 
-  const reviews = await prisma.review.findMany({
+  const finalizaciones = await prisma.readingCompletion.findMany({
     where: {
-      rating: { gt: 0 },
-      deletedAt: null,
+      isReread: false,
+      finishedAt: { gte: desde, lt: hasta },
     },
     include: {
       book: true,
       user: true,
     },
   });
-
-  const finalizadosDelAnio = new Set(
-    library
-      .filter((item) => item.status === ReadingStatus.FINISHED)
-      .map((item) => `${item.userId}:${item.bookId}`),
-  );
 
 
   const deseados = new Map<string, number>();
@@ -64,26 +58,22 @@ for (const item of library) {
         (deseados.get(item.book.title) ?? 0) + 1,
       );
     }
-    if (item.status === ReadingStatus.FINISHED) {
-      leidos.set(
-        item.book.title,
-        (leidos.get(item.book.title) ?? 0) + 1,
-      );
-
-      const lectoraActual = lectoras.get(item.user.name);
-
-      lectoras.set(item.user.name, {
-        total: (lectoraActual?.total ?? 0) + 1,
-        avatarUrl: item.user.avatarUrl ?? '',
-      });
-    }
-
     if (item.status === ReadingStatus.ABANDONED) {
       abandonados.set(
         item.book.title,
         (abandonados.get(item.book.title) ?? 0) + 1,
       );
     }
+  }
+
+  for (const item of finalizaciones) {
+    leidos.set(item.book.title, (leidos.get(item.book.title) ?? 0) + 1);
+
+    const lectoraActual = lectoras.get(item.user.name);
+    lectoras.set(item.user.name, {
+      total: (lectoraActual?.total ?? 0) + 1,
+      avatarUrl: item.user.avatarUrl ?? '',
+    });
   }
 
 
@@ -95,17 +85,17 @@ for (const item of library) {
     }
   >();
 
-  for (const review of reviews) {
-    if (!finalizadosDelAnio.has(`${review.userId}:${review.bookId}`)) continue;
-    const current = valoraciones.get(review.book.title) ?? {
+  for (const item of finalizaciones) {
+    if (item.rating === null || item.rating <= 0) continue;
+    const current = valoraciones.get(item.book.title) ?? {
       suma: 0,
       total: 0,
     };
 
-    current.suma += review.rating;
+    current.suma += item.rating;
     current.total += 1;
 
-    valoraciones.set(review.book.title, current);
+    valoraciones.set(item.book.title, current);
   }
 
   const masDeseados = top(

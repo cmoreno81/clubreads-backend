@@ -110,6 +110,18 @@ export async function getPerfilUsuario(usuario: string) {
     ],
   });
 
+  const historialTerminados = await prisma.readingCompletion.findMany({
+    where: { userId: user.id },
+    include: {
+      book: { include: { genre: true } },
+    },
+    orderBy: { finishedAt: 'desc' },
+  });
+
+  const bibliotecaPorLibro = new Map(
+    biblioteca.map((item) => [item.bookId, item]),
+  );
+
   const esAbandonado = (
   item: (typeof biblioteca)[number],
 ) => {
@@ -136,25 +148,19 @@ export async function getPerfilUsuario(usuario: string) {
     0,
   );
 
-const terminados = biblioteca
-  .filter(
-    (item) => item.status === ReadingStatus.FINISHED,
-  )
-  .map((item) => {
-    const review = item.book.reviews[0];
-
-    return {
-      libraryId: item.id,
-      bookId: item.bookId,
-      libro: item.book.title,
-      genero: item.book.genre.name,
-      fechaInicio: fechaToFlutter(item.startedAt),
-      fechaFin: fechaToFlutter(item.finishedAt),
-      valoracion: ratingToFlutter(review?.rating),
-      resena: review?.review ?? '',
-      coverUrl: item.book.coverUrl ?? '',
-    };
-  });
+const terminados = historialTerminados.map((item) => ({
+  completionId: item.id,
+  libraryId: bibliotecaPorLibro.get(item.bookId)?.id ?? '',
+  bookId: item.bookId,
+  libro: item.book.title,
+  genero: item.book.genre.name,
+  fechaInicio: fechaToFlutter(item.startedAt),
+  fechaFin: fechaToFlutter(item.finishedAt),
+  valoracion: ratingToFlutter(item.rating),
+  resena: item.review ?? '',
+  coverUrl: item.book.coverUrl ?? '',
+  esRelectura: item.isReread,
+}));
 
 const abandonados = biblioteca
   .filter(
@@ -176,20 +182,21 @@ const abandonados = biblioteca
     };
   });
 
-  const leyendo = biblioteca
+const leyendo = biblioteca
     .filter(
       (item) =>
         item.status === ReadingStatus.READING ||
         item.status === ReadingStatus.REREADING,
     )
-    .map((item) => ({
+  .map((item) => ({
       libraryId: item.id,
       bookId: item.bookId,
       libro: item.book.title,
       genero: item.book.genre.name,
       fechaInicio: fechaToFlutter(item.startedAt),
-      coverUrl: item.book.coverUrl ?? '',
-    }));
+    coverUrl: item.book.coverUrl ?? '',
+    esRelectura: item.status === ReadingStatus.REREADING,
+  }));
 
   const pendientes = biblioteca
     .filter(
@@ -206,17 +213,16 @@ const abandonados = biblioteca
    * TypeScript no tiene `.where`, así que calculamos la media
    * de forma explícita.
    */
-const valoresRating = biblioteca
-  .filter((item) => {
-    const review = item.book.reviews[0];
+const ultimaFinalizacionPorLibro = new Map<string, (typeof historialTerminados)[number]>();
+for (const item of historialTerminados) {
+  if (!ultimaFinalizacionPorLibro.has(item.bookId)) {
+    ultimaFinalizacionPorLibro.set(item.bookId, item);
+  }
+}
 
-    return (
-      item.status === ReadingStatus.FINISHED &&
-      typeof review?.rating === 'number' &&
-      review.rating > 0
-    );
-  })
-  .map((item) => item.book.reviews[0]!.rating);
+const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
+  .map((item) => item.rating)
+  .filter((rating): rating is number => typeof rating === 'number' && rating > 0);
 
   const media =
     valoresRating.length === 0
@@ -232,10 +238,11 @@ const valoresRating = biblioteca
 
   const generos = new Map<string, number>();
 
-  for (const item of terminados) {
+  for (const item of ultimaFinalizacionPorLibro.values()) {
+    const genero = item.book.genre.name;
     generos.set(
-      item.genero,
-      (generos.get(item.genero) ?? 0) + 1,
+      genero,
+      (generos.get(genero) ?? 0) + 1,
     );
   }
 
@@ -256,7 +263,8 @@ const valoresRating = biblioteca
     avatarUrl: user.avatarUrl ?? '',
 
     resumen: {
-      terminados: terminados.length,
+      terminados: ultimaFinalizacionPorLibro.size,
+      relecturas: historialTerminados.filter((item) => item.isReread).length,
       leyendo: leyendo.length,
       pendientes: pendientes.length,
       abandonados: abandonados.length,
@@ -276,6 +284,7 @@ const valoresRating = biblioteca
 export async function actualizarFechasLectura(params: {
   usuario: string;
   libraryId: string;
+  completionId?: string;
   fechaInicio: unknown;
   fechaFin: unknown;
   valoracion?: unknown;
@@ -283,6 +292,7 @@ export async function actualizarFechasLectura(params: {
 }) {
   const usuario = params.usuario.trim();
   const libraryId = params.libraryId.trim();
+  const completionId = params.completionId?.trim() ?? '';
 
   if (!usuario) {
     return {
@@ -372,6 +382,32 @@ export async function actualizarFechasLectura(params: {
       return { ok: false, mensaje: 'La fecha de inicio es obligatoria' };
     }
 
+    const finalizacion = esLecturaActiva
+      ? null
+      : await prisma.readingCompletion.findFirst({
+          where: {
+            userId: user.id,
+            bookId: lectura.bookId,
+            ...(completionId ? { id: completionId } : {}),
+          },
+          orderBy: completionId ? undefined : { finishedAt: 'desc' },
+        });
+
+    if (completionId && !finalizacion) {
+      return { ok: false, mensaje: 'Finalización no encontrada' };
+    }
+
+    const ultimaFinalizacion = !esLecturaActiva
+      ? await prisma.readingCompletion.findFirst({
+          where: { userId: user.id, bookId: lectura.bookId },
+          orderBy: { finishedAt: 'desc' },
+          select: { id: true },
+        })
+      : null;
+
+    const actualizaFichaActual =
+      !finalizacion || ultimaFinalizacion?.id === finalizacion.id;
+
     const valoracionFueEnviada =
       params.valoracion !== undefined;
 
@@ -395,21 +431,17 @@ export async function actualizarFechasLectura(params: {
      * En ese caso eliminamos la Review si tampoco queda reseña.
      */
     await prisma.$transaction(async (tx) => {
-      await tx.library.update({
-        where: {
-          id: lectura.id,
-        },
-        data: {
-          startedAt: fechaInicio,
-          finishedAt: esLecturaActiva ? null : fechaFin,
-        },
-      });
+      if (esLecturaActiva || actualizaFichaActual) {
+        await tx.library.update({
+          where: { id: lectura.id },
+          data: {
+            startedAt: fechaInicio,
+            finishedAt: esLecturaActiva ? null : fechaFin,
+          },
+        });
+      }
 
       if (esLecturaActiva) return;
-
-      if (!valoracionFueEnviada && !resenaFueEnviada) {
-        return;
-      }
 
       const reviewActual = await tx.review.findUnique({
         where: {
@@ -422,11 +454,31 @@ export async function actualizarFechasLectura(params: {
 
       const ratingFinal = valoracionFueEnviada
         ? rating
-        : reviewActual?.rating;
+        : finalizacion?.rating ?? reviewActual?.rating;
 
       const resenaFinal = resenaFueEnviada
         ? textoResena || null
-        : reviewActual?.review ?? null;
+        : finalizacion?.review ?? reviewActual?.review ?? null;
+
+      if (finalizacion) {
+        if (!fechaFin) {
+          throw new Error('La fecha de fin es obligatoria');
+        }
+
+        await tx.readingCompletion.update({
+          where: { id: finalizacion.id },
+          data: {
+            startedAt: fechaInicio,
+            finishedAt: fechaFin,
+            rating: ratingFinal ?? null,
+            review: resenaFinal,
+          },
+        });
+      }
+
+      if (!actualizaFichaActual) return;
+
+      if (!valoracionFueEnviada && !resenaFueEnviada) return;
 
       /*
        * Si no queda ni valoración ni reseña, eliminamos la review.

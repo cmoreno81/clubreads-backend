@@ -40,6 +40,9 @@ export async function handleActualizarFechasLectura(
     libraryId: String(
       body.libraryId ?? req.query.libraryId ?? '',
     ),
+    completionId: String(
+      body.completionId ?? req.query.completionId ?? '',
+    ),
     fechaInicio:
       body.fechaInicio ?? req.query.fechaInicio ?? '',
     fechaFin:

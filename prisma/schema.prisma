@@ -177,7 +177,8 @@ model Book {
   createdById String?
   createdBy   User?   @relation("CreatedBooks", fields: [createdById], references: [id])
 
-  library Library[]
+  library            Library[]
+  readingCompletions ReadingCompletion[]
 
   createdAt DateTime @default(now())
 
@@ -208,11 +209,12 @@ model User {
 
   avatarUrl String?
 
-  createdBooks Book[]    @relation("CreatedBooks")
-  library      Library[]
-  comments     Comment[]
-  reviews      Review[]
-  likes        Like[]
+  createdBooks       Book[]              @relation("CreatedBooks")
+  library            Library[]
+  readingCompletions ReadingCompletion[]
+  comments           Comment[]
+  reviews            Review[]
+  likes              Like[]
 
   conversationReads ConversationRead[]
 
@@ -293,6 +295,29 @@ model Library {
 
   @@unique([userId, bookId])
   @@index([status])
+}
+
+model ReadingCompletion {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  startedAt  DateTime?
+  finishedAt DateTime
+  isReread   Boolean   @default(false)
+  rating     Float?
+  review     String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, finishedAt])
+  @@index([bookId, finishedAt])
+  @@index([isReread, finishedAt])
 }
 
 //
