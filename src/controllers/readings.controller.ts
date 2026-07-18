@@ -35,6 +35,10 @@ export async function handleCrearLectura(req: Request, res: Response) {
     epilogo:
       String(req.query.epilogo || req.body?.epilogo || '') === '1' ||
       req.body?.epilogo === true,
+    paginas:
+      req.query.paginas === undefined && req.body?.paginas === undefined
+        ? undefined
+        : Number(req.query.paginas ?? req.body?.paginas),
     tipo: String(req.query.tipo || req.body?.tipo || 'LIBRE'),
   });
 

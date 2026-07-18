@@ -324,14 +324,19 @@ export async function crearLectura(data: {
   capitulos: number;
   prologo: boolean;
   epilogo: boolean;
+  paginas?: number;
   tipo: string;
 }) {
   const title = String(data.libro || '').trim();
   const capitulos = Number(data.capitulos || 0);
+  const paginas = data.paginas === undefined ? undefined : Number(data.paginas);
 
   if (!title) return { ok: false, mensaje: 'Falta el libro' };
   if (!capitulos || capitulos <= 0) {
     return { ok: false, mensaje: 'Número de capítulos no válido' };
+  }
+  if (paginas !== undefined && (!Number.isInteger(paginas) || paginas <= 0)) {
+    return { ok: false, mensaje: 'Número de páginas no válido' };
   }
 
   const book = await prisma.book.findFirst({
@@ -348,6 +353,13 @@ export async function crearLectura(data: {
   });
 
   if (existing) return { ok: false, mensaje: 'La lectura ya existe' };
+
+  if (paginas !== undefined) {
+    await prisma.book.update({
+      where: { id: book.id },
+      data: { totalPages: paginas },
+    });
+  }
 
   const reading = await prisma.reading.create({
     data: {
