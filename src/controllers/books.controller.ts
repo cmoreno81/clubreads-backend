@@ -27,6 +27,9 @@ export async function handleActualizarProgresoLectura(
     String(body.libro ?? req.query.libro ?? ''),
     Number(body.progreso ?? req.query.progreso ?? 0),
     String(body.comentario ?? req.query.comentario ?? ''),
+    body.paginaActual === undefined && req.query.paginaActual === undefined
+      ? undefined
+      : Number(body.paginaActual ?? req.query.paginaActual),
   );
   return res.json(data);
 }

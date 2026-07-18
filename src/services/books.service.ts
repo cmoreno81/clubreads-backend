@@ -309,9 +309,14 @@ export async function actualizarProgresoLectura(
   libro: string,
   progreso: number,
   comentario: string,
+  paginaActual?: number,
 ) {
-  const porcentaje = Math.round(Number(progreso));
-  if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > 100) {
+  let porcentaje = Math.round(Number(progreso));
+  const paginaFueEnviada = paginaActual !== undefined;
+  if (
+    !paginaFueEnviada &&
+    (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > 100)
+  ) {
     return { ok: false, mensaje: 'El progreso debe estar entre 0 y 100' };
   }
 
@@ -321,18 +326,38 @@ export async function actualizarProgresoLectura(
       book: { title: libro.trim() },
       status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] },
     },
+    include: {
+      book: { select: { totalPages: true } },
+    },
   });
   if (!lectura) return { ok: false, mensaje: 'Lectura activa no encontrada' };
+
+  let pagina: number | null = null;
+  if (paginaFueEnviada) {
+    pagina = Math.round(Number(paginaActual));
+    const totalPaginas = lectura.book.totalPages;
+    if (!totalPaginas) {
+      return { ok: false, mensaje: 'El libro no tiene páginas configuradas' };
+    }
+    if (!Number.isFinite(pagina) || pagina < 0 || pagina > totalPaginas) {
+      return {
+        ok: false,
+        mensaje: `La página debe estar entre 0 y ${totalPaginas}`,
+      };
+    }
+    porcentaje = Math.round((pagina / totalPaginas) * 100);
+  }
 
   await prisma.library.update({
     where: { id: lectura.id },
     data: {
       lastProgress: porcentaje,
+      currentPage: pagina,
       progressNote: comentario.trim() || null,
       progressUpdatedAt: new Date(),
     },
   });
-  return { ok: true };
+  return { ok: true, progreso: porcentaje, paginaActual: pagina };
 }
 
 export async function actualizarEstado(

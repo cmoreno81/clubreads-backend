@@ -107,6 +107,8 @@ export async function getDashboard() {
         titulo: string;
         coverUrl: string;
         progreso: number;
+        paginaActual: number | null;
+        paginasTotales: number | null;
         comentario: string;
         actualizadoEn: string;
       }>;
@@ -126,6 +128,8 @@ export async function getDashboard() {
       titulo: item.book.title,
       coverUrl: item.book.coverUrl ?? '',
       progreso: item.lastProgress ?? 0,
+      paginaActual: item.currentPage,
+      paginasTotales: item.book.totalPages,
       comentario: item.progressNote ?? '',
       actualizadoEn: item.progressUpdatedAt?.toISOString() ?? '',
     });

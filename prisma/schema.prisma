@@ -282,6 +282,7 @@ model Library {
   finishedAt DateTime?
 
   lastProgress Int?
+  currentPage  Int?
 
   progressNote      String?   @db.Text
   progressUpdatedAt DateTime?
