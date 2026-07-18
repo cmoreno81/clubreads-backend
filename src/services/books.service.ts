@@ -166,6 +166,7 @@ export async function getLibros(usuario: string) {
     estado: statusToFlutter(item.status),
     valoracion: '',
     fechaAlta: item.book.createdAt.toISOString(),
+    startedAt: item.startedAt?.toISOString() ?? '',
     pausedAt: item.pausedAt?.toISOString() ?? '',
     pauseReason: item.pauseReason ?? '',
     yaLoTengo:
@@ -300,6 +301,37 @@ export async function iniciarLectura(
   return actualizarEstado(usuario, libro, 'LEYENDO');
 }
 
+export async function actualizarProgresoLectura(
+  usuario: string,
+  libro: string,
+  progreso: number,
+  comentario: string,
+) {
+  const porcentaje = Math.round(Number(progreso));
+  if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > 100) {
+    return { ok: false, mensaje: 'El progreso debe estar entre 0 y 100' };
+  }
+
+  const lectura = await prisma.library.findFirst({
+    where: {
+      user: { name: usuario.trim() },
+      book: { title: libro.trim() },
+      status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] },
+    },
+  });
+  if (!lectura) return { ok: false, mensaje: 'Lectura activa no encontrada' };
+
+  await prisma.library.update({
+    where: { id: lectura.id },
+    data: {
+      lastProgress: porcentaje,
+      progressNote: comentario.trim() || null,
+      progressUpdatedAt: new Date(),
+    },
+  });
+  return { ok: true };
+}
+
 export async function actualizarEstado(
   usuario: string,
   libro: string,
@@ -307,6 +339,7 @@ export async function actualizarEstado(
   valoracion?: string,
   reflexion?: string,
   motivoPausa?: string,
+  fechaInicio?: string,
 ) {
   const user = await prisma.user.findUnique({
     where: {
@@ -332,6 +365,32 @@ export async function actualizarEstado(
 
   const status = statusFromFlutter(estado);
   const now = new Date();
+  const fechaInicioTexto = fechaInicio?.trim() ?? '';
+  const coincidenciaFecha = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fechaInicioTexto);
+  let fechaInicioEditada: Date | null = null;
+
+  if (fechaInicioTexto) {
+    if (!coincidenciaFecha) {
+      return { ok: false, mensaje: 'La fecha de inicio no es válida' };
+    }
+    fechaInicioEditada = new Date(
+      Date.UTC(
+        Number(coincidenciaFecha[1]),
+        Number(coincidenciaFecha[2]) - 1,
+        Number(coincidenciaFecha[3]),
+        12,
+      ),
+    );
+    if (
+      Number.isNaN(fechaInicioEditada.getTime()) ||
+      fechaInicioEditada.getUTCFullYear() !== Number(coincidenciaFecha[1]) ||
+      fechaInicioEditada.getUTCMonth() !== Number(coincidenciaFecha[2]) - 1 ||
+      fechaInicioEditada.getUTCDate() !== Number(coincidenciaFecha[3]) ||
+      fechaInicioEditada > now
+    ) {
+      return { ok: false, mensaje: 'La fecha de inicio no es válida' };
+    }
+  }
 
   /*
    * No reemplazamos startedAt si la lectura ya había comenzado.
@@ -369,6 +428,7 @@ const statusDates =
           }
         : status === ReadingStatus.FINISHED
           ? {
+              startedAt: fechaInicioEditada ?? currentLibrary?.startedAt ?? now,
               finishedAt: now,
               pausedAt: null,
               pauseReason: null,

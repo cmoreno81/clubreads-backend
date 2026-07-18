@@ -68,7 +68,14 @@ export async function getMoodClub(usuarioActual = '') {
   const desde = inicioSemana();
   const weekKey = claveSemana(desde);
 
-  const [comentarios, terminados, leyendo, lecturasActivas, votos] =
+  const [
+    comentarios,
+    terminadosSemana,
+    terminadosRecientes,
+    leyendo,
+    lecturasActivas,
+    votos,
+  ] =
     await Promise.all([
       prisma.comment.findMany({
         where: { deletedAt: null, createdAt: { gte: desde } },
@@ -83,11 +90,14 @@ export async function getMoodClub(usuarioActual = '') {
         orderBy: { createdAt: 'desc' },
         take: 60,
       }),
-      prisma.library.findMany({
+      prisma.library.count({
         where: { status: ReadingStatus.FINISHED, finishedAt: { gte: desde } },
+      }),
+      prisma.library.findMany({
+        where: { status: ReadingStatus.FINISHED, finishedAt: { not: null } },
         include: { user: true, book: true },
         orderBy: { finishedAt: 'desc' },
-        take: 20,
+        take: 10,
       }),
       prisma.library.findMany({
         where: { status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] } },
@@ -154,7 +164,7 @@ export async function getMoodClub(usuarioActual = '') {
       libro: comentario.conversation.reading.book.title,
       capitulo: comentario.conversation.title,
     })),
-    ...terminados.slice(0, 5).map((lectura) => ({
+    ...terminadosRecientes.slice(0, 5).map((lectura) => ({
       fecha: lectura.finishedAt!,
       icono: '📚',
       texto: `${lectura.user.name} terminó ${lectura.book.title} ${tiempoRelativo(lectura.finishedAt!)}`,
@@ -193,7 +203,7 @@ export async function getMoodClub(usuarioActual = '') {
     resumen: {
       comentariosSemana: comentarios.length,
       reaccionesSemana,
-      terminadosSemana: terminados.length,
+      terminadosSemana,
       lectorasActivas: new Set(leyendo.map((item) => item.userId)).size,
       lecturasActivas,
     },

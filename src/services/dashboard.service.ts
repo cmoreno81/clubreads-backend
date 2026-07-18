@@ -102,16 +102,33 @@ export async function getDashboard() {
     string,
     {
       libros: string[];
+      lecturas: Array<{
+        bookId: string;
+        titulo: string;
+        coverUrl: string;
+        progreso: number;
+        comentario: string;
+        actualizadoEn: string;
+      }>;
       avatarUrl: string;
     }
   >();
   for (const item of leyendoAhora) {
     const actual = leyendoPorUsuario.get(item.user.name) ?? {
       libros: [],
+      lecturas: [],
       avatarUrl: item.user.avatarUrl ?? '',
     };
 
     actual.libros.push(item.book.title);
+    actual.lecturas.push({
+      bookId: item.book.id,
+      titulo: item.book.title,
+      coverUrl: item.book.coverUrl ?? '',
+      progreso: item.lastProgress ?? 0,
+      comentario: item.progressNote ?? '',
+      actualizadoEn: item.progressUpdatedAt?.toISOString() ?? '',
+    });
 
     leyendoPorUsuario.set(item.user.name, actual);
   }
@@ -120,6 +137,7 @@ export async function getDashboard() {
     ([usuario, datos]) => ({
       usuario,
       libros: datos.libros,
+      lecturas: datos.lecturas,
       total: datos.libros.length,
       avatarUrl: datos.avatarUrl,
     }),

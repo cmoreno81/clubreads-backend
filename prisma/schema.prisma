@@ -281,6 +281,9 @@ model Library {
 
   lastProgress Int?
 
+  progressNote      String?   @db.Text
+  progressUpdatedAt DateTime?
+
   createdAt DateTime @default(now())
 
   updatedAt DateTime @updatedAt

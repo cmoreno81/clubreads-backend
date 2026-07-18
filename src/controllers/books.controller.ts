@@ -9,10 +9,25 @@ import {
   crearLibro,
   quitarLibroPendientes,
   editarLibro,
+  actualizarProgresoLectura,
 } from '../services/books.service.js';
 
 export async function handleLibros(req: Request, res: Response) {
   const data = await getLibros(String(req.query.usuario || ''));
+  return res.json(data);
+}
+
+export async function handleActualizarProgresoLectura(
+  req: Request,
+  res: Response,
+) {
+  const body = req.body ?? {};
+  const data = await actualizarProgresoLectura(
+    String(body.usuario ?? req.query.usuario ?? ''),
+    String(body.libro ?? req.query.libro ?? ''),
+    Number(body.progreso ?? req.query.progreso ?? 0),
+    String(body.comentario ?? req.query.comentario ?? ''),
+  );
   return res.json(data);
 }
 
@@ -64,6 +79,7 @@ const data = await actualizarEstado(
   String(body.valoracion || req.query.valoracion || ''),
   String(body.reflexion || req.query.reflexion || ''),
   String(body.motivoPausa || req.query.motivoPausa || ''),
+  String(body.fechaInicio || req.query.fechaInicio || ''),
 );
 
   return res.json(data);

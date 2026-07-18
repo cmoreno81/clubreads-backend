@@ -21,6 +21,7 @@ import {
   handleCrearLibro,
   handleQuitarLibroPendientes,
   handleEditarLibro,
+  handleActualizarProgresoLectura,
 } from '../controllers/books.controller.js';
 
 import { handleDashboard } from '../controllers/dashboard.controller.js';
@@ -92,6 +93,9 @@ async function handleApi(req: Request, res: Response) {
 
       case 'actualizarEstado':
         return handleActualizarEstado(req, res);
+
+      case 'actualizarProgresoLectura':
+        return handleActualizarProgresoLectura(req, res);
 
       case 'actualizarValoracion':
         return handleActualizarValoracion(req, res);
