@@ -166,6 +166,8 @@ model Book {
 
   publicationYear Int?
 
+  totalPages Int?
+
   goodreadsUrl String?
 
   coverUrl String?

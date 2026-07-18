@@ -115,7 +115,8 @@ async function buscarLibroPorTitulo(
       goodreadsUrl: true,
       coverUrl: true,
       isbn: true,
-      publicationYear: true,
+    publicationYear: true,
+      totalPages: true,
     },
   });
 
@@ -177,6 +178,7 @@ export async function getLibros(usuario: string) {
     goodreads: item.book.goodreadsUrl ?? '',
     coverUrl: item.book.coverUrl ?? '',
     avatarUrl: item.user.avatarUrl ?? '',
+    paginas: item.book.totalPages,
   }));
 }
 
@@ -225,6 +227,7 @@ export async function getLibrosFinalizados() {
       fecha: item.finishedAt ?? '',
       coverUrl: item.book.coverUrl ?? '',
       avatarUrl: item.user.avatarUrl ?? '',
+      paginas: item.book.totalPages,
       mes: item.finishedAt
         ? `${String(item.finishedAt.getMonth() + 1).padStart(
             2,
@@ -620,6 +623,11 @@ export async function crearLibro(data: any) {
   )
     .trim()
     .replace(/\s+/g, ' ');
+  const paginas = Number(data.paginas || data.totalPages || 0);
+
+  if (paginas < 0 || !Number.isInteger(paginas)) {
+    return { ok: false, mensaje: 'El número de páginas no es válido' };
+  }
 
   if (!usuario) {
     return {
@@ -810,6 +818,7 @@ if (automaticCover) {
 
           publicationYear:
             automaticCover?.publicationYear ?? null,
+          totalPages: paginas > 0 ? paginas : null,
         },
       });
 
@@ -1045,6 +1054,14 @@ export async function editarLibro(data: any) {
   )
     .trim()
     .replace(/\s+/g, ' ');
+  const paginasFueEnviada =
+    Object.prototype.hasOwnProperty.call(data, 'paginas') ||
+    Object.prototype.hasOwnProperty.call(data, 'totalPages');
+  const paginas = Number(data.paginas || data.totalPages || 0);
+
+  if (paginasFueEnviada && (paginas < 0 || !Number.isInteger(paginas))) {
+    return { ok: false, mensaje: 'El número de páginas no es válido' };
+  }
 
   if (!bookId) {
     return {
@@ -1171,6 +1188,12 @@ const actualizado = await prisma.book.update({
       coverUrl ||
       actual.coverUrl ||
       null,
+
+    totalPages: paginasFueEnviada
+      ? paginas > 0
+        ? paginas
+        : null
+      : actual.totalPages,
   },
 });
 
