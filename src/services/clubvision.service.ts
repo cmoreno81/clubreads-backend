@@ -5,6 +5,10 @@ import {
   getCurrentClubContext,
   requireClubMember,
 } from './club-context.service.js';
+import {
+  getClubvisionCalendarFor,
+  getClubvisionStage,
+} from '../utils/clubvision-calendar.js';
 
 const POINTS_BY_POSITION = [12, 10, 8, 7, 6] as const;
 
@@ -28,19 +32,7 @@ function getNow() {
 }
 
 function getClubvisionCalendar() {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Madrid',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(getNow());
-
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-
-  return {
-    edition: `${values.year}-${values.month}`,
-    day: Number(values.day),
-  };
+  return getClubvisionCalendarFor(getNow());
 }
 
 function getCurrentEdition() {
@@ -264,6 +256,7 @@ export async function synchronizeCurrentClubvision(
     where: { clubvisionId: clubvision.id },
   });
   const todasHanVotado = totalUsuarios > 0 && voters.length >= totalUsuarios;
+  const stage = getClubvisionStage(day, todasHanVotado);
 
   let result = await prisma.clubvisionResult.findUnique({
     where: {
@@ -274,11 +267,11 @@ export async function synchronizeCurrentClubvision(
     },
   });
 
-  if (day >= 3 || todasHanVotado) {
+  if (stage !== 'VOTACION') {
     result = await calculateClubvisionResult(clubvision);
   }
 
-  if (day >= 4 && result) {
+  if (stage === 'LECTURA' && result) {
     await prisma.clubvision.update({
       where: { id: clubvision.id },
       data: {
@@ -310,10 +303,7 @@ async function getCalculatedClubvisionStatus(
   const votosRecibidos = votosUsuarios.length;
   const todasHanVotado = totalUsuarios > 0 && votosRecibidos >= totalUsuarios;
 
-  if (day >= 4) return 'LECTURA';
-  if (day >= 3 || todasHanVotado) return 'RESULTADOS';
-
-  return 'VOTACION';
+  return getClubvisionStage(day, todasHanVotado);
 }
 
 export async function getClubvision(usuario: string) {

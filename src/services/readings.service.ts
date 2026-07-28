@@ -10,7 +10,6 @@ import { synchronizeCurrentClubvision } from './clubvision.service.js';
 import {
   getCurrentClubContext,
   requireClubMember,
-  requireClubRole,
 } from './club-context.service.js';
 
 function tipoFromFlutter(tipo: string): ReadingType {
@@ -361,12 +360,7 @@ export async function crearLectura(data: {
   const legacyRequest = !data.usuario?.trim() && legacyApkEnabled();
   const { club } = legacyRequest
     ? await getCurrentClubContext()
-    : requestedType === ReadingType.CLUBVISION
-      ? await requireClubRole(data.usuario, [
-          ClubRole.OWNER,
-          ClubRole.ADMIN,
-        ])
-      : await requireClubMember(data.usuario);
+    : await requireClubMember(data.usuario);
   const title = String(data.libro || '').trim();
   const capitulos = Number(data.capitulos || 0);
   const paginas = data.paginas === undefined ? undefined : Number(data.paginas);
