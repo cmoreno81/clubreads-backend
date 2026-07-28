@@ -463,7 +463,9 @@ await prisma.$transaction(async (tx) => {
    */
   const readingLockKey = `${user.id}:${book.id}`;
   await tx.$queryRaw`
-    SELECT pg_advisory_xact_lock(hashtextextended(${readingLockKey}, 0))
+    SELECT pg_advisory_xact_lock(
+      hashtextextended(${readingLockKey}, 0)
+    )::text
   `;
   await tx.$queryRaw`
     SELECT "id"

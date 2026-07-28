@@ -127,7 +127,9 @@ async function requestCode(
   const authCode = await prisma.$transaction(async (tx) => {
     const requestLockKey = `${user.id}:${purpose}:request`;
     await tx.$queryRaw`
-      SELECT pg_advisory_xact_lock(hashtextextended(${requestLockKey}, 0))
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${requestLockKey}, 0)
+      )::text
     `;
     const [latest, recentCount] = await Promise.all([
       tx.authCode.findFirst({
@@ -253,7 +255,9 @@ async function consumeCodeAndSetPassword(params: {
 
   const accepted = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`
-      SELECT pg_advisory_xact_lock(hashtextextended(${latest.id}, 0))
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${latest.id}, 0)
+      )::text
     `;
     const current = await tx.authCode.findUnique({
       where: { id: latest.id },
