@@ -139,6 +139,9 @@ export function verifyAccessToken(token: string) {
   )
     .update(`${header}.${payload}`)
     .digest();
+  if (signature !== expected.toString('base64url')) {
+    return null;
+  }
   const actual = Buffer.from(signature, 'base64url');
 
   if (

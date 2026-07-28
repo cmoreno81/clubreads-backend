@@ -2,7 +2,7 @@ type SendCodeParams = {
   to: string;
   name: string;
   code: string;
-  purpose: 'ACTIVATE' | 'RESET_PASSWORD';
+  purpose: 'ACTIVATE' | 'REGISTER' | 'RESET_PASSWORD';
   idempotencyKey: string;
 };
 
@@ -27,13 +27,17 @@ export async function sendAuthCodeEmail(params: SendCodeParams) {
     );
   }
 
-  const isActivation = params.purpose === 'ACTIVATE';
-  const subject = isActivation
-    ? 'Activa tu acceso a Club de Lectura'
-    : 'Código para cambiar tu contraseña';
-  const intro = isActivation
-    ? 'Usa este código para activar tu cuenta y elegir una contraseña.'
-    : 'Usa este código para elegir una contraseña nueva.';
+  const isPasswordReset = params.purpose === 'RESET_PASSWORD';
+  const subject = isPasswordReset
+    ? 'Código para cambiar tu contraseña'
+    : params.purpose === 'REGISTER'
+      ? 'Verifica tu cuenta de ClubReads'
+      : 'Activa tu acceso a ClubReads';
+  const intro = isPasswordReset
+    ? 'Usa este código para elegir una contraseña nueva.'
+    : params.purpose === 'REGISTER'
+      ? 'Usa este código para verificar tu correo y crear tu cuenta.'
+      : 'Usa este código para activar tu cuenta y elegir una contraseña.';
   const safeName = escapeHtml(params.name);
   const safeCode = escapeHtml(params.code);
 

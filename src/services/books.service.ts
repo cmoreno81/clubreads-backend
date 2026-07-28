@@ -5,6 +5,7 @@ import {
   ratingFromFlutter,
   ratingToFlutter,
 } from '../utils/rating.utils.js';
+import { getCurrentClubContext } from './club-context.service.js';
 
 function statusToFlutter(status: string) {
   if (status === ReadingStatus.READING) return 'LEYENDO';
@@ -130,9 +131,11 @@ async function buscarLibroPorTitulo(
 
 export async function getLibros(usuario: string) {
   const usuarioActual = usuario.trim();
+  const { club } = await getCurrentClubContext(usuarioActual);
 
   const library = await prisma.library.findMany({
     where: {
+      user: { clubMemberships: { some: { clubId: club.id } } },
       status: {
         not: ReadingStatus.FINISHED,
       },
@@ -182,9 +185,11 @@ export async function getLibros(usuario: string) {
   }));
 }
 
-export async function getLibrosFinalizados() {
+export async function getLibrosFinalizados(usuario: string) {
+  const { club } = await getCurrentClubContext(usuario);
   const library = await prisma.library.findMany({
     where: {
+      user: { clubMemberships: { some: { clubId: club.id } } },
       status: ReadingStatus.FINISHED,
     },
 

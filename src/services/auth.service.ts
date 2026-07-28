@@ -113,6 +113,7 @@ async function requestCode(
   if (
     !user ||
     (purpose === AuthCodePurpose.ACTIVATE && user.passwordHash) ||
+    (purpose === AuthCodePurpose.REGISTER && user.passwordHash) ||
     (purpose === AuthCodePurpose.RESET_PASSWORD && !user.passwordHash)
   ) {
     return GENERIC_CODE_RESPONSE;
@@ -218,6 +219,8 @@ async function consumeCodeAndSetPassword(params: {
   if (
     (params.purpose === AuthCodePurpose.ACTIVATE &&
       user.passwordHash) ||
+    (params.purpose === AuthCodePurpose.REGISTER &&
+      user.passwordHash) ||
     (params.purpose === AuthCodePurpose.RESET_PASSWORD &&
       !user.passwordHash)
   ) {
@@ -320,6 +323,75 @@ export function requestActivationCode(email: string) {
   return requestCode(email, AuthCodePurpose.ACTIVATE);
 }
 
+export async function requestRegistrationCode(
+  nameValue: string,
+  emailValue: string,
+) {
+  const name = nameValue.trim().replace(/\s+/g, ' ');
+  const email = normalizeEmail(emailValue);
+  if (name.length < 2 || name.length > 60) {
+    throw new AuthError(
+      'El nombre debe tener entre 2 y 60 caracteres',
+      400,
+      'INVALID_NAME',
+    );
+  }
+  if (!validateEmail(email)) {
+    throw new AuthError(
+      'Escribe un correo válido',
+      400,
+      'INVALID_EMAIL',
+    );
+  }
+
+  const [emailOwner, nameOwner] = await Promise.all([
+    prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      include: {
+        _count: {
+          select: { clubMemberships: true, library: true },
+        },
+      },
+    }),
+    prisma.user.findFirst({
+      where: { name: { equals: name, mode: 'insensitive' } },
+    }),
+  ]);
+  if (emailOwner?.passwordHash) {
+    throw new AuthError(
+      'Ya existe una cuenta con ese correo',
+      400,
+      'EMAIL_ALREADY_REGISTERED',
+    );
+  }
+  if (nameOwner && nameOwner.id !== emailOwner?.id) {
+    throw new AuthError(
+      'Ese nombre ya está en uso',
+      400,
+      'NAME_ALREADY_REGISTERED',
+    );
+  }
+  if (!emailOwner) {
+    await prisma.user.create({ data: { name, email } });
+  } else if (emailOwner.name !== name) {
+    if (
+      emailOwner._count.clubMemberships > 0 ||
+      emailOwner._count.library > 0
+    ) {
+      throw new AuthError(
+        'El correo ya está asociado a otra cuenta',
+        400,
+        'EMAIL_ALREADY_REGISTERED',
+      );
+    }
+    await prisma.user.update({
+      where: { id: emailOwner.id },
+      data: { name },
+    });
+  }
+  return requestCode(email, AuthCodePurpose.REGISTER);
+}
+
 export function activateAccount(
   email: string,
   code: string,
@@ -330,6 +402,19 @@ export function activateAccount(
     code,
     password,
     purpose: AuthCodePurpose.ACTIVATE,
+  });
+}
+
+export function completeRegistration(
+  email: string,
+  code: string,
+  password: string,
+) {
+  return consumeCodeAndSetPassword({
+    rawEmail: email,
+    code,
+    password,
+    purpose: AuthCodePurpose.REGISTER,
   });
 }
 

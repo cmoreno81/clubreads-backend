@@ -64,31 +64,51 @@ import {
 } from '../middleware/auth.middleware.js';
 import {
   handleActivateAccount,
+  handleCompleteRegistration,
   handleChangePassword,
   handleLogin,
   handleLogout,
   handleRefresh,
   handleRequestActivation,
+  handleRequestRegistration,
   handleRequestPasswordReset,
   handleResetPassword,
 } from '../controllers/auth.controller.js';
+import {
+  handleClubInvite,
+  handleCreateClub,
+  handleJoinClub,
+  handleMyClubs,
+  handleSelectClub,
+} from '../controllers/clubs.controller.js';
 
 export const apiRouter = Router();
 
 const PUBLIC_AUTH_ACTIONS = new Set([
   'solicitarActivacion',
   'activarCuenta',
+  'solicitarRegistro',
+  'completarRegistro',
   'login',
   'solicitarResetPassword',
   'resetPassword',
   'refreshToken',
+]);
+const POST_ONLY_ACTIONS = new Set([
+  ...PUBLIC_AUTH_ACTIONS,
+  'logout',
+  'cambiarPassword',
+  'crearClub',
+  'unirseClub',
+  'seleccionarClub',
+  'invitacionClub',
 ]);
 
 async function handleApi(req: Request, res: Response) {
   try {
     const action = String(req.query.action || '');
     if (
-      PUBLIC_AUTH_ACTIONS.has(action) &&
+      POST_ONLY_ACTIONS.has(action) &&
       req.method !== 'POST'
     ) {
       return res.status(405).json({
@@ -137,6 +157,12 @@ async function handleApi(req: Request, res: Response) {
       case 'activarCuenta':
         return handleActivateAccount(req, res);
 
+      case 'solicitarRegistro':
+        return handleRequestRegistration(req, res);
+
+      case 'completarRegistro':
+        return handleCompleteRegistration(req, res);
+
       case 'login':
         return handleLogin(req, res);
 
@@ -160,6 +186,36 @@ async function handleApi(req: Request, res: Response) {
           return requireAuthentication(req, res, () => {});
         }
         return handleChangePassword(req, res);
+
+      case 'misClubes':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleMyClubs(req, res);
+
+      case 'crearClub':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleCreateClub(req, res);
+
+      case 'unirseClub':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleJoinClub(req, res);
+
+      case 'seleccionarClub':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleSelectClub(req, res);
+
+      case 'invitacionClub':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleClubInvite(req, res);
 
       case 'usuarios':
         return handleUsuarios(req, res);

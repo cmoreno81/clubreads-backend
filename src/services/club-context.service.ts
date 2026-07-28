@@ -62,11 +62,14 @@ export async function getCurrentClubContext(usuario?: string) {
     );
   }
 
-  /*
-   * El fallback protege a usuarios antiguos o nuevos cuyo
-   * activeClubId todavía no se haya configurado.
-   */
-  const club = user.activeClub ?? (await getDefaultClub());
+  if (!user.activeClub) {
+    throw new ClubContextError(
+      'Selecciona o crea un club para continuar',
+      409,
+      'NO_ACTIVE_CLUB',
+    );
+  }
+  const club = user.activeClub;
   const membership = await prisma.clubMember.findUnique({
     where: {
       clubId_userId: {

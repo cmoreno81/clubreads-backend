@@ -12,6 +12,7 @@ export async function handlePerfilUsuario(
   res: Response,
 ) {
   const data = await getPerfilUsuario(
+    String(req.query.perfil ?? req.query.usuario ?? req.auth?.userName ?? ''),
     requestUserName(req, req.query.usuario),
   );
 
