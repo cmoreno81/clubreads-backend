@@ -1,4 +1,4 @@
-import { Priority, ReadingStatus } from '@prisma/client';
+import { Prisma, Priority, ReadingStatus } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { findBestBookCover } from './book-cover.service.js';
 import {
@@ -441,64 +441,6 @@ export async function actualizarEstado(
     }
   }
 
-  /*
-   * No reemplazamos startedAt si la lectura ya había comenzado.
-   */
-  const currentLibrary = await prisma.library.findUnique({
-    where: {
-      userId_bookId: {
-        userId: user.id,
-        bookId: book.id,
-      },
-    },
-  });
-
-const statusDates =
-  status === ReadingStatus.READING
-    ? {
-        startedAt: currentLibrary?.startedAt ?? now,
-        finishedAt: null,
-        pausedAt: null,
-        pauseReason: null,
-      }
-    : status === ReadingStatus.PAUSED
-      ? {
-          startedAt: currentLibrary?.startedAt ?? now,
-          finishedAt: null,
-          pausedAt: now,
-          pauseReason: motivoPausa?.trim() || null,
-        }
-      : status === ReadingStatus.REREADING
-        ? {
-            startedAt:
-              currentLibrary?.status === ReadingStatus.REREADING
-                ? currentLibrary.startedAt ?? now
-                : fechaInicioEditada ?? now,
-            finishedAt: null,
-            pausedAt: null,
-            pauseReason: null,
-          }
-        : status === ReadingStatus.FINISHED
-          ? {
-              startedAt: fechaInicioEditada ?? currentLibrary?.startedAt ?? now,
-              finishedAt: now,
-              pausedAt: null,
-              pauseReason: null,
-            }
-          : status === ReadingStatus.ABANDONED
-            ? {
-                finishedAt: now,
-                pausedAt: null,
-                pauseReason: null,
-              }
-            : {
-                startedAt: null,
-                finishedAt: null,
-                pausedAt: null,
-                pauseReason: null,
-              };
-
-
 const rating = ratingFromFlutter(valoracion);
 
 if (
@@ -513,6 +455,180 @@ if (
 }
 
 await prisma.$transaction(async (tx) => {
+  /*
+   * El advisory lock también cubre el caso excepcional en que todavía no
+   * exista Library. Después bloqueamos la fila real y consultamos el estado:
+   * dos finalizaciones simultáneas no pueden decidir ambas que deben crear
+   * ReadingCompletion.
+   */
+  const readingLockKey = `${user.id}:${book.id}`;
+  await tx.$queryRaw`
+    SELECT pg_advisory_xact_lock(hashtextextended(${readingLockKey}, 0))
+  `;
+  await tx.$queryRaw`
+    SELECT "id"
+    FROM "Library"
+    WHERE "userId" = ${user.id} AND "bookId" = ${book.id}
+    FOR UPDATE
+  `;
+
+  const currentLibrary = await tx.library.findUnique({
+    where: {
+      userId_bookId: {
+        userId: user.id,
+        bookId: book.id,
+      },
+    },
+  });
+
+  const completionCount = await tx.readingCompletion.count({
+    where: {
+      userId: user.id,
+      bookId: book.id,
+    },
+  });
+
+  /*
+   * Compatibilidad con versiones antiguas de Flutter: una petición LEYENDO
+   * sobre un libro ya finalizado inicia una relectura, nunca una lectura
+   * inicial que perdería el significado del historial.
+   */
+  const effectiveStatus =
+    status === ReadingStatus.READING && completionCount > 0
+      ? ReadingStatus.REREADING
+      : status;
+
+  const startsNewRereading =
+    effectiveStatus === ReadingStatus.REREADING &&
+    currentLibrary?.status !== ReadingStatus.REREADING;
+
+  const statusDates =
+    effectiveStatus === ReadingStatus.READING
+      ? {
+          startedAt: currentLibrary?.startedAt ?? now,
+          finishedAt: null,
+          pausedAt: null,
+          pauseReason: null,
+        }
+      : effectiveStatus === ReadingStatus.PAUSED
+        ? {
+            startedAt: currentLibrary?.startedAt ?? now,
+            finishedAt: null,
+            pausedAt: now,
+            pauseReason: motivoPausa?.trim() || null,
+          }
+        : effectiveStatus === ReadingStatus.REREADING
+          ? {
+              startedAt: startsNewRereading
+                ? fechaInicioEditada ?? now
+                : currentLibrary?.startedAt ?? fechaInicioEditada ?? now,
+              finishedAt: null,
+              pausedAt: null,
+              pauseReason: null,
+              lastProgress: null,
+              currentPage: null,
+              progressNote: null,
+              progressUpdatedAt: null,
+            }
+          : effectiveStatus === ReadingStatus.FINISHED
+            ? {
+                startedAt:
+                  fechaInicioEditada ?? currentLibrary?.startedAt ?? now,
+                finishedAt:
+                  currentLibrary?.status === ReadingStatus.FINISHED
+                    ? currentLibrary.finishedAt ?? now
+                    : now,
+                pausedAt: null,
+                pauseReason: null,
+              }
+            : effectiveStatus === ReadingStatus.ABANDONED
+              ? {
+                  finishedAt: now,
+                  pausedAt: null,
+                  pauseReason: null,
+                }
+              : {
+                  startedAt: null,
+                  finishedAt: null,
+                  pausedAt: null,
+                  pauseReason: null,
+                  lastProgress: null,
+                  currentPage: null,
+                  progressNote: null,
+                  progressUpdatedAt: null,
+                };
+
+  /*
+   * FINISHED -> PENDING es una corrección del último cierre, no el borrado
+   * indiscriminado de toda la historia de lectura.
+   */
+  if (
+    currentLibrary?.status === ReadingStatus.FINISHED &&
+    effectiveStatus === ReadingStatus.PENDING
+  ) {
+    const lastCompletion = await tx.readingCompletion.findFirst({
+      where: {
+        userId: user.id,
+        bookId: book.id,
+      },
+      orderBy: [
+        { finishedAt: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
+    });
+
+    if (lastCompletion) {
+      await tx.readingCompletion.delete({
+        where: { id: lastCompletion.id },
+      });
+    }
+
+    const previousCompletion = await tx.readingCompletion.findFirst({
+      where: {
+        userId: user.id,
+        bookId: book.id,
+      },
+      orderBy: [
+        { finishedAt: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
+    });
+
+    if (previousCompletion) {
+      if (previousCompletion.rating !== null) {
+        await tx.review.upsert({
+          where: {
+            userId_bookId: {
+              userId: user.id,
+              bookId: book.id,
+            },
+          },
+          update: {
+            rating: previousCompletion.rating,
+            review: previousCompletion.review,
+            deletedAt: null,
+          },
+          create: {
+            userId: user.id,
+            bookId: book.id,
+            rating: previousCompletion.rating,
+            review: previousCompletion.review,
+          },
+        });
+      } else {
+        await tx.review.deleteMany({
+          where: { userId: user.id, bookId: book.id },
+        });
+      }
+    } else {
+      await tx.review.deleteMany({
+        where: { userId: user.id, bookId: book.id },
+      });
+    }
+  }
+
   await tx.library.upsert({
     where: {
       userId_bookId: {
@@ -522,20 +638,20 @@ await prisma.$transaction(async (tx) => {
     },
 
     update: {
-      status,
+      status: effectiveStatus,
       ...statusDates,
     },
 
     create: {
       userId: user.id,
       bookId: book.id,
-      status,
+      status: effectiveStatus,
       priority: Priority.MEDIUM,
       ...statusDates,
     },
   }); 
 
-  if (status === ReadingStatus.FINISHED) {
+  if (effectiveStatus === ReadingStatus.FINISHED) {
    const finalRating = rating as number;
 
     if (currentLibrary?.status !== ReadingStatus.FINISHED) {
@@ -576,7 +692,7 @@ await prisma.$transaction(async (tx) => {
     return;
   }
 
-  if (status === ReadingStatus.ABANDONED) {
+  if (effectiveStatus === ReadingStatus.ABANDONED) {
     await tx.review.upsert({
       where: {
         userId_bookId: {
@@ -605,12 +721,22 @@ await prisma.$transaction(async (tx) => {
    * Pendiente, leyendo, pausado o relectura:
    * eliminamos cualquier valoración histórica.
    */
-  await tx.review.deleteMany({
-    where: {
-      userId: user.id,
-      bookId: book.id,
-    },
-  });
+  if (
+    !(
+      currentLibrary?.status === ReadingStatus.FINISHED &&
+      effectiveStatus === ReadingStatus.PENDING
+    ) &&
+    completionCount === 0
+  ) {
+    await tx.review.deleteMany({
+      where: {
+        userId: user.id,
+        bookId: book.id,
+      },
+    });
+  }
+}, {
+  isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
 });
   return {
     ok: true,

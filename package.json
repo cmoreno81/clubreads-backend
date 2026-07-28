@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx src/server.ts",
     "build": "prisma generate && tsc",
+    "test": "node --import tsx --test --test-concurrency=1 tests/*.test.ts",
     "start": "node dist/server.js",
     "migrate": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
