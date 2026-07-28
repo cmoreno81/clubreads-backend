@@ -1,11 +1,16 @@
 import { ReadingStatus } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { getCurrentClubContext } from './club-context.service.js';
 
 function top<T>(items: T[], limit = 10) {
   return items.slice(0, limit);
 }
 
-export async function getRanking(anioSolicitado = new Date().getFullYear()) {
+export async function getRanking(
+  anioSolicitado = new Date().getFullYear(),
+  usuario = '',
+) {
+  const { club } = await getCurrentClubContext(usuario);
   const anio = Number.isInteger(anioSolicitado) && anioSolicitado >= 2000
     ? anioSolicitado
     : new Date().getFullYear();
@@ -14,6 +19,7 @@ export async function getRanking(anioSolicitado = new Date().getFullYear()) {
 
   const library = await prisma.library.findMany({
     where: {
+      user: { clubMemberships: { some: { clubId: club.id } } },
       OR: [
         { status: ReadingStatus.PENDING },
         {
@@ -32,6 +38,7 @@ export async function getRanking(anioSolicitado = new Date().getFullYear()) {
     where: {
       isReread: false,
       finishedAt: { gte: desde, lt: hasta },
+      user: { clubMemberships: { some: { clubId: club.id } } },
     },
     include: {
       book: true,

@@ -1,13 +1,17 @@
 import { prisma } from '../prisma.js';
+import { getCurrentClubContext } from './club-context.service.js';
 
-export async function getUsuarios() {
-  const users = await prisma.user.findMany({
+export async function getUsuarios(usuario = '') {
+  const { club } = await getCurrentClubContext(usuario);
+  const memberships = await prisma.clubMember.findMany({
+    where: { clubId: club.id },
+    include: { user: true },
     orderBy: {
-      name: 'asc',
+      user: { name: 'asc' },
     },
   });
 
-  return users.map((user) => ({
+  return memberships.map(({ user }) => ({
     nombre: user.name,
     email: user.email,
   }));

@@ -1,13 +1,16 @@
 import { prisma } from '../prisma.js';
+import { getCurrentClubContext } from './club-context.service.js';
 
 function top<T>(items: T[], limit = 5) {
   return items.slice(0, limit);
 }
 
-export async function getTendenciasClub() {
+export async function getTendenciasClub(usuario = '') {
+  const { club } = await getCurrentClubContext(usuario);
   const leyendoAhora = await prisma.library.findMany({
     where: {
       status: 'READING',
+      user: { clubMemberships: { some: { clubId: club.id } } },
     },
     include: {
       user: true,

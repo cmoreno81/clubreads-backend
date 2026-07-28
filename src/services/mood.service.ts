@@ -1,6 +1,7 @@
 import { ClubMood, ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
+import { getCurrentClubContext } from './club-context.service.js';
 
 const MOODS = Object.values(ClubMood);
 
@@ -50,21 +51,31 @@ export async function registrarMoodClub(usuario: string, valor: string) {
 
   if (!nombre || !mood) return { ok: false, mensaje: 'Datos no válidos' };
 
-  const user = await prisma.user.findUnique({ where: { name: nombre } });
+  const { club, user } = await getCurrentClubContext(nombre);
   if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
 
   await prisma.clubMoodVote.upsert({
     where: {
-      userId_weekKey: { userId: user.id, weekKey: claveSemana() },
+      clubId_userId_weekKey: {
+        clubId: club.id,
+        userId: user.id,
+        weekKey: claveSemana(),
+      },
     },
     update: { mood },
-    create: { userId: user.id, weekKey: claveSemana(), mood },
+    create: {
+      clubId: club.id,
+      userId: user.id,
+      weekKey: claveSemana(),
+      mood,
+    },
   });
 
   return { ok: true };
 }
 
 export async function getMoodClub(usuarioActual = '') {
+  const { club } = await getCurrentClubContext(usuarioActual);
   const desde = inicioSemana();
   const weekKey = claveSemana(desde);
 
@@ -78,7 +89,11 @@ export async function getMoodClub(usuarioActual = '') {
   ] =
     await Promise.all([
       prisma.comment.findMany({
-        where: { deletedAt: null, createdAt: { gte: desde } },
+        where: {
+          deletedAt: null,
+          createdAt: { gte: desde },
+          conversation: { reading: { clubId: club.id } },
+        },
         include: {
           user: true,
           likes: true,
@@ -91,21 +106,33 @@ export async function getMoodClub(usuarioActual = '') {
         take: 60,
       }),
       prisma.readingCompletion.count({
-        where: { isReread: false, finishedAt: { gte: desde } },
+        where: {
+          isReread: false,
+          finishedAt: { gte: desde },
+          user: { clubMemberships: { some: { clubId: club.id } } },
+        },
       }),
       prisma.readingCompletion.findMany({
-        where: { isReread: false },
+        where: {
+          isReread: false,
+          user: { clubMemberships: { some: { clubId: club.id } } },
+        },
         include: { user: true, book: true },
         orderBy: { finishedAt: 'desc' },
         take: 10,
       }),
       prisma.library.findMany({
-        where: { status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] } },
+        where: {
+          status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] },
+          user: { clubMemberships: { some: { clubId: club.id } } },
+        },
         select: { userId: true },
       }),
-      prisma.reading.count({ where: { status: 'ACTIVE' } }),
+      prisma.reading.count({
+        where: { clubId: club.id, status: 'ACTIVE' },
+      }),
       prisma.clubMoodVote.findMany({
-        where: { weekKey },
+        where: { clubId: club.id, weekKey },
         include: { user: { select: { name: true } } },
       }),
     ]);

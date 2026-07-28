@@ -1,6 +1,7 @@
 import { prisma } from '../prisma.js';
 import { getClubvision } from './clubvision.service.js';
 import { ratingToFlutter } from '../utils/rating.utils.js';
+import { getCurrentClubContext } from './club-context.service.js';
 
 function ratingAverage(ratings: number[]) {
   if (ratings.length === 0) return '0';
@@ -42,12 +43,14 @@ function getMood(valoracionMedia: string) {
 }
 
 
-export async function getDashboard() {
+export async function getDashboard(usuario = '') {
+  const { club } = await getCurrentClubContext(usuario);
   const month = currentMonthKey();
 
   const finishedBooks = await prisma.readingCompletion.findMany({
     where: {
       isReread: false,
+      user: { clubMemberships: { some: { clubId: club.id } } },
     },
     include: {
       user: true,
@@ -58,12 +61,14 @@ export async function getDashboard() {
   const reviews = await prisma.review.findMany({
     where: {
       rating: { gt: 0 },
+      user: { clubMemberships: { some: { clubId: club.id } } },
     },
   });
 
   const leyendoAhora = await prisma.library.findMany({
     where: {
       status: { in: ['READING', 'REREADING'] },
+      user: { clubMemberships: { some: { clubId: club.id } } },
     },
     include: {
       user: true,
@@ -144,7 +149,7 @@ export async function getDashboard() {
     }),
   );
 
-  const clubvision = await getClubvision('');
+  const clubvision = await getClubvision(usuario);
   const ganador = clubvision.ganador || '';
 
   const libroActual = ganador
@@ -171,6 +176,7 @@ export async function getDashboard() {
     ? await prisma.library.findMany({
         where: {
           status: 'FINISHED',
+          user: { clubMemberships: { some: { clubId: club.id } } },
           book: {
             title: ganador,
           },
@@ -193,6 +199,7 @@ export async function getDashboard() {
     ? await prisma.reading.findFirst({
         where: {
           type: 'CLUBVISION',
+          clubId: club.id,
           book: {
             title: ganador,
           },

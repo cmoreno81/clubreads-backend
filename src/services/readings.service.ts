@@ -1,6 +1,17 @@
-import { ReadingSessionStatus, ReadingType, ReadingStatus } from '@prisma/client';
+import {
+  ClubRole,
+  Prisma,
+  ReadingSessionStatus,
+  ReadingType,
+  ReadingStatus,
+} from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { synchronizeCurrentClubvision } from './clubvision.service.js';
+import {
+  getCurrentClubContext,
+  requireClubMember,
+  requireClubRole,
+} from './club-context.service.js';
 
 function tipoFromFlutter(tipo: string): ReadingType {
   return tipo === 'OFICIAL' ? ReadingType.CLUBVISION : ReadingType.FREE;
@@ -8,6 +19,10 @@ function tipoFromFlutter(tipo: string): ReadingType {
 
 function tipoToFlutter(tipo: ReadingType) {
   return tipo === ReadingType.CLUBVISION ? 'OFICIAL' : 'LIBRE';
+}
+
+function legacyApkEnabled() {
+  return process.env.AUTH_REQUIRE_ACCESS_TOKEN !== 'true';
 }
 
 function tiempoRelativo(fecha: Date) {
@@ -123,12 +138,14 @@ function buildChapters(
       };
     });
 }
-export async function getLecturasActivas() {
-  await synchronizeCurrentClubvision();
+export async function getLecturasActivas(usuario = '') {
+  const { club } = await getCurrentClubContext(usuario);
+  await synchronizeCurrentClubvision(usuario);
   const readingBooks = await prisma.library.groupBy({
     by: ['bookId'],
     where: {
       status: ReadingStatus.READING,
+      user: { clubMemberships: { some: { clubId: club.id } } },
     },
     _count: {
       userId: true,
@@ -142,6 +159,7 @@ export async function getLecturasActivas() {
   const readings = await prisma.reading.findMany({
     where: {
       status: ReadingSessionStatus.ACTIVE,
+      clubId: club.id,
     },
     include: {
       book: true,
@@ -231,6 +249,7 @@ export async function getLecturasActivas() {
     by: ['bookId'],
     where: {
       status: ReadingStatus.READING,
+      user: { clubMemberships: { some: { clubId: club.id } } },
     },
     _count: {
       userId: true,
@@ -271,6 +290,7 @@ export async function getLecturasActivas() {
   }
 
   const latestResult = await prisma.clubvisionResult.findFirst({
+    where: { clubId: club.id },
     orderBy: {
       edition: 'desc',
     },
@@ -278,12 +298,21 @@ export async function getLecturasActivas() {
 
   const resultClubvision = latestResult
     ? await prisma.clubvision.findUnique({
-        where: { edition: latestResult.edition },
-        select: { status: true },
+        where: {
+          clubId_edition: {
+            clubId: club.id,
+            edition: latestResult.edition,
+          },
+        },
+        select: { status: true, clubId: true },
       })
     : null;
 
-  if (latestResult?.winnerTitle && resultClubvision?.status === 'LECTURA') {
+  if (
+    latestResult?.winnerTitle &&
+    resultClubvision?.status === 'LECTURA' &&
+    resultClubvision.clubId === club.id
+  ) {
     const yaExiste = resultado.some(
       (item) =>
         item.libro.trim().toLowerCase() ===
@@ -320,6 +349,7 @@ export async function getLecturasActivas() {
 }
 
 export async function crearLectura(data: {
+  usuario?: string;
   libro: string;
   capitulos: number;
   prologo: boolean;
@@ -327,6 +357,16 @@ export async function crearLectura(data: {
   paginas?: number;
   tipo: string;
 }) {
+  const requestedType = tipoFromFlutter(data.tipo);
+  const legacyRequest = !data.usuario?.trim() && legacyApkEnabled();
+  const { club } = legacyRequest
+    ? await getCurrentClubContext()
+    : requestedType === ReadingType.CLUBVISION
+      ? await requireClubRole(data.usuario, [
+          ClubRole.OWNER,
+          ClubRole.ADMIN,
+        ])
+      : await requireClubMember(data.usuario);
   const title = String(data.libro || '').trim();
   const capitulos = Number(data.capitulos || 0);
   const paginas = data.paginas === undefined ? undefined : Number(data.paginas);
@@ -348,69 +388,83 @@ export async function crearLectura(data: {
   const existing = await prisma.reading.findFirst({
     where: {
       bookId: book.id,
+      clubId: club.id,
       status: ReadingSessionStatus.ACTIVE,
     },
   });
 
   if (existing) return { ok: false, mensaje: 'La lectura ya existe' };
 
-  if (paginas !== undefined) {
-    await prisma.book.update({
-      where: { id: book.id },
-      data: { totalPages: paginas },
-    });
-  }
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (paginas !== undefined) {
+        await tx.book.update({
+          where: { id: book.id },
+          data: { totalPages: paginas },
+        });
+      }
 
-  const reading = await prisma.reading.create({
-    data: {
-      bookId: book.id,
-      type: tipoFromFlutter(data.tipo),
-      status: ReadingSessionStatus.ACTIVE,
-      chapters: capitulos,
-      hasPrologue: data.prologo,
-      hasEpilogue: data.epilogo,
-    },
-  });
+      const reading = await tx.reading.create({
+        data: {
+          bookId: book.id,
+          clubId: club.id,
+          type: requestedType,
+          status: ReadingSessionStatus.ACTIVE,
+          chapters: capitulos,
+          hasPrologue: data.prologo,
+          hasEpilogue: data.epilogo,
+        },
+      });
 
-  let order = 0;
+      const conversations: Array<{
+        readingId: string;
+        title: string;
+        order: number;
+      }> = [];
+      let order = 0;
 
-  if (data.prologo) {
-    await prisma.conversation.create({
-      data: {
+      if (data.prologo) {
+        conversations.push({
+          readingId: reading.id,
+          title: 'Prólogo',
+          order: order++,
+        });
+      }
+
+      for (let i = 1; i <= capitulos; i++) {
+        conversations.push({
+          readingId: reading.id,
+          title: `Capítulo ${i}`,
+          order: order++,
+        });
+      }
+
+      if (data.epilogo) {
+        conversations.push({
+          readingId: reading.id,
+          title: 'Epílogo',
+          order: order++,
+        });
+      }
+
+      conversations.push({
         readingId: reading.id,
-        title: 'Prólogo',
-        order: order++,
-      },
-    });
-  }
+        title: '💭 Reflexión final',
+        order,
+      });
 
-  for (let i = 1; i <= capitulos; i++) {
-    await prisma.conversation.create({
-      data: {
-        readingId: reading.id,
-        title: `Capítulo ${i}`,
-        order: order++,
-      },
+      await tx.conversation.createMany({ data: conversations });
     });
-  }
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      return { ok: false, mensaje: 'La lectura ya existe' };
+    }
 
-  if (data.epilogo) {
-    await prisma.conversation.create({
-      data: {
-        readingId: reading.id,
-        title: 'Epílogo',
-        order: order++,
-      },
-    });
+    throw error;
   }
-
-  await prisma.conversation.create({
-    data: {
-      readingId: reading.id,
-      title: '💭 Reflexión final',
-      order: order++,
-    },
-  });
 
   return { ok: true };
 }
@@ -421,21 +475,12 @@ export async function getConfiguracionLectura(
 ) {
   const title = libro.trim();
   const nombreUsuario = usuarioActual.trim();
-
-  const user = nombreUsuario
-    ? await prisma.user.findUnique({
-        where: {
-          name: nombreUsuario,
-        },
-        select: {
-          id: true,
-        },
-      })
-    : null;
+  const { club, user } = await getCurrentClubContext(nombreUsuario);
 
   const reading = await prisma.reading.findFirst({
     where: {
       book: { title },
+      clubId: club.id,
       status: ReadingSessionStatus.ACTIVE,
     },
     include: {
@@ -506,14 +551,7 @@ export async function marcarConversacionVista(data: {
     };
   }
 
-  const user = await prisma.user.findUnique({
-    where: {
-      name: usuario,
-    },
-    select: {
-      id: true,
-    },
-  });
+  const { club, user } = await requireClubMember(usuario);
 
   if (!user) {
     return {
@@ -526,6 +564,7 @@ export async function marcarConversacionVista(data: {
     where: {
       title: capitulo,
       reading: {
+        clubId: club.id,
         status: ReadingSessionStatus.ACTIVE,
         book: {
           title: libro,
@@ -571,10 +610,12 @@ export async function getComentariosLectura(
   capitulo: string,
   usuarioActual: string,
 ) {
+  const { club } = await getCurrentClubContext(usuarioActual);
   const conversation = await prisma.conversation.findFirst({
     where: {
       title: capitulo,
       reading: {
+        clubId: club.id,
         book: { title: libro },
         status: ReadingSessionStatus.ACTIVE,
       },
@@ -692,9 +733,7 @@ export async function enviarComentarioLectura(data: {
     return { ok: false, mensaje: 'Faltan datos' };
   }
 
-  const user = await prisma.user.findUnique({
-    where: { name: usuario },
-  });
+  const { club, user } = await requireClubMember(usuario);
 
   if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
 
@@ -702,6 +741,7 @@ export async function enviarComentarioLectura(data: {
     where: {
       title: capitulo,
       reading: {
+        clubId: club.id,
         status: ReadingSessionStatus.ACTIVE,
         book: {
           title: libro,
@@ -736,14 +776,15 @@ export async function responderComentarioLectura(data: {
     return { ok: false, mensaje: 'Faltan datos' };
   }
 
-  const user = await prisma.user.findUnique({
-    where: { name: usuario },
-  });
+  const { club, user } = await requireClubMember(usuario);
 
   if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
 
-  const parent = await prisma.comment.findUnique({
-    where: { id: comentarioId },
+  const parent = await prisma.comment.findFirst({
+    where: {
+      id: comentarioId,
+      conversation: { reading: { clubId: club.id } },
+    },
   });
 
   if (!parent) return { ok: false, mensaje: 'Comentario no encontrado' };
@@ -767,14 +808,15 @@ export async function toggleLikeComentario(
 ) {
   const idComentario = comentarioId.trim();
 
-  const user = await prisma.user.findUnique({
-    where: { name: usuario.trim() },
-  });
+  const { club, user } = await requireClubMember(usuario);
 
   if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
 
-  const comment = await prisma.comment.findUnique({
-    where: { id: idComentario },
+  const comment = await prisma.comment.findFirst({
+    where: {
+      id: idComentario,
+      conversation: { reading: { clubId: club.id } },
+    },
   });
 
   if (!comment || comment.deletedAt) {
@@ -862,6 +904,7 @@ function contarReacciones(reacciones: Array<{ reaction: string }>) {
 export async function editarComentarioLectura(
   comentarioId: string,
   comentario: string,
+  usuario = '',
 ) {
   const text = comentario.trim();
 
@@ -869,8 +912,21 @@ export async function editarComentarioLectura(
     return { ok: false, mensaje: 'Faltan datos' };
   }
 
-  const existing = await prisma.comment.findUnique({
-    where: { id: comentarioId },
+  const legacyRequest = !usuario.trim() && legacyApkEnabled();
+  const context = legacyRequest
+    ? await getCurrentClubContext()
+    : await requireClubMember(usuario);
+  const { club, user, membership } = context;
+  const canModerate =
+    legacyRequest ||
+    membership?.role === ClubRole.OWNER ||
+    membership?.role === ClubRole.ADMIN;
+  const existing = await prisma.comment.findFirst({
+    where: {
+      id: comentarioId,
+      conversation: { reading: { clubId: club.id } },
+      ...(canModerate ? {} : { userId: user!.id }),
+    },
   });
 
   if (!existing || existing.deletedAt) {
@@ -888,13 +944,29 @@ export async function editarComentarioLectura(
   return { ok: true };
 }
 
-export async function eliminarComentarioLectura(comentarioId: string) {
+export async function eliminarComentarioLectura(
+  comentarioId: string,
+  usuario = '',
+) {
   if (!comentarioId) {
     return { ok: false, mensaje: 'Falta comentarioId' };
   }
 
-  const existing = await prisma.comment.findUnique({
-    where: { id: comentarioId },
+  const legacyRequest = !usuario.trim() && legacyApkEnabled();
+  const context = legacyRequest
+    ? await getCurrentClubContext()
+    : await requireClubMember(usuario);
+  const { club, user, membership } = context;
+  const canModerate =
+    legacyRequest ||
+    membership?.role === ClubRole.OWNER ||
+    membership?.role === ClubRole.ADMIN;
+  const existing = await prisma.comment.findFirst({
+    where: {
+      id: comentarioId,
+      conversation: { reading: { clubId: club.id } },
+      ...(canModerate ? {} : { userId: user!.id }),
+    },
   });
 
   if (!existing || existing.deletedAt) {
@@ -914,17 +986,23 @@ export async function eliminarComentarioLectura(comentarioId: string) {
 export async function editarRespuestaLectura(
   respuestaId: string,
   respuesta: string,
+  usuario = '',
 ) {
-  return editarComentarioLectura(respuestaId, respuesta);
+  return editarComentarioLectura(respuestaId, respuesta, usuario);
 }
 
-export async function eliminarRespuestaLectura(respuestaId: string) {
-  return eliminarComentarioLectura(respuestaId);
+export async function eliminarRespuestaLectura(
+  respuestaId: string,
+  usuario = '',
+) {
+  return eliminarComentarioLectura(respuestaId, usuario);
 }
 
-export async function getConversacionesLibro(libro: string) {
+export async function getConversacionesLibro(libro: string, usuario = '') {
+  const { club } = await getCurrentClubContext(usuario);
   const readings = await prisma.reading.findMany({
     where: {
+      clubId: club.id,
       book: {
         title: libro.trim(),
       },

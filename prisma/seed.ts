@@ -1,4 +1,8 @@
-import { ClubvisionStatus, ReadingStatus } from '@prisma/client';
+import {
+  ClubRole,
+  ClubvisionStatus,
+  ReadingStatus,
+} from '@prisma/client';
 import { prisma } from '../src/prisma.js';
 
 async function main() {
@@ -18,6 +22,29 @@ async function main() {
       name: 'Otra',
       email: 'otra@test.com',
     },
+  });
+
+  const club = await prisma.club.upsert({
+    where: { slug: 'nuestros-gustos-son-cliches' },
+    update: {},
+    create: {
+      name: 'Nuestros gustos son clichés',
+      slug: 'nuestros-gustos-son-cliches',
+      ownerId: cristina.id,
+    },
+  });
+
+  await prisma.clubMember.createMany({
+    data: [
+      { clubId: club.id, userId: cristina.id, role: ClubRole.OWNER },
+      { clubId: club.id, userId: otra.id, role: ClubRole.MEMBER },
+    ],
+    skipDuplicates: true,
+  });
+
+  await prisma.user.updateMany({
+    where: { id: { in: [cristina.id, otra.id] } },
+    data: { activeClubId: club.id },
   });
 
   const genre = await prisma.genre.upsert({
@@ -74,6 +101,7 @@ async function main() {
 
   const clubvision = await prisma.clubvision.create({
     data: {
+      clubId: club.id,
       edition: '2026-07',
       status: ClubvisionStatus.VOTACION,
       title: '🎤 Clubvisión abierta',
@@ -92,10 +120,14 @@ async function main() {
 
 await prisma.clubvisionResult.upsert({
   where: {
-    edition: '2026-07',
+    clubId_edition: {
+      clubId: club.id,
+      edition: '2026-07',
+    },
   },
   update: {},
   create: {
+    clubId: club.id,
     edition: '2026-07',
     winnerBookId: book.id,
     winnerTitle: book.title,

@@ -9,6 +9,13 @@ const DATA_DIR = fs.existsSync(path.join(process.cwd(), 'data'))
   : path.join(process.cwd(), 'ClubLecturaBackend', 'data');
 
 type CsvRow = Record<string, string>;
+const FOUNDER_CLUB_SLUG = 'nuestros-gustos-son-cliches';
+
+async function getFounderClub() {
+  return prisma.club.findUniqueOrThrow({
+    where: { slug: FOUNDER_CLUB_SLUG },
+  });
+}
 
 function readCsv(fileName: string): CsvRow[] {
   const filePath = path.join(DATA_DIR, fileName);
@@ -325,6 +332,7 @@ async function findBookByTitle(title: string) {
 }
 
 async function importClubvisionHistory() {
+  const club = await getFounderClub();
   const rows = readCsv('historial-clubvision.csv');
 
   let count = 0;
@@ -342,7 +350,10 @@ async function importClubvisionHistory() {
 
     await prisma.clubvisionResult.upsert({
       where: {
-        edition,
+        clubId_edition: {
+          clubId: club.id,
+          edition,
+        },
       },
       update: {
         winnerBookId: winnerBook?.id ?? null,
@@ -352,6 +363,7 @@ async function importClubvisionHistory() {
         thirdTitle: thirdTitle || null,
       },
       create: {
+        clubId: club.id,
         edition,
         winnerBookId: winnerBook?.id ?? null,
         winnerTitle,
@@ -389,11 +401,15 @@ function normalizeEdition(value: string): string {
 }
 
 async function getOrCreateCurrentClubvision() {
+  const club = await getFounderClub();
   const edition = getCurrentEdition();
 
   const existing = await prisma.clubvision.findUnique({
     where: {
-      edition,
+      clubId_edition: {
+        clubId: club.id,
+        edition,
+      },
     },
   });
 
@@ -401,6 +417,7 @@ async function getOrCreateCurrentClubvision() {
 
   return prisma.clubvision.create({
     data: {
+      clubId: club.id,
       edition,
       status: 'VOTACION',
       title: '🎤 Clubvisión abierta',
@@ -597,6 +614,7 @@ function parseSheetDate(value: unknown): Date {
 }
 
 async function getOrCreateReadingForComment(bookTitle: string, chapterTitle: string) {
+  const club = await getFounderClub();
   const book = await prisma.book.findFirst({
     where: { title: bookTitle },
   });
@@ -609,6 +627,7 @@ async function getOrCreateReadingForComment(bookTitle: string, chapterTitle: str
   let reading = await prisma.reading.findFirst({
     where: {
       bookId: book.id,
+      clubId: club.id,
       status: 'ACTIVE',
     },
   });
@@ -617,6 +636,7 @@ async function getOrCreateReadingForComment(bookTitle: string, chapterTitle: str
     reading = await prisma.reading.create({
       data: {
         bookId: book.id,
+        clubId: club.id,
         type: 'CLUBVISION',
         status: 'ACTIVE',
         chapters: chapterNumber,

@@ -79,6 +79,11 @@ enum ClubRole {
   MEMBER
 }
 
+enum AuthCodePurpose {
+  ACTIVATE
+  RESET_PASSWORD
+}
+
 //
 // AUTHOR
 //
@@ -220,6 +225,11 @@ model User {
 
   avatarUrl String?
 
+  passwordHash        String?
+  passwordSetAt       DateTime?
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
   createdBooks       Book[]              @relation("CreatedBooks")
   library            Library[]
   readingCompletions ReadingCompletion[]
@@ -241,8 +251,44 @@ model User {
 
   clubvisionVotes ClubvisionVote[]
   moodVotes       ClubMoodVote[]
+  authCodes       AuthCode[]
+  authSessions    AuthSession[]
 
   @@index([activeClubId])
+}
+
+model AuthCode {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  purpose  AuthCodePurpose
+  codeHash String
+  attempts Int             @default(0)
+
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, purpose, createdAt])
+  @@index([expiresAt])
+}
+
+model AuthSession {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  refreshTokenHash String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  lastUsedAt       DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
 }
 
 //
@@ -306,8 +352,8 @@ model ClubMember {
 model ClubMoodVote {
   id String @id @default(cuid())
 
-  clubId String?
-  club   Club?   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  clubId String
+  club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -318,8 +364,8 @@ model ClubMoodVote {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([userId, weekKey])
-  @@index([clubId])
+  @@unique([clubId, userId, weekKey])
+  @@index([clubId, weekKey])
   @@index([weekKey])
 }
 
@@ -409,8 +455,8 @@ model ReadingCompletion {
 model Reading {
   id String @id @default(cuid())
 
-  clubId String?
-  club   Club?   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  clubId String
+  club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
 
   bookId String
   book   Book   @relation(fields: [bookId], references: [id])
@@ -431,7 +477,8 @@ model Reading {
 
   conversations Conversation[]
 
-  @@index([clubId])
+  @@index([clubId, status])
+  @@index([clubId, bookId, status])
 }
 
 model Conversation {
@@ -545,10 +592,10 @@ enum ClubvisionStatus {
 model Clubvision {
   id String @id @default(cuid())
 
-  clubId String?
-  club   Club?   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  clubId String
+  club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
 
-  edition String @unique // yyyy-MM
+  edition String // yyyy-MM
 
   status ClubvisionStatus @default(SIN_DATOS)
 
@@ -568,7 +615,8 @@ model Clubvision {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([clubId])
+  @@unique([clubId, edition])
+  @@index([clubId, status])
 }
 
 model ClubvisionCandidate {
@@ -586,6 +634,7 @@ model ClubvisionCandidate {
   clubvisionVotes ClubvisionVote[]
 
   @@unique([clubvisionId, bookId])
+  @@unique([id, clubvisionId])
   @@index([clubvisionId])
   @@index([bookId])
 }
@@ -600,7 +649,7 @@ model ClubvisionVote {
   user   User   @relation(fields: [userId], references: [id])
 
   candidateId String
-  candidate   ClubvisionCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidate   ClubvisionCandidate @relation(fields: [candidateId, clubvisionId], references: [id, clubvisionId], onDelete: Cascade)
 
   position Int
   points   Int
@@ -616,10 +665,10 @@ model ClubvisionVote {
 model ClubvisionResult {
   id String @id @default(cuid())
 
-  clubId String?
-  club   Club?   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  clubId String
+  club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
 
-  edition String @unique // yyyy-MM
+  edition String // yyyy-MM
 
   winnerBookId String?
   winnerBook   Book?   @relation("ClubvisionWinner", fields: [winnerBookId], references: [id])
@@ -632,6 +681,6 @@ model ClubvisionResult {
 
   createdAt DateTime @default(now())
 
-  @@index([clubId])
+  @@unique([clubId, edition])
   @@index([edition])
 }

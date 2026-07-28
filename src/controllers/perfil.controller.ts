@@ -5,13 +5,14 @@ import {
   actualizarFechasLectura,
   getPerfilUsuario,
 } from '../services/perfil.service.js';
+import { requestUserName } from '../middleware/auth.middleware.js';
 
 export async function handlePerfilUsuario(
   req: Request,
   res: Response,
 ) {
   const data = await getPerfilUsuario(
-    String(req.query.usuario || ''),
+    requestUserName(req, req.query.usuario),
   );
 
   return res.json(data);
@@ -34,8 +35,9 @@ export async function handleActualizarFechasLectura(
       : req.query.resena;
 
   const data = await actualizarFechasLectura({
-    usuario: String(
-      body.usuario ?? req.query.usuario ?? '',
+    usuario: requestUserName(
+      req,
+      body.usuario ?? req.query.usuario,
     ),
     libraryId: String(
       body.libraryId ?? req.query.libraryId ?? '',
@@ -69,8 +71,9 @@ export async function handleActualizarAvatarPerfil(
   const body = req.body ?? {};
 
   const data = await actualizarAvatarPerfil({
-    usuario: String(
-      body.usuario ?? req.query.usuario ?? '',
+    usuario: requestUserName(
+      req,
+      body.usuario ?? req.query.usuario,
     ),
     avatarUrl: String(
       body.avatarUrl ?? req.query.avatarUrl ?? '',

@@ -11,9 +11,12 @@ import {
   editarLibro,
   actualizarProgresoLectura,
 } from '../services/books.service.js';
+import { requestUserName } from '../middleware/auth.middleware.js';
 
 export async function handleLibros(req: Request, res: Response) {
-  const data = await getLibros(String(req.query.usuario || ''));
+  const data = await getLibros(
+    requestUserName(req, req.query.usuario),
+  );
   return res.json(data);
 }
 
@@ -23,7 +26,10 @@ export async function handleActualizarProgresoLectura(
 ) {
   const body = req.body ?? {};
   const data = await actualizarProgresoLectura(
-    String(body.usuario ?? req.query.usuario ?? ''),
+    requestUserName(
+      req,
+      body.usuario ?? req.query.usuario,
+    ),
     String(body.libro ?? req.query.libro ?? ''),
     Number(body.progreso ?? req.query.progreso ?? 0),
     String(body.comentario ?? req.query.comentario ?? ''),
@@ -43,13 +49,19 @@ export async function handleLibrosFinalizados(_req: Request, res: Response) {
 }
 
 export async function handleCrearLibro(req: Request, res: Response) {
-  const data = await crearLibro(req.body ?? {});
+  const data = await crearLibro({
+    ...(req.body ?? {}),
+    usuario: requestUserName(
+      req,
+      req.body?.usuario ?? req.query.usuario,
+    ),
+  });
   return res.json(data);
 }
 
 export async function handleAnadirLibroExistente(req: Request, res: Response) {
   const data = await anadirLibroExistente(
-    String(req.query.usuario || ''),
+    requestUserName(req, req.query.usuario),
     String(req.query.libro || ''),
   );
 
@@ -58,7 +70,7 @@ export async function handleAnadirLibroExistente(req: Request, res: Response) {
 
 export async function handleIniciarLectura(req: Request, res: Response) {
   const data = await iniciarLectura(
-    String(req.query.usuario || ''),
+    requestUserName(req, req.query.usuario),
     String(req.query.libro || ''),
   );
 
@@ -67,7 +79,7 @@ export async function handleIniciarLectura(req: Request, res: Response) {
 
 export async function handleActualizarValoracion(req: Request, res: Response) {
   const data = await actualizarValoracion(
-    String(req.query.usuario || ''),
+    requestUserName(req, req.query.usuario),
     String(req.query.libro || ''),
     String(req.query.valoracion || ''),
   );
@@ -79,7 +91,7 @@ export async function handleActualizarEstado(req: Request, res: Response) {
   const body = req.body ?? {};
 
 const data = await actualizarEstado(
-  String(body.usuario || req.query.usuario || ''),
+  requestUserName(req, body.usuario || req.query.usuario),
   String(body.libro || req.query.libro || ''),
   String(body.estado || req.query.estado || ''),
   String(body.valoracion || req.query.valoracion || ''),
@@ -92,8 +104,9 @@ const data = await actualizarEstado(
 }
 
 export async function handleQuitarLibroPendientes(req: Request, res: Response) {
-  const usuario = String(
-    req.body?.usuario ?? req.query.usuario ?? '',
+  const usuario = requestUserName(
+    req,
+    req.body?.usuario ?? req.query.usuario,
   );
 
   const libro = String(
@@ -114,6 +127,10 @@ export async function handleEditarLibro(
 ) {
   const data = await editarLibro({
     ...(req.body ?? {}),
+    usuario: requestUserName(
+      req,
+      req.body?.usuario ?? req.query.usuario,
+    ),
     bookId:
       req.body?.bookId ??
       req.query.bookId ??
