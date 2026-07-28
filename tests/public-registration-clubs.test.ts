@@ -62,3 +62,8 @@ test('el dashboard general funciona sin exigir un club activo', () => {
   assert.match(generalDashboard, /tendencias/);
   assert.doesNotMatch(generalDashboard, /getCurrentClubContext/);
 });
+
+test('la comunidad cuenta cuentas nuevas y lectoras históricas con club', () => {
+  assert.match(generalDashboard, /passwordHash: \{ not: null \}/);
+  assert.match(generalDashboard, /clubMemberships: \{ some: \{\} \}/);
+});

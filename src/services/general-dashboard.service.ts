@@ -83,7 +83,14 @@ export async function getGeneralDashboard(userId: string) {
       }),
       Promise.all([
         prisma.club.count(),
-        prisma.user.count({ where: { passwordHash: { not: null } } }),
+        prisma.user.count({
+          where: {
+            OR: [
+              { passwordHash: { not: null } },
+              { clubMemberships: { some: {} } },
+            ],
+          },
+        }),
         prisma.library.count({
           where: {
             status: {
