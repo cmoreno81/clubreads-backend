@@ -232,11 +232,17 @@ model User {
   ownedClubs      Club[]       @relation("OwnedClubs")
   clubMemberships ClubMember[]
 
+  activeClubId String?
+
+  activeClub Club? @relation("ActiveClub", fields: [activeClubId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   clubvisionVotes ClubvisionVote[]
   moodVotes       ClubMoodVote[]
+
+  @@index([activeClubId])
 }
 
 //
@@ -262,6 +268,8 @@ model Club {
   owner   User   @relation("OwnedClubs", fields: [ownerId], references: [id])
 
   members ClubMember[]
+
+  activeUsers User[] @relation("ActiveClub")
 
   readings          Reading[]
   clubvisions       Clubvision[]
