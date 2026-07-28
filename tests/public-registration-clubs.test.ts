@@ -13,6 +13,9 @@ const context = source('../src/services/club-context.service.ts');
 const router = source('../src/routes/api.router.ts');
 const books = source('../src/services/books.service.ts');
 const profile = source('../src/services/perfil.service.ts');
+const generalDashboard = source(
+  '../src/services/general-dashboard.service.ts',
+);
 
 test('el registro público verifica el correo antes de emitir sesión', () => {
   assert.match(schema, /enum AuthCodePurpose \{[\s\S]*REGISTER/);
@@ -50,4 +53,12 @@ test('los perfiles solo se resuelven dentro del club activo', () => {
     profile,
     /clubMemberships: \{ some: \{ clubId: club\.id \} \}/,
   );
+});
+
+test('el dashboard general funciona sin exigir un club activo', () => {
+  assert.match(generalDashboard, /where: \{ id: userId \}/);
+  assert.match(generalDashboard, /rachaMeses/);
+  assert.match(generalDashboard, /calendario/);
+  assert.match(generalDashboard, /tendencias/);
+  assert.doesNotMatch(generalDashboard, /getCurrentClubContext/);
 });
