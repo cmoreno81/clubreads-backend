@@ -81,6 +81,7 @@ import {
   handleMyClubs,
   handleSelectClub,
 } from '../controllers/clubs.controller.js';
+import { handleGeneralDashboard } from '../controllers/general-dashboard.controller.js';
 
 export const apiRouter = Router();
 
@@ -192,6 +193,12 @@ async function handleApi(req: Request, res: Response) {
           return requireAuthentication(req, res, () => {});
         }
         return handleMyClubs(req, res);
+
+      case 'dashboardGeneral':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleGeneralDashboard(req, res);
 
       case 'crearClub':
         if (!req.auth) {
