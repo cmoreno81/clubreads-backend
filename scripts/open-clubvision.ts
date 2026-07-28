@@ -4,20 +4,24 @@ import { openScheduledClubvision } from '../src/services/clubvision.service.js';
 async function main() {
   await prisma.$queryRaw`SELECT 1`;
 
-  const clubvision = await openScheduledClubvision();
+  const clubvisions = (await openScheduledClubvision()).filter(
+    (clubvision) => clubvision !== null,
+  );
 
-  if (!clubvision) {
+  if (clubvisions.length === 0) {
     console.log('Clubvisión: no hay una edición que sincronizar');
     return;
   }
 
-  const candidateCount = await prisma.clubvisionCandidate.count({
-    where: { clubvisionId: clubvision.id },
-  });
+  for (const clubvision of clubvisions) {
+    const candidateCount = await prisma.clubvisionCandidate.count({
+      where: { clubvisionId: clubvision.id },
+    });
 
-  console.log(
-    `Clubvisión ${clubvision.edition} sincronizada con ${candidateCount} candidatas`,
-  );
+    console.log(
+      `Clubvisión ${clubvision.edition} sincronizada con ${candidateCount} candidatas`,
+    );
+  }
 }
 
 main()

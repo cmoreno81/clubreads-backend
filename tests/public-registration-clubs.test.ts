@@ -16,6 +16,7 @@ const profile = source('../src/services/perfil.service.ts');
 const generalDashboard = source(
   '../src/services/general-dashboard.service.ts',
 );
+const readings = source('../src/services/readings.service.ts');
 
 test('el registro público verifica el correo antes de emitir sesión', () => {
   assert.match(schema, /enum AuthCodePurpose \{[\s\S]*REGISTER/);
@@ -66,4 +67,15 @@ test('el dashboard general funciona sin exigir un club activo', () => {
 test('la comunidad cuenta cuentas nuevas y lectoras históricas con club', () => {
   assert.match(generalDashboard, /passwordHash: \{ not: null \}/);
   assert.match(generalDashboard, /clubMemberships: \{ some: \{\} \}/);
+});
+
+test('cualquier integrante puede configurar la lectura oficial del club', () => {
+  assert.match(
+    readings,
+    /const \{ club \} = legacyRequest[\s\S]*: await requireClubMember\(data\.usuario\)/,
+  );
+  assert.doesNotMatch(
+    readings,
+    /requestedType === ReadingType\.CLUBVISION[\s\S]*requireClubRole/,
+  );
 });
