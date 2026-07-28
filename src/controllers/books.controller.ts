@@ -43,8 +43,10 @@ export async function handleActualizarProgresoLectura(
   return res.json(data);
 }
 
-export async function handleLibrosFinalizados(_req: Request, res: Response) {
-  const data = await getLibrosFinalizados();
+export async function handleLibrosFinalizados(req: Request, res: Response) {
+  const data = await getLibrosFinalizados(
+    requestUserName(req, req.query.usuario),
+  );
   return res.json(data);
 }
 

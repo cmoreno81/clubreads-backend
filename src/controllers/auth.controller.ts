@@ -2,11 +2,13 @@ import type { Request, Response } from 'express';
 
 import {
   activateAccount,
+  completeRegistration,
   changePassword,
   login,
   logout,
   refreshSession,
   requestActivationCode,
+  requestRegistrationCode,
   requestPasswordReset,
   resetPassword,
 } from '../services/auth.service.js';
@@ -30,6 +32,31 @@ export async function handleActivateAccount(
 ) {
   return res.json(
     await activateAccount(
+      value(req, 'email'),
+      value(req, 'codigo'),
+      value(req, 'password'),
+    ),
+  );
+}
+
+export async function handleRequestRegistration(
+  req: Request,
+  res: Response,
+) {
+  return res.json(
+    await requestRegistrationCode(
+      value(req, 'nombre'),
+      value(req, 'email'),
+    ),
+  );
+}
+
+export async function handleCompleteRegistration(
+  req: Request,
+  res: Response,
+) {
+  return res.json(
+    await completeRegistration(
       value(req, 'email'),
       value(req, 'codigo'),
       value(req, 'password'),

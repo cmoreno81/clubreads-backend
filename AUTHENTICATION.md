@@ -24,6 +24,36 @@ autenticación solo aceptan `POST` con cuerpo JSON.
 La segunda acción devuelve `accessToken`, `refreshToken` y los datos de la
 usuaria. Las cuentas, bibliotecas e historiales existentes no se recrean.
 
+## Registro de una cuenta nueva
+
+1. `solicitarRegistro`
+
+   ```json
+   { "nombre": "Nueva lectora", "email": "usuaria@example.com" }
+   ```
+
+2. `completarRegistro`
+
+   ```json
+   {
+     "email": "usuaria@example.com",
+     "codigo": "123456",
+     "password": "una contraseña de 10 o más caracteres"
+   }
+   ```
+
+La cuenta se crea sin pertenecer a ningún club. Después puede usar las acciones
+autenticadas `crearClub` o `unirseClub`.
+
+## Clubes
+
+- `misClubes` (`GET`) devuelve las membresías y el club activo.
+- `crearClub` (`POST`): `{ "nombre": "...", "descripcion": "..." }`.
+- `unirseClub` (`POST`): `{ "codigo": "..." }`.
+- `seleccionarClub` (`POST`): `{ "clubId": "..." }`.
+- `invitacionClub` (`POST`): `{ "clubId": "..." }`, solo para propietarias y
+  administradoras.
+
 ## Entrada habitual
 
 `login`

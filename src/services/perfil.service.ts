@@ -9,6 +9,7 @@ import {
   subirAvatarDesdeBase64,
   subirAvatarDesdeUrl,
 } from './cloudinary.service.js';
+import { getCurrentClubContext } from './club-context.service.js';
 
 function fechaToFlutter(fecha?: Date | null) {
   if (!fecha) return '';
@@ -60,7 +61,10 @@ function parseFecha(
   return fecha;
 }
 
-export async function getPerfilUsuario(usuario: string) {
+export async function getPerfilUsuario(
+  usuario: string,
+  solicitante = usuario,
+) {
   const nombre = usuario.trim();
 
   if (!nombre) {
@@ -70,9 +74,11 @@ export async function getPerfilUsuario(usuario: string) {
     };
   }
 
-  const user = await prisma.user.findUnique({
+  const { club } = await getCurrentClubContext(solicitante);
+  const user = await prisma.user.findFirst({
     where: {
       name: nombre,
+      clubMemberships: { some: { clubId: club.id } },
     },
   });
 
