@@ -68,17 +68,6 @@ enum ReadingSessionStatus {
   FINISHED
 }
 
-enum ClubVisibility {
-  PRIVATE
-  PUBLIC
-}
-
-enum ClubRole {
-  OWNER
-  ADMIN
-  MEMBER
-}
-
 //
 // AUTHOR
 //
@@ -229,9 +218,6 @@ model User {
 
   conversationReads ConversationRead[]
 
-  ownedClubs      Club[]       @relation("OwnedClubs")
-  clubMemberships ClubMember[]
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -239,67 +225,8 @@ model User {
   moodVotes       ClubMoodVote[]
 }
 
-//
-// CLUB
-//
-
-model Club {
-  id String @id @default(cuid())
-
-  name String
-
-  slug String @unique
-
-  description String?
-
-  avatarUrl String?
-
-  visibility ClubVisibility @default(PRIVATE)
-
-  inviteCode String? @unique
-
-  ownerId String
-  owner   User   @relation("OwnedClubs", fields: [ownerId], references: [id])
-
-  members ClubMember[]
-
-  readings          Reading[]
-  clubvisions       Clubvision[]
-  clubvisionResults ClubvisionResult[]
-  moodVotes         ClubMoodVote[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([ownerId])
-  @@index([visibility])
-}
-
-//
-// CLUB MEMBER
-//
-
-model ClubMember {
-  clubId String
-  club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  role ClubRole @default(MEMBER)
-
-  joinedAt DateTime @default(now())
-
-  @@id([clubId, userId])
-  @@index([userId])
-  @@index([clubId, role])
-}
-
 model ClubMoodVote {
   id String @id @default(cuid())
-
-  clubId String?
-  club   Club?   @relation(fields: [clubId], references: [id], onDelete: Cascade)
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -311,7 +238,6 @@ model ClubMoodVote {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, weekKey])
-  @@index([clubId])
   @@index([weekKey])
 }
 
@@ -401,9 +327,6 @@ model ReadingCompletion {
 model Reading {
   id String @id @default(cuid())
 
-  clubId String?
-  club   Club?   @relation(fields: [clubId], references: [id], onDelete: Cascade)
-
   bookId String
   book   Book   @relation(fields: [bookId], references: [id])
 
@@ -422,8 +345,6 @@ model Reading {
   finishedAt DateTime?
 
   conversations Conversation[]
-
-  @@index([clubId])
 }
 
 model Conversation {
@@ -537,9 +458,6 @@ enum ClubvisionStatus {
 model Clubvision {
   id String @id @default(cuid())
 
-  clubId String?
-  club   Club?   @relation(fields: [clubId], references: [id], onDelete: Cascade)
-
   edition String @unique // yyyy-MM
 
   status ClubvisionStatus @default(SIN_DATOS)
@@ -559,8 +477,6 @@ model Clubvision {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  @@index([clubId])
 }
 
 model ClubvisionCandidate {
@@ -608,9 +524,6 @@ model ClubvisionVote {
 model ClubvisionResult {
   id String @id @default(cuid())
 
-  clubId String?
-  club   Club?   @relation(fields: [clubId], references: [id], onDelete: Cascade)
-
   edition String @unique // yyyy-MM
 
   winnerBookId String?
@@ -624,6 +537,5 @@ model ClubvisionResult {
 
   createdAt DateTime @default(now())
 
-  @@index([clubId])
   @@index([edition])
 }

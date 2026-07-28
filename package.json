@@ -14,7 +14,9 @@
     "audit:details": "tsx scripts/audit-details.ts",
     "clubvision:open": "tsx scripts/open-clubvision.ts",
     "covers:preview": "tsx scripts/find-book-covers.ts",
-    "covers:apply": "tsx scripts/find-book-covers.ts --apply"
+    "covers:apply": "tsx scripts/find-book-covers.ts --apply",
+    "seed:founder": "tsx scripts/seedFounderClub.ts",
+    "backfill:club": "tsx scripts/backfill-club-context.ts"
   },
   "keywords": [],
   "author": "",

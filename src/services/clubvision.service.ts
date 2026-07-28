@@ -1,5 +1,6 @@
 import { ReadingStatus } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { getCurrentClubContext } from './club-context.service.js';
 
 const POINTS_BY_POSITION = [12, 10, 8, 7, 6] as const;
 
@@ -43,6 +44,7 @@ function getCurrentEdition() {
 }
 
 async function getOrCreateCurrentClubvision() {
+  const { club } = await getCurrentClubContext();
   const { edition, day } = getClubvisionCalendar();
   const existing = await prisma.clubvision.findUnique({
     where: { edition },
@@ -55,6 +57,7 @@ async function getOrCreateCurrentClubvision() {
       where: { edition },
       update: {},
       create: {
+        clubId: club.id,
         edition,
         status: 'VOTACION',
         title: '🎤 Clubvisión abierta',
