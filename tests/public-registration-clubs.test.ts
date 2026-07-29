@@ -65,6 +65,8 @@ test('el dashboard general funciona sin exigir un club activo', () => {
   assert.match(generalDashboard, /prisma\.library\.groupBy/);
   assert.match(generalDashboard, /readingFormat: \{ not: null \}/);
   assert.doesNotMatch(generalDashboard, /getCurrentClubContext/);
+  assert.match(profile, /seriesPersonales/);
+  assert.match(profile, /siguiente: reading \?\? next/);
 });
 
 test('la comunidad cuenta cuentas nuevas y lectoras históricas con club', () => {
