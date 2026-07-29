@@ -83,6 +83,11 @@ import {
   handleSelectClub,
 } from '../controllers/clubs.controller.js';
 import { handleGeneralDashboard } from '../controllers/general-dashboard.controller.js';
+import {
+  handleGeneralCatalog,
+  handleImportCatalogBook,
+  handleSearchGeneralCatalog,
+} from '../controllers/catalog.controller.js';
 
 export const apiRouter = Router();
 
@@ -104,6 +109,7 @@ const POST_ONLY_ACTIONS = new Set([
   'unirseClub',
   'seleccionarClub',
   'invitacionClub',
+  'importarLibroCatalogo',
 ]);
 
 async function handleApi(req: Request, res: Response) {
@@ -200,6 +206,24 @@ async function handleApi(req: Request, res: Response) {
           return requireAuthentication(req, res, () => {});
         }
         return handleGeneralDashboard(req, res);
+
+      case 'catalogoGeneral':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleGeneralCatalog(req, res);
+
+      case 'buscarCatalogoGeneral':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleSearchGeneralCatalog(req, res);
+
+      case 'importarLibroCatalogo':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleImportCatalogBook(req, res);
 
       case 'crearClub':
         if (!req.auth) {
