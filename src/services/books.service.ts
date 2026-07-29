@@ -113,6 +113,43 @@ function normalizarTitulo(value: string) {
     .replace(/\s+/g, ' ');
 }
 
+function distanciaEdicion(left: string, right: string) {
+  const previous = Array.from(
+    { length: right.length + 1 },
+    (_, index) => index,
+  );
+  for (let i = 1; i <= left.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= right.length; j += 1) {
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + (left[i - 1] === right[j - 1] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+}
+
+async function buscarOCrearSaga(nombre: string, genreId: string) {
+  const normalizado = normalizarTitulo(nombre);
+  const existentes = await prisma.series.findMany();
+  const coincidencia = existentes.find((series) => {
+    const candidata = normalizarTitulo(series.name);
+    if (candidata === normalizado) return true;
+    return (
+      normalizado.length >= 8 &&
+      candidata.split(' ').length === normalizado.split(' ').length &&
+      distanciaEdicion(candidata, normalizado) <= 1
+    );
+  });
+  if (coincidencia) return coincidencia;
+  return prisma.series.create({
+    data: { name: nombre, genreId },
+  });
+}
+
 /**
  * Busca un libro sin depender exactamente de mayúsculas,
  * tildes o espacios.
@@ -1018,21 +1055,7 @@ export async function crearLibro(data: any) {
   });
 
   const series = seriesName
-    ? await prisma.series.upsert({
-        where: {
-          name: seriesName,
-        },
-
-        /*
-         * No alteramos una saga existente.
-         */
-        update: {},
-
-        create: {
-          name: seriesName,
-          genreId: genre.id,
-        },
-      })
+    ? await buscarOCrearSaga(seriesName, genre.id)
     : null;
 
 
@@ -1418,16 +1441,7 @@ if (duplicado) {
 
   const series =
     !standalone && seriesName
-      ? await prisma.series.upsert({
-          where: {
-            name: seriesName,
-          },
-          update: {},
-          create: {
-            name: seriesName,
-            genreId: genre.id,
-          },
-        })
+      ? await buscarOCrearSaga(seriesName, genre.id)
       : null;
 
 const actualizado = await prisma.book.update({

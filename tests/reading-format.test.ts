@@ -9,6 +9,10 @@ const migration = readFileSync(
 );
 const service = readFileSync('src/services/books.service.ts', 'utf8');
 const routes = readFileSync('src/routes/api.router.ts', 'utf8');
+const seriesMerge = readFileSync(
+  'prisma/migrations/20260729144500_merge_windy_city_series/migration.sql',
+  'utf8',
+);
 
 test('el formato es personal y cada finalización conserva una copia', () => {
   assert.match(schema, /model Library[\s\S]*readingFormat ReadingFormat\?/);
@@ -31,4 +35,11 @@ test('las preferencias se actualizan sin modificar el libro compartido', () => {
 
 test('los libros finalizados indican si pertenecen a la sesión actual', () => {
   assert.match(service, /yaLoTengo: item\.userId === user\?\.id/);
+});
+
+test('las sagas toleran pequeñas erratas y Windy City queda unificada', () => {
+  assert.match(service, /distanciaEdicion/);
+  assert.match(service, /buscarOCrearSaga/);
+  assert.match(seriesMerge, /'windy city', 'wyndy city'/);
+  assert.match(seriesMerge, /UPDATE "Book"/);
 });
