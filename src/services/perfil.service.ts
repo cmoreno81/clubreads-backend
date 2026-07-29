@@ -351,7 +351,6 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         siguiente: reading ?? next,
       };
     })
-    .filter(({ leidos }) => leidos > 0)
     .sort((left, right) => {
       const order: Record<string, number> = {
         EN_CURSO: 0,
@@ -381,7 +380,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
       likesRecibidos,
       clubes: user._count.clubMemberships,
       sagasAbiertas: sagas.filter(
-        ({ estado }) => estado !== 'COMPLETADA',
+        ({ estado, leidos }) => leidos > 0 && estado !== 'COMPLETADA',
       ).length,
     },
 
