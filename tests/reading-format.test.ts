@@ -28,3 +28,7 @@ test('las preferencias se actualizan sin modificar el libro compartido', () => {
   assert.match(routes, /case 'actualizarPreferenciasLibro'/);
   assert.match(service, /tx\.library|prisma\.library\.update/);
 });
+
+test('los libros finalizados indican si pertenecen a la sesión actual', () => {
+  assert.match(service, /yaLoTengo: item\.userId === user\?\.id/);
+});
