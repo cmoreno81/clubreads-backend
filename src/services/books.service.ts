@@ -131,7 +131,7 @@ async function buscarLibroPorTitulo(
 
 export async function getLibros(usuario: string) {
   const usuarioActual = usuario.trim();
-  const { club } = await getCurrentClubContext(usuarioActual);
+  const { club, user } = await getCurrentClubContext(usuarioActual);
 
   const library = await prisma.library.findMany({
     where: {
@@ -173,10 +173,7 @@ export async function getLibros(usuario: string) {
     startedAt: item.startedAt?.toISOString() ?? '',
     pausedAt: item.pausedAt?.toISOString() ?? '',
     pauseReason: item.pauseReason ?? '',
-    yaLoTengo:
-      usuarioActual !== '' &&
-      item.user.name.trim().toLowerCase() ===
-        usuarioActual.toLowerCase(),
+    yaLoTengo: item.userId === user?.id,
 
     goodreads: item.book.goodreadsUrl ?? '',
     coverUrl: item.book.coverUrl ?? '',
