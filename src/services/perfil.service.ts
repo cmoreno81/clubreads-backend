@@ -81,6 +81,11 @@ export async function getPerfilUsuario(
       name: nombre,
       clubMemberships: { some: { clubId: club.id } },
     },
+    include: {
+      _count: {
+        select: { clubMemberships: true },
+      },
+    },
   });
 
   if (!user) {
@@ -346,6 +351,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         siguiente: reading ?? next,
       };
     })
+    .filter(({ leidos }) => leidos > 0)
     .sort((left, right) => {
       const order: Record<string, number> = {
         EN_CURSO: 0,
@@ -373,6 +379,10 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
       media,
       comentarios: comentarios.length,
       likesRecibidos,
+      clubes: user._count.clubMemberships,
+      sagasAbiertas: sagas.filter(
+        ({ estado }) => estado !== 'COMPLETADA',
+      ).length,
     },
 
     leyendo,
