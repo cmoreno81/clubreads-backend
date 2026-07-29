@@ -19,6 +19,17 @@ type ExternalVolume = {
   };
 };
 
+type OpenLibraryDoc = {
+  key?: unknown;
+  title?: unknown;
+  author_name?: unknown;
+  isbn?: unknown;
+  cover_i?: unknown;
+  first_publish_year?: unknown;
+  number_of_pages_median?: unknown;
+  subject?: unknown;
+};
+
 const bookInclude = {
   author: true,
   genre: true,
@@ -130,6 +141,60 @@ function externalBook(item: ExternalVolume) {
   };
 }
 
+function openLibraryBook(item: OpenLibraryDoc) {
+  const isbns = stringList(item.isbn);
+  const isbn =
+    isbns.find((value) => value.replace(/[^0-9Xx]/g, '').length === 13) ??
+    isbns[0] ??
+    '';
+  const coverId = Number(item.cover_i);
+  return {
+    id: String(item.key ?? '').replace(/^\/works\//, ''),
+    origen: 'OPENLIBRARY',
+    titulo: String(item.title ?? '').trim(),
+    autores: stringList(item.author_name),
+    coverUrl: Number.isInteger(coverId) && coverId > 0
+      ? `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`
+      : '',
+    genero: stringList(item.subject)[0] ?? 'Sin género',
+    isbn,
+    paginas: Number.isInteger(item.number_of_pages_median)
+      ? item.number_of_pages_median
+      : null,
+    anioPublicacion: Number.isInteger(item.first_publish_year)
+      ? item.first_publish_year
+      : null,
+    enMiBiblioteca: false,
+    estado: '',
+  };
+}
+
+async function searchOpenLibrary(query: string) {
+  try {
+    const url = new URL('https://openlibrary.org/search.json');
+    url.searchParams.set('q', query);
+    url.searchParams.set('limit', '20');
+    url.searchParams.set(
+      'fields',
+      'key,title,author_name,isbn,cover_i,first_publish_year,number_of_pages_median,subject',
+    );
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'ClubReads/1.0 (book catalog search)',
+      },
+    });
+    if (!response.ok) return [];
+    const payload = await response.json() as { docs?: OpenLibraryDoc[] };
+    return (payload.docs ?? [])
+      .map(openLibraryBook)
+      .filter((book) => book.id && book.titulo);
+  } catch {
+    return [];
+  }
+}
+
 async function authenticatedUser(userName: string) {
   const user = await prisma.user.findUnique({
     where: { name: userName.trim() },
@@ -167,7 +232,8 @@ export async function searchGeneralCatalog(userName: string, rawQuery: string) {
     take: 20,
   });
 
-  let external: ReturnType<typeof externalBook>[] = [];
+  let external: Array<ReturnType<typeof externalBook> | ReturnType<typeof openLibraryBook>> = [];
+  let googleAvailable = false;
   try {
     const url = new URL('https://www.googleapis.com/books/v1/volumes');
     url.searchParams.set('q', query);
@@ -181,6 +247,7 @@ export async function searchGeneralCatalog(userName: string, rawQuery: string) {
       headers: { Accept: 'application/json' },
     });
     if (response.ok) {
+      googleAvailable = true;
       const payload = await response.json() as { items?: ExternalVolume[] };
       external = (payload.items ?? [])
         .map(externalBook)
@@ -188,6 +255,9 @@ export async function searchGeneralCatalog(userName: string, rawQuery: string) {
     }
   } catch {
     // La búsqueda local sigue disponible si el proveedor externo no responde.
+  }
+  if (!googleAvailable || external.length === 0) {
+    external = await searchOpenLibrary(query);
   }
 
   const localItems = local.map((book) => localBook(book, user.id));
@@ -219,7 +289,7 @@ export async function importCatalogBook(
   const title = String(data.titulo ?? '').trim().replace(/\s+/g, ' ');
   const authors = stringList(data.autores);
   const isbn = String(data.isbn ?? '').trim().replace(/[^0-9Xx]/g, '');
-  if (!title || !['CLUBREADS', 'GOOGLE'].includes(source)) {
+  if (!title || !['CLUBREADS', 'GOOGLE', 'OPENLIBRARY'].includes(source)) {
     return { ok: false, mensaje: 'El libro seleccionado no es válido' };
   }
 
@@ -241,7 +311,7 @@ export async function importCatalogBook(
     ) ?? null;
   }
 
-  if (!book && source === 'GOOGLE') {
+  if (!book && source !== 'CLUBREADS') {
     const genreName = String(data.genero ?? '').trim() || 'Sin género';
     const authorName = authors[0] || 'Autor desconocido';
     const [genre, author] = await Promise.all([
