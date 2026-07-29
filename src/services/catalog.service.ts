@@ -444,14 +444,17 @@ export async function addSeriesCatalogVolume(
 
   const resolved = await resolveCatalogBook(user.id, data);
   if (!resolved.ok) return resolved;
-  const occupied = await prisma.book.findFirst({
+  const seriesBooks = await prisma.book.findMany({
     where: {
       seriesId: series.id,
-      seriesOrder: order,
       id: { not: resolved.book.id },
       deletedAt: null,
     },
   });
+  const requestedPosition = seriesPosition(order);
+  const occupied = seriesBooks.find(
+    (item) => seriesPosition(item.seriesOrder) === requestedPosition,
+  );
   if (occupied) {
     return {
       ok: false,
@@ -472,7 +475,7 @@ export async function addSeriesCatalogVolume(
     select: { seriesOrder: true },
   });
   const highestOrder = knownOrders.reduce((highest, item) => {
-    const value = Number.parseFloat(item.seriesOrder ?? '');
+    const value = seriesPosition(item.seriesOrder);
     return Number.isFinite(value) ? Math.max(highest, Math.ceil(value)) : highest;
   }, 0);
   if ((series.totalBooks ?? 0) < highestOrder) {
@@ -504,14 +507,17 @@ export async function updateSeriesVolumeOrder(
   if (!book?.seriesId) {
     return { ok: false, mensaje: 'El libro no pertenece a una saga' };
   }
-  const occupied = await prisma.book.findFirst({
+  const seriesBooks = await prisma.book.findMany({
     where: {
       seriesId: book.seriesId,
-      seriesOrder: order,
       id: { not: book.id },
       deletedAt: null,
     },
   });
+  const requestedPosition = seriesPosition(order);
+  const occupied = seriesBooks.find(
+    (item) => seriesPosition(item.seriesOrder) === requestedPosition,
+  );
   if (occupied) {
     return {
       ok: false,
@@ -527,4 +533,11 @@ export async function updateSeriesVolumeOrder(
     ok: true,
     mensaje: 'Número de volumen actualizado',
   };
+}
+
+function seriesPosition(value: string | null) {
+  const text = value?.trim().replace(',', '.') ?? '';
+  const fraction = /^(\d+)\s*(?:\/|de)\s*(\d+)$/i.exec(text);
+  const parsed = Number.parseFloat(fraction?.[1] ?? text);
+  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
 }

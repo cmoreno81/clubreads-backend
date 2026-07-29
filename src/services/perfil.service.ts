@@ -299,6 +299,22 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
     const parsed = Number.parseFloat(value?.replace(',', '.') ?? '');
     return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
   };
+  const datosNumeroSaga = (value: string | null) => {
+    const text = value?.trim() ?? '';
+    const fraction = /^(\d+)\s*(?:\/|de)\s*(\d+)$/i.exec(text);
+    if (fraction) {
+      return {
+        posicion: Number(fraction[1]),
+        total: Number(fraction[2]),
+      };
+    }
+    const parsed = numeroSaga(value);
+    return {
+      posicion:
+        parsed === Number.MAX_SAFE_INTEGER ? null : Math.ceil(parsed),
+      total: null,
+    };
+  };
 
   const sagas = [...seriesPersonales.values()]
     .map((series) => {
@@ -319,7 +335,23 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
           preferredBooks.set(key, book);
         }
       }
-      const books = [...preferredBooks.values()].sort((left, right) => {
+      const booksByPosition = new Map<
+        string,
+        (typeof series.books)[number]
+      >();
+      for (const book of preferredBooks.values()) {
+        const position = datosNumeroSaga(book.seriesOrder).posicion;
+        const key = position == null ? `book:${book.id}` : `position:${position}`;
+        const current = booksByPosition.get(key);
+        if (
+          !current ||
+          (bibliotecaPorId.has(book.id) && !bibliotecaPorId.has(current.id)) ||
+          (!current.coverUrl && Boolean(book.coverUrl))
+        ) {
+          booksByPosition.set(key, book);
+        }
+      }
+      const books = [...booksByPosition.values()].sort((left, right) => {
         const byOrder =
           numeroSaga(left.seriesOrder) - numeroSaga(right.seriesOrder);
         return byOrder !== 0
@@ -340,6 +372,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
           bookId: book.id,
           titulo: book.title,
           numero: book.seriesOrder ?? '',
+          posicion: datosNumeroSaga(book.seriesOrder).posicion,
           coverUrl: book.coverUrl ?? '',
           estado: status,
         };
@@ -352,10 +385,16 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
           ? Math.max(highest, Math.ceil(value))
           : highest;
       }, 0);
+      const declaredInOrders = books.reduce(
+        (highest, book) =>
+          Math.max(highest, datosNumeroSaga(book.seriesOrder).total ?? 0),
+        0,
+      );
       const knownTotal = Math.max(
         series.totalBooks ?? 0,
         books.length,
         highestOrder,
+        declaredInOrders,
       );
       const isComplete =
         series.totalBooks != null && read >= knownTotal;
