@@ -28,6 +28,7 @@ export async function getGeneralDashboard(userId: string) {
     popularGroups,
     totals,
     personalLibrary,
+    seriesLibrary,
     communityFormats,
   ] =
     await Promise.all([
@@ -119,6 +120,26 @@ export async function getGeneralDashboard(userId: string) {
         },
         orderBy: { updatedAt: 'desc' },
       }),
+      prisma.library.findMany({
+        where: {
+          userId,
+          book: { seriesId: { not: null } },
+        },
+        include: {
+          book: {
+            include: {
+              series: {
+                include: {
+                  books: {
+                    where: { deletedAt: null },
+                    orderBy: { seriesOrder: 'asc' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
       prisma.library.groupBy({
         by: ['readingFormat'],
         where: { readingFormat: { not: null } },
@@ -135,6 +156,85 @@ export async function getGeneralDashboard(userId: string) {
     popularGroups.map((item) => [item.bookId, item._count.userId]),
   );
   const months = new Set(completions.map(({ finishedAt }) => monthKey(finishedAt)));
+  const completedBookIds = new Set(completions.map((item) => item.bookId));
+  const libraryByBookId = new Map(
+    seriesLibrary.map((item) => [item.bookId, item]),
+  );
+  const personalSeries = new Map<
+    string,
+    NonNullable<(typeof seriesLibrary)[number]['book']['series']>
+  >();
+  for (const item of seriesLibrary) {
+    if (item.book.series) {
+      personalSeries.set(item.book.series.id, item.book.series);
+    }
+  }
+  const seriesNumber = (value: string | null) => {
+    const text = value?.trim().replace(',', '.') ?? '';
+    const fraction = /^(\d+)\s*(?:\/|de)\s*(\d+)$/i.exec(text);
+    const position = Number.parseFloat(fraction?.[1] ?? text);
+    const total = fraction ? Number(fraction[2]) : null;
+    return {
+      position: Number.isFinite(position)
+        ? position
+        : Number.MAX_SAFE_INTEGER,
+      total,
+    };
+  };
+  const openSeries = [...personalSeries.values()]
+    .map((series) => {
+      const byPosition = new Map<number, (typeof series.books)[number]>();
+      for (const book of series.books) {
+        const position = seriesNumber(book.seriesOrder).position;
+        const current = byPosition.get(position);
+        if (
+          !current ||
+          (libraryByBookId.has(book.id) && !libraryByBookId.has(current.id))
+        ) {
+          byPosition.set(position, book);
+        }
+      }
+      const books = [...byPosition.values()].sort(
+        (left, right) =>
+          seriesNumber(left.seriesOrder).position -
+          seriesNumber(right.seriesOrder).position,
+      );
+      const read = books.filter((book) => completedBookIds.has(book.id)).length;
+      const declaredTotal = books.reduce(
+        (highest, book) =>
+          Math.max(highest, seriesNumber(book.seriesOrder).total ?? 0),
+        0,
+      );
+      const total = Math.max(
+        series.totalBooks ?? 0,
+        books.length,
+        declaredTotal,
+        ...books.map((book) =>
+          Math.ceil(seriesNumber(book.seriesOrder).position ===
+              Number.MAX_SAFE_INTEGER
+            ? 0
+            : seriesNumber(book.seriesOrder).position),
+        ),
+      );
+      const next = books.find((book) => !completedBookIds.has(book.id)) ?? null;
+      return {
+        id: series.id,
+        nombre: series.name,
+        leidos: read,
+        total,
+        siguiente: next
+          ? {
+              id: next.id,
+              titulo: next.title,
+              coverUrl: next.coverUrl ?? '',
+              enMiBiblioteca: libraryByBookId.has(next.id),
+            }
+          : null,
+      };
+    })
+    .filter((series) => series.leidos > 0 && series.leidos < series.total)
+    .sort((left, right) => right.leidos - left.leidos)
+    .slice(0, 6);
   let streak = 0;
   const cursor = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
@@ -217,11 +317,25 @@ export async function getGeneralDashboard(userId: string) {
         return right.updatedAt.getTime() - left.updatedAt.getTime();
       })
       .slice(0, 16)
-      .map(({ book, priority }) => ({
+      .map(({ book, priority, readingFormat, status }) => ({
         id: book.id,
         titulo: book.title,
         genero: book.genre.name,
         coverUrl: book.coverUrl ?? '',
+        estado:
+          status === ReadingStatus.READING
+            ? 'LEYENDO'
+            : status === ReadingStatus.REREADING
+              ? 'RELECTURA'
+              : 'PENDIENTE',
+        formato:
+          readingFormat === 'PHYSICAL'
+            ? 'FISICO'
+            : readingFormat === 'AUDIOBOOK'
+              ? 'AUDIOLIBRO'
+              : readingFormat === 'DIGITAL'
+                ? 'DIGITAL'
+                : '',
         prioridad:
           priority === 'HIGH'
             ? 'ALTA'
@@ -229,6 +343,7 @@ export async function getGeneralDashboard(userId: string) {
               ? 'BAJA'
               : 'MEDIA',
       })),
+    sagasAbiertas: openSeries,
     calendario: {
       anio: now.getUTCFullYear(),
       mes: now.getUTCMonth() + 1,
