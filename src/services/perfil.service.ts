@@ -11,6 +11,7 @@ import {
 } from './cloudinary.service.js';
 import { getCurrentClubContext } from './club-context.service.js';
 import { formatToFlutter } from './books.service.js';
+import { canonicalBookTitle } from './catalog.service.js';
 
 function fechaToFlutter(fecha?: Date | null) {
   if (!fecha) return '';
@@ -301,7 +302,24 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
 
   const sagas = [...seriesPersonales.values()]
     .map((series) => {
-      const books = [...series.books].sort((left, right) => {
+      const preferredBooks = new Map<
+        string,
+        (typeof series.books)[number]
+      >();
+      for (const book of series.books) {
+        const key = `${canonicalBookTitle(book.title)}:${book.author?.name
+          .trim()
+          .toLocaleLowerCase('es') ?? ''}`;
+        const current = preferredBooks.get(key);
+        if (
+          !current ||
+          (bibliotecaPorId.has(book.id) && !bibliotecaPorId.has(current.id)) ||
+          (!current.coverUrl && Boolean(book.coverUrl))
+        ) {
+          preferredBooks.set(key, book);
+        }
+      }
+      const books = [...preferredBooks.values()].sort((left, right) => {
         const byOrder =
           numeroSaga(left.seriesOrder) - numeroSaga(right.seriesOrder);
         return byOrder !== 0

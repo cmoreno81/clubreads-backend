@@ -76,6 +76,34 @@ function normalize(value: string) {
     .replace(/\s+/g, ' ');
 }
 
+export function canonicalBookTitle(value: string) {
+  return normalize(value)
+    .replace(/^.*\b(?:trilogy|trilogia|trilogía|saga)\b\s*:\s*/, '')
+    .replace(
+      /\((?:[^)]*\b(?:edition|edicion|edición|limited|deluxe|collector|standard|special)\b[^)]*)\)/g,
+      ' ',
+    )
+    .replace(
+      /\b(?:standard|special|limited|deluxe|collector'?s?)\s+(?:edition|edicion)\b/g,
+      ' ',
+    )
+    .replace(/\b(?:edicion|edición)\s+(?:especial|limitada|de lujo)\b/g, ' ')
+    .replace(/\s*[:\-–—]\s*(?:standard|special|limited|deluxe)\b.*$/g, '')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function identityKeys(book: {
+  isbn: string;
+  titulo: string;
+  autores: string[];
+}) {
+  return [
+    book.isbn ? `isbn:${book.isbn.replace(/[^0-9Xx]/g, '')}` : '',
+    `work:${canonicalBookTitle(book.titulo)}:${normalize(book.autores[0] ?? '')}`,
+  ].filter(Boolean);
+}
+
 function stringList(value: unknown): string[] {
   return Array.isArray(value)
     ? value.map(String).map((item) => item.trim()).filter(Boolean)
@@ -260,24 +288,24 @@ export async function searchGeneralCatalog(userName: string, rawQuery: string) {
     external = await searchOpenLibrary(query);
   }
 
-  const localItems = local.map((book) => localBook(book, user.id));
-  const existingKeys = new Set(
-    localItems.flatMap((book) => [
-      book.isbn ? `isbn:${book.isbn}` : '',
-      `title:${normalize(book.titulo)}:${normalize(book.autores[0] ?? '')}`,
-    ]).filter(Boolean),
-  );
+  const localItems = local
+    .map((book) => localBook(book, user.id))
+    .sort((left, right) => Number(right.enMiBiblioteca) - Number(left.enMiBiblioteca));
+  const existingKeys = new Set<string>();
+  const uniqueLocal = localItems.filter((book) => {
+    const keys = identityKeys(book);
+    if (keys.some((key) => existingKeys.has(key))) return false;
+    keys.forEach((key) => existingKeys.add(key));
+    return true;
+  });
   const uniqueExternal = external.filter((book) => {
-    const keys = [
-      book.isbn ? `isbn:${book.isbn}` : '',
-      `title:${normalize(book.titulo)}:${normalize(book.autores[0] ?? '')}`,
-    ].filter(Boolean);
+    const keys = identityKeys(book);
     if (keys.some((key) => existingKeys.has(key))) return false;
     keys.forEach((key) => existingKeys.add(key));
     return true;
   });
 
-  return { ok: true, libros: [...localItems, ...uniqueExternal] };
+  return { ok: true, libros: [...uniqueLocal, ...uniqueExternal] };
 }
 
 export async function importCatalogBook(
@@ -341,11 +369,24 @@ async function resolveCatalogBook(
   }
   if (!book) {
     const candidates = await prisma.book.findMany({
-      where: { title: { equals: title, mode: 'insensitive' } },
+      where: {
+        OR: [
+          { title: { equals: title, mode: 'insensitive' } },
+          {
+            author: {
+              name: {
+                equals: authors[0] || 'Autor desconocido',
+                mode: 'insensitive',
+              },
+            },
+          },
+        ],
+      },
       include: { author: true },
-      take: 10,
+      take: 100,
     });
     book = candidates.find((candidate) =>
+      canonicalBookTitle(candidate.title) === canonicalBookTitle(title) &&
       normalize(candidate.author?.name ?? '') === normalize(authors[0] ?? '')
     ) ?? null;
   }
