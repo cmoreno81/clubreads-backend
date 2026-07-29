@@ -166,6 +166,19 @@ export async function getGeneralDashboard(userId: string) {
   const monthCompletions = completions.filter(
     ({ finishedAt }) => finishedAt >= start && finishedAt < end,
   );
+  const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  const yearEnd = new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 1));
+  const yearCompletions = completions.filter(
+    ({ finishedAt }) => finishedAt >= yearStart && finishedAt < yearEnd,
+  );
+  const monthLibraryByBookId = new Map(
+    monthLibrary.map((item) => [item.bookId, item]),
+  );
+  const pagesForBook = (bookId: string, totalPages: number | null) => {
+    if (totalPages != null && totalPages > 0) return totalPages;
+    const currentPage = monthLibraryByBookId.get(bookId)?.currentPage;
+    return currentPage != null && currentPage > 0 ? currentPage : 0;
+  };
   const calendarReadings = [
     ...monthCompletions.map(({ id, book, startedAt, finishedAt }) => ({
       id: `completion:${id}`,
@@ -379,6 +392,16 @@ export async function getGeneralDashboard(userId: string) {
               : 'MEDIA',
       })),
     sagasAbiertas: openSeries,
+    estanteriaAnual: yearCompletions.map(
+      ({ id, book, finishedAt, isReread }) => ({
+        id,
+        bookId: book.id,
+        titulo: book.title,
+        coverUrl: book.coverUrl ?? '',
+        fechaFin: finishedAt.toISOString(),
+        relectura: isReread,
+      }),
+    ),
     calendario: {
       anio: now.getUTCFullYear(),
       mes: now.getUTCMonth() + 1,
@@ -388,7 +411,7 @@ export async function getGeneralDashboard(userId: string) {
         titulo: book.title,
         coverUrl: book.coverUrl ?? '',
         fechaFin: finishedAt.toISOString(),
-        paginas: book.totalPages ?? 0,
+        paginas: pagesForBook(book.id, book.totalPages),
       })),
       lecturasCalendario: calendarReadings,
       eventos: [...events.entries()]
