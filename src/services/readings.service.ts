@@ -517,6 +517,7 @@ export async function getConfiguracionLectura(
       epilogo: false,
       capitulosDisponibles: [],
       coverUrl: '',
+      bookId: '',
     };
   }
 
@@ -526,6 +527,7 @@ export async function getConfiguracionLectura(
     epilogo: reading.hasEpilogue,
     capitulosDisponibles: buildChapters(reading, user?.id ?? null),
     coverUrl: reading.book.coverUrl ?? '',
+    bookId: reading.book.id,
   };
 }
 
@@ -685,6 +687,8 @@ if (usuario) {
       usuario: comment.user.name,
       fecha: comment.createdAt.toLocaleString('es-ES'),
       comentario: comment.text,
+      tipo: comment.type,
+      color: comment.color ?? '',
       likes: comment.likes.length,
       reacciones: contarReacciones(comment.likes),
       miReaccion: comment.likes.find((like) => like.userId === usuarioId)?.reaction ?? null,
@@ -717,11 +721,17 @@ export async function enviarComentarioLectura(data: {
   capitulo: string;
   usuario: string;
   comentario: string;
+  tipo?: string;
+  color?: string;
 }) {
   const libro = data.libro.trim();
   const capitulo = data.capitulo.trim();
   const usuario = data.usuario.trim();
   const comentario = data.comentario.trim();
+  const tipo = data.tipo?.trim().toUpperCase() === 'QUOTE' ? 'QUOTE' : 'COMMENT';
+  const color = /^#[0-9A-F]{6}$/i.test(data.color?.trim() ?? '')
+    ? data.color!.trim().toUpperCase()
+    : null;
 
   if (!libro || !capitulo || !usuario || !comentario) {
     return { ok: false, mensaje: 'Faltan datos' };
@@ -751,6 +761,8 @@ export async function enviarComentarioLectura(data: {
       conversationId: conversation.id,
       userId: user.id,
       text: comentario,
+      type: tipo,
+      color: tipo === 'QUOTE' ? color : null,
     },
   });
 

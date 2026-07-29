@@ -91,6 +91,8 @@ export async function handleGuardarComentarioLectura(
         req.body?.texto ||
         '',
     ),
+    tipo: String(req.query.tipo || req.body?.tipo || 'COMMENT'),
+    color: String(req.query.color || req.body?.color || ''),
   });
 
   return res.json(data);

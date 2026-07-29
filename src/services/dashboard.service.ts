@@ -42,9 +42,22 @@ function getMood(valoracionMedia: string) {
   return 'El club está preparando nuevas lecturas.';
 }
 
+function contarReaccionesProgreso(
+  reactions: Array<{ reaction: string }>,
+) {
+  return Object.fromEntries(
+    ['LIKE', 'AGREE', 'ANGRY', 'FUNNY', 'THUMBS_UP', 'CRY', 'WOW', 'SWEAR', 'CLAP'].map(
+      (reaction) => [
+        reaction,
+        reactions.filter((item) => item.reaction === reaction).length,
+      ],
+    ),
+  );
+}
+
 
 export async function getDashboard(usuario = '') {
-  const { club } = await getCurrentClubContext(usuario);
+  const { club, user } = await getCurrentClubContext(usuario);
   const month = currentMonthKey();
 
   const finishedBooks = await prisma.readingCompletion.findMany({
@@ -77,6 +90,7 @@ export async function getDashboard(usuario = '') {
           genre: true,
         },
       },
+      progressReactions: true,
     },
     orderBy: {
       updatedAt: 'desc',
@@ -113,6 +127,9 @@ export async function getDashboard(usuario = '') {
         paginasTotales: number | null;
         comentario: string;
         actualizadoEn: string;
+        libraryId: string;
+        reacciones: Record<string, number>;
+        miReaccion: string | null;
       }>;
       avatarUrl: string;
     }
@@ -134,6 +151,12 @@ export async function getDashboard(usuario = '') {
       paginasTotales: item.book.totalPages,
       comentario: item.progressNote ?? '',
       actualizadoEn: item.progressUpdatedAt?.toISOString() ?? '',
+      libraryId: item.id,
+      reacciones: contarReaccionesProgreso(item.progressReactions),
+      miReaccion:
+        item.progressReactions.find(
+          (reaction) => reaction.userId === user?.id,
+        )?.reaction ?? null,
     });
 
     leyendoPorUsuario.set(item.user.name, actual);

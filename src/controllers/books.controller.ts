@@ -11,6 +11,7 @@ import {
   quitarLibroPendientes,
   editarLibro,
   actualizarProgresoLectura,
+  toggleProgressReaction,
 } from '../services/books.service.js';
 import { requestUserName } from '../middleware/auth.middleware.js';
 
@@ -40,6 +41,19 @@ export async function handleActualizarProgresoLectura(
     body.paginasTotales === undefined && req.query.paginasTotales === undefined
       ? undefined
       : Number(body.paginasTotales ?? req.query.paginasTotales),
+  );
+  return res.json(data);
+}
+
+export async function handleToggleProgressReaction(
+  req: Request,
+  res: Response,
+) {
+  const body = req.body ?? {};
+  const data = await toggleProgressReaction(
+    requestUserName(req, body.usuario ?? req.query.usuario),
+    String(body.libraryId ?? req.query.libraryId ?? ''),
+    String(body.reaccion ?? req.query.reaccion ?? 'LIKE'),
   );
   return res.json(data);
 }

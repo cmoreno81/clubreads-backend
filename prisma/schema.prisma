@@ -243,6 +243,7 @@ model User {
   comments           Comment[]
   reviews            Review[]
   likes              Like[]
+  progressReactions  ProgressReaction[]
 
   conversationReads ConversationRead[]
 
@@ -424,6 +425,7 @@ model Library {
 
   progressNote      String?   @db.Text
   progressUpdatedAt DateTime?
+  progressReactions ProgressReaction[]
 
   createdAt DateTime @default(now())
 
@@ -431,6 +433,23 @@ model Library {
 
   @@unique([userId, bookId])
   @@index([status])
+}
+
+model ProgressReaction {
+  id String @id @default(cuid())
+
+  libraryId String
+  library   Library @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  reaction ReactionType @default(LIKE)
+
+  createdAt DateTime @default(now())
+
+  @@unique([libraryId, userId])
+  @@index([userId])
 }
 
 model ReadingCompletion {
@@ -543,6 +562,8 @@ model Comment {
   user   User   @relation(fields: [userId], references: [id])
 
   text String @db.Text
+  type String @default("COMMENT")
+  color String?
 
   parentId String?
   parent   Comment?  @relation("CommentTree", fields: [parentId], references: [id])

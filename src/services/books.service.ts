@@ -1,6 +1,7 @@
 import {
   Prisma,
   Priority,
+  ReactionType,
   ReadingFormat,
   ReadingStatus,
 } from '@prisma/client';
@@ -20,6 +21,67 @@ function statusToFlutter(status: string) {
   if (status === ReadingStatus.REREADING) return 'RELECTURA';
 
   return 'PENDIENTE';
+}
+
+export async function toggleProgressReaction(
+  usuario: string,
+  libraryId: string,
+  reactionValue: string,
+) {
+  const { club, user } = await getCurrentClubContext(usuario.trim());
+  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+  const reaction = Object.values(ReactionType).includes(
+    reactionValue as ReactionType,
+  )
+    ? (reactionValue as ReactionType)
+    : ReactionType.LIKE;
+  const target = await prisma.library.findFirst({
+    where: {
+      id: libraryId.trim(),
+      user: { clubMemberships: { some: { clubId: club.id } } },
+    },
+    select: { id: true },
+  });
+  if (!target) return { ok: false, mensaje: 'Progreso no encontrado' };
+
+  const current = await prisma.progressReaction.findUnique({
+    where: {
+      libraryId_userId: { libraryId: target.id, userId: user.id },
+    },
+  });
+  if (current?.reaction === reaction) {
+    await prisma.progressReaction.delete({ where: { id: current.id } });
+  } else {
+    await prisma.progressReaction.upsert({
+      where: {
+        libraryId_userId: { libraryId: target.id, userId: user.id },
+      },
+      update: { reaction },
+      create: { libraryId: target.id, userId: user.id, reaction },
+    });
+  }
+
+  const reactions = await prisma.progressReaction.findMany({
+    where: { libraryId: target.id },
+    select: { userId: true, reaction: true },
+  });
+  return {
+    ok: true,
+    reacciones: contarReaccionesProgreso(reactions),
+    miReaccion:
+      reactions.find((item) => item.userId === user.id)?.reaction ?? null,
+  };
+}
+
+function contarReaccionesProgreso(
+  reactions: Array<{ reaction: ReactionType }>,
+) {
+  return Object.fromEntries(
+    Object.values(ReactionType).map((reaction) => [
+      reaction,
+      reactions.filter((item) => item.reaction === reaction).length,
+    ]),
+  );
 }
 
 function priorityToFlutter(priority: string) {
@@ -467,6 +529,13 @@ export async function actualizarProgresoLectura(
   }
 
   await prisma.$transaction([
+    ...(lectura.progressNote !== (comentario.trim() || null)
+      ? [
+          prisma.progressReaction.deleteMany({
+            where: { libraryId: lectura.id },
+          }),
+        ]
+      : []),
     prisma.library.update({
       where: { id: lectura.id },
       data: {
