@@ -119,7 +119,7 @@ export async function getGeneralDashboard(userId: string) {
         },
         orderBy: { updatedAt: 'desc' },
       }),
-      prisma.readingCompletion.groupBy({
+      prisma.library.groupBy({
         by: ['readingFormat'],
         where: { readingFormat: { not: null } },
         _count: { id: true },
