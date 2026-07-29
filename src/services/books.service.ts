@@ -208,7 +208,7 @@ export async function getLibros(usuario: string) {
 }
 
 export async function getLibrosFinalizados(usuario: string) {
-  const { club } = await getCurrentClubContext(usuario);
+  const { club, user } = await getCurrentClubContext(usuario);
   const library = await prisma.library.findMany({
     where: {
       user: { clubMemberships: { some: { clubId: club.id } } },
@@ -256,6 +256,7 @@ export async function getLibrosFinalizados(usuario: string) {
       coverUrl: item.book.coverUrl ?? '',
       avatarUrl: item.user.avatarUrl ?? '',
       paginas: item.book.totalPages,
+      yaLoTengo: item.userId === user?.id,
       mes: item.finishedAt
         ? `${String(item.finishedAt.getMonth() + 1).padStart(
             2,
