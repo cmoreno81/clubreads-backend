@@ -50,6 +50,10 @@ export async function getRanking(
   const deseados = new Map<string, number>();
   const leidos = new Map<string, number>();
   const abandonados = new Map<string, number>();
+  const bookDetails = new Map<
+    string,
+    { bookId: string; coverUrl: string }
+  >();
   const lectoras = new Map<
     string,
     {
@@ -59,6 +63,10 @@ export async function getRanking(
   >();
 
 for (const item of library) {
+    bookDetails.set(item.book.title, {
+      bookId: item.book.id,
+      coverUrl: item.book.coverUrl ?? '',
+    });
     if (item.status === ReadingStatus.PENDING) {
       deseados.set(
         item.book.title,
@@ -74,6 +82,10 @@ for (const item of library) {
   }
 
   for (const item of finalizaciones) {
+    bookDetails.set(item.book.title, {
+      bookId: item.book.id,
+      coverUrl: item.book.coverUrl ?? '',
+    });
     leidos.set(item.book.title, (leidos.get(item.book.title) ?? 0) + 1);
 
     const lectoraActual = lectoras.get(item.user.name);
@@ -107,19 +119,31 @@ for (const item of library) {
 
   const masDeseados = top(
     Array.from(deseados.entries())
-      .map(([libro, total]) => ({ libro, total }))
+      .map(([libro, total]) => ({
+        libro,
+        total,
+        ...bookDetails.get(libro),
+      }))
       .sort((a, b) => b.total - a.total),
   );
 
   const masLeidos = top(
     Array.from(leidos.entries())
-      .map(([libro, total]) => ({ libro, total }))
+      .map(([libro, total]) => ({
+        libro,
+        total,
+        ...bookDetails.get(libro),
+      }))
       .sort((a, b) => b.total - a.total),
   );
 
   const masAbandonados = top(
     Array.from(abandonados.entries())
-      .map(([libro, total]) => ({ libro, total }))
+      .map(([libro, total]) => ({
+        libro,
+        total,
+        ...bookDetails.get(libro),
+      }))
       .sort((a, b) => b.total - a.total),
   );
 
@@ -137,6 +161,7 @@ const topLectoras = top(
     Array.from(valoraciones.entries())
       .map(([libro, data]) => ({
         libro,
+        ...bookDetails.get(libro),
         media: Number((data.suma / data.total).toFixed(2)),
         votos: data.total,
       }))
