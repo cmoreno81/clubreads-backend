@@ -71,10 +71,18 @@ export async function getGeneralDashboard(userId: string) {
       prisma.library.findMany({
         where: {
           userId,
+          startedAt: { lt: end },
           OR: [
-            { startedAt: { gte: start, lt: end } },
-            { finishedAt: { gte: start, lt: end } },
-            { progressUpdatedAt: { gte: start, lt: end } },
+            { finishedAt: { gte: start } },
+            {
+              status: {
+                in: [
+                  ReadingStatus.READING,
+                  ReadingStatus.REREADING,
+                  ReadingStatus.PAUSED,
+                ],
+              },
+            },
           ],
         },
         include: { book: true },
@@ -158,6 +166,31 @@ export async function getGeneralDashboard(userId: string) {
   const monthCompletions = completions.filter(
     ({ finishedAt }) => finishedAt >= start && finishedAt < end,
   );
+  const calendarReadings = [
+    ...monthCompletions.map(({ id, book, startedAt, finishedAt }) => ({
+      id: `completion:${id}`,
+      bookId: book.id,
+      titulo: book.title,
+      coverUrl: book.coverUrl ?? '',
+      fechaInicio: (startedAt ?? finishedAt).toISOString(),
+      fechaFin: finishedAt.toISOString(),
+    })),
+    ...monthLibrary
+      .filter(
+        ({ status }) =>
+          status === ReadingStatus.READING ||
+          status === ReadingStatus.REREADING ||
+          status === ReadingStatus.PAUSED,
+      )
+      .map(({ id, book, startedAt }) => ({
+        id: `library:${id}`,
+        bookId: book.id,
+        titulo: book.title,
+        coverUrl: book.coverUrl ?? '',
+        fechaInicio: (startedAt ?? now).toISOString(),
+        fechaFin: now.toISOString(),
+      })),
+  ];
   const months = new Set(completions.map(({ finishedAt }) => monthKey(finishedAt)));
   const completedBookIds = new Set(completions.map((item) => item.bookId));
   const libraryByBookId = new Map(
@@ -357,6 +390,7 @@ export async function getGeneralDashboard(userId: string) {
         fechaFin: finishedAt.toISOString(),
         paginas: book.totalPages ?? 0,
       })),
+      lecturasCalendario: calendarReadings,
       eventos: [...events.entries()]
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([fecha, event]) => ({
