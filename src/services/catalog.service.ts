@@ -285,12 +285,51 @@ export async function importCatalogBook(
   data: Record<string, unknown>,
 ) {
   const user = await authenticatedUser(userName);
+  const resolved = await resolveCatalogBook(user.id, data);
+  if (!resolved.ok) return resolved;
+  const book = resolved.book;
+
+  const existing = await prisma.library.findUnique({
+    where: { userId_bookId: { userId: user.id, bookId: book.id } },
+  });
+  if (existing) {
+    return {
+      ok: true,
+      codigo: 'LIBRO_YA_EN_BIBLIOTECA',
+      mensaje: 'Este libro ya está en tu biblioteca',
+      libro: { id: book.id, titulo: book.title },
+    };
+  }
+  await prisma.library.create({
+    data: {
+      userId: user.id,
+      bookId: book.id,
+      status: ReadingStatus.PENDING,
+      priority: priorityFromFlutter(data.prioridad),
+      readingFormat: formatFromFlutter(data.formato),
+    },
+  });
+  return {
+    ok: true,
+    codigo: 'LIBRO_CATALOGO_ANADIDO',
+    mensaje: 'Libro añadido a tu biblioteca',
+    libro: { id: book.id, titulo: book.title },
+  };
+}
+
+async function resolveCatalogBook(
+  userId: string,
+  data: Record<string, unknown>,
+) {
   const source = String(data.origen ?? '').toUpperCase();
   const title = String(data.titulo ?? '').trim().replace(/\s+/g, ' ');
   const authors = stringList(data.autores);
   const isbn = String(data.isbn ?? '').trim().replace(/[^0-9Xx]/g, '');
   if (!title || !['CLUBREADS', 'GOOGLE', 'OPENLIBRARY'].includes(source)) {
-    return { ok: false, mensaje: 'El libro seleccionado no es válido' };
+    return {
+      ok: false as const,
+      mensaje: 'El libro seleccionado no es válido',
+    };
   }
 
   let book = source === 'CLUBREADS'
@@ -338,36 +377,58 @@ export async function importCatalogBook(
         totalPages: Number.isInteger(pages) && pages > 0 ? pages : null,
         publicationYear: Number.isInteger(year) && year > 0 ? year : null,
         standalone: true,
-        createdById: user.id,
+        createdById: userId,
       },
     });
   }
-  if (!book) return { ok: false, mensaje: 'Libro no encontrado' };
-
-  const existing = await prisma.library.findUnique({
-    where: { userId_bookId: { userId: user.id, bookId: book.id } },
-  });
-  if (existing) {
-    return {
-      ok: true,
-      codigo: 'LIBRO_YA_EN_BIBLIOTECA',
-      mensaje: 'Este libro ya está en tu biblioteca',
-      libro: { id: book.id, titulo: book.title },
-    };
+  if (!book) {
+    return { ok: false as const, mensaje: 'Libro no encontrado' };
   }
-  await prisma.library.create({
+  return { ok: true as const, book };
+}
+
+export async function addSeriesCatalogVolume(
+  userName: string,
+  data: Record<string, unknown>,
+) {
+  const user = await authenticatedUser(userName);
+  const seriesId = String(data.sagaId ?? '').trim();
+  const order = String(data.numero ?? '').trim().replace(',', '.');
+  const parsedOrder = Number.parseFloat(order);
+  if (!seriesId || !Number.isFinite(parsedOrder) || parsedOrder <= 0) {
+    return { ok: false, mensaje: 'Indica un número de volumen válido' };
+  }
+  const series = await prisma.series.findUnique({ where: { id: seriesId } });
+  if (!series) return { ok: false, mensaje: 'Saga no encontrada' };
+
+  const resolved = await resolveCatalogBook(user.id, data);
+  if (!resolved.ok) return resolved;
+  const book = await prisma.book.update({
+    where: { id: resolved.book.id },
     data: {
-      userId: user.id,
-      bookId: book.id,
-      status: ReadingStatus.PENDING,
-      priority: priorityFromFlutter(data.prioridad),
-      readingFormat: formatFromFlutter(data.formato),
+      seriesId: series.id,
+      seriesOrder: order,
+      standalone: false,
     },
   });
+  const knownOrders = await prisma.book.findMany({
+    where: { seriesId: series.id, deletedAt: null },
+    select: { seriesOrder: true },
+  });
+  const highestOrder = knownOrders.reduce((highest, item) => {
+    const value = Number.parseFloat(item.seriesOrder ?? '');
+    return Number.isFinite(value) ? Math.max(highest, Math.ceil(value)) : highest;
+  }, 0);
+  if ((series.totalBooks ?? 0) < highestOrder) {
+    await prisma.series.update({
+      where: { id: series.id },
+      data: { totalBooks: highestOrder },
+    });
+  }
   return {
     ok: true,
-    codigo: 'LIBRO_CATALOGO_ANADIDO',
-    mensaje: 'Libro añadido a tu biblioteca',
+    codigo: 'VOLUMEN_SAGA_VINCULADO',
+    mensaje: 'Volumen añadido al catálogo de la saga',
     libro: { id: book.id, titulo: book.title },
   };
 }

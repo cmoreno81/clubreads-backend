@@ -85,6 +85,7 @@ import {
 import { handleGeneralDashboard } from '../controllers/general-dashboard.controller.js';
 import {
   handleGeneralCatalog,
+  handleAddSeriesCatalogVolume,
   handleImportCatalogBook,
   handleSearchGeneralCatalog,
 } from '../controllers/catalog.controller.js';
@@ -110,6 +111,7 @@ const POST_ONLY_ACTIONS = new Set([
   'seleccionarClub',
   'invitacionClub',
   'importarLibroCatalogo',
+  'vincularVolumenSaga',
 ]);
 
 async function handleApi(req: Request, res: Response) {
@@ -224,6 +226,12 @@ async function handleApi(req: Request, res: Response) {
           return requireAuthentication(req, res, () => {});
         }
         return handleImportCatalogBook(req, res);
+
+      case 'vincularVolumenSaga':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleAddSeriesCatalogVolume(req, res);
 
       case 'crearClub':
         if (!req.auth) {
