@@ -3,6 +3,7 @@ import {
   getLibros,
   getLibrosFinalizados,
   anadirLibroExistente,
+  actualizarPreferenciasLibro,
   iniciarLectura,
   actualizarEstado,
   actualizarValoracion,
@@ -65,8 +66,24 @@ export async function handleAnadirLibroExistente(req: Request, res: Response) {
   const data = await anadirLibroExistente(
     requestUserName(req, req.query.usuario),
     String(req.query.libro || ''),
+    String(req.query.prioridad || ''),
+    String(req.query.formato || ''),
   );
 
+  return res.json(data);
+}
+
+export async function handleActualizarPreferenciasLibro(
+  req: Request,
+  res: Response,
+) {
+  const body = req.body ?? {};
+  const data = await actualizarPreferenciasLibro(
+    requestUserName(req, body.usuario ?? req.query.usuario),
+    String(body.libro ?? req.query.libro ?? ''),
+    String(body.prioridad ?? req.query.prioridad ?? ''),
+    String(body.formato ?? req.query.formato ?? ''),
+  );
   return res.json(data);
 }
 
@@ -100,6 +117,7 @@ const data = await actualizarEstado(
   String(body.reflexion || req.query.reflexion || ''),
   String(body.motivoPausa || req.query.motivoPausa || ''),
   String(body.fechaInicio || req.query.fechaInicio || ''),
+  String(body.formato || req.query.formato || ''),
 );
 
   return res.json(data);

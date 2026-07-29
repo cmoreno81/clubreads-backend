@@ -1,4 +1,9 @@
-import { Prisma, Priority, ReadingStatus } from '@prisma/client';
+import {
+  Prisma,
+  Priority,
+  ReadingFormat,
+  ReadingStatus,
+} from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { findBestBookCover } from './book-cover.service.js';
 import {
@@ -36,6 +41,25 @@ function priorityFromFlutter(value: unknown): Priority {
   }
 
   return Priority.MEDIUM;
+}
+
+export function formatToFlutter(format: ReadingFormat | null) {
+  if (format === ReadingFormat.PHYSICAL) return 'FISICO';
+  if (format === ReadingFormat.DIGITAL) return 'DIGITAL';
+  if (format === ReadingFormat.AUDIOBOOK) return 'AUDIOLIBRO';
+  return '';
+}
+
+function formatFromFlutter(value: unknown): ReadingFormat | null {
+  const format = String(value ?? '').trim().toUpperCase();
+  if (format === 'FISICO' || format === 'FÍSICO' || format === 'PHYSICAL') {
+    return ReadingFormat.PHYSICAL;
+  }
+  if (format === 'DIGITAL') return ReadingFormat.DIGITAL;
+  if (format === 'AUDIOLIBRO' || format === 'AUDIOBOOK') {
+    return ReadingFormat.AUDIOBOOK;
+  }
+  return null;
 }
 
 
@@ -166,6 +190,7 @@ export async function getLibros(usuario: string) {
     numSaga: item.book.seriesOrder ?? '',
     autoconclusivo: item.book.standalone ? 'Si' : 'No',
     prioridad: priorityToFlutter(item.priority),
+    formato: formatToFlutter(item.readingFormat),
     leyendo: statusToFlutter(item.status),
     estado: statusToFlutter(item.status),
     valoracion: '',
@@ -222,6 +247,7 @@ export async function getLibrosFinalizados(usuario: string) {
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
       valoracion: ratingToFlutter(review?.rating),
+      formato: formatToFlutter(item.readingFormat),
       fechaAlta: item.book.createdAt.toISOString(),
       resena: review?.review ?? '',
       review: review?.review ?? '',
@@ -243,6 +269,8 @@ export async function getLibrosFinalizados(usuario: string) {
 export async function anadirLibroExistente(
   usuario: string,
   libro: string,
+  prioridad?: string,
+  formato?: string,
 ) {
   const user = await prisma.user.findUnique({
     where: {
@@ -288,7 +316,8 @@ export async function anadirLibroExistente(
       userId: user.id,
       bookId: book.id,
       status: ReadingStatus.PENDING,
-      priority: Priority.MEDIUM,
+      priority: priorityFromFlutter(prioridad),
+      readingFormat: formatFromFlutter(formato),
     },
   });
 
@@ -296,6 +325,44 @@ export async function anadirLibroExistente(
     ok: true,
     codigo: 'LIBRO_EXISTENTE_ANADIDO',
     mensaje: 'Libro añadido a tu biblioteca',
+  };
+}
+
+export async function actualizarPreferenciasLibro(
+  usuario: string,
+  libro: string,
+  prioridad: string,
+  formato: string,
+) {
+  const user = await prisma.user.findUnique({
+    where: { name: usuario.trim() },
+  });
+  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+
+  const book = await buscarLibroPorTitulo(libro);
+  if (!book) return { ok: false, mensaje: 'Libro no encontrado' };
+
+  const library = await prisma.library.findUnique({
+    where: {
+      userId_bookId: { userId: user.id, bookId: book.id },
+    },
+  });
+  if (!library) {
+    return { ok: false, mensaje: 'El libro no está en tu biblioteca' };
+  }
+
+  await prisma.library.update({
+    where: { id: library.id },
+    data: {
+      priority: priorityFromFlutter(prioridad),
+      readingFormat: formatFromFlutter(formato),
+    },
+  });
+
+  return {
+    ok: true,
+    prioridad: priorityToFlutter(priorityFromFlutter(prioridad)),
+    formato: formatToFlutter(formatFromFlutter(formato)),
   };
 }
 
@@ -391,6 +458,7 @@ export async function actualizarEstado(
   reflexion?: string,
   motivoPausa?: string,
   fechaInicio?: string,
+  formato?: string,
 ) {
   const user = await prisma.user.findUnique({
     where: {
@@ -415,6 +483,7 @@ export async function actualizarEstado(
   }
 
   const status = statusFromFlutter(estado);
+  const requestedFormat = formatFromFlutter(formato);
   const now = new Date();
   const fechaInicioTexto = fechaInicio?.trim() ?? '';
   const coincidenciaFecha = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fechaInicioTexto);
@@ -643,6 +712,7 @@ await prisma.$transaction(async (tx) => {
 
     update: {
       status: effectiveStatus,
+      ...(requestedFormat ? { readingFormat: requestedFormat } : {}),
       ...statusDates,
     },
 
@@ -651,6 +721,7 @@ await prisma.$transaction(async (tx) => {
       bookId: book.id,
       status: effectiveStatus,
       priority: Priority.MEDIUM,
+      readingFormat: requestedFormat,
       ...statusDates,
     },
   }); 
@@ -668,6 +739,7 @@ await prisma.$transaction(async (tx) => {
           isReread: currentLibrary?.status === ReadingStatus.REREADING,
           rating: finalRating,
           review: reflexion?.trim() || null,
+          readingFormat: requestedFormat ?? currentLibrary?.readingFormat,
         },
       });
     }
@@ -896,6 +968,7 @@ export async function crearLibro(data: any) {
         bookId: existingBook.id,
         status: ReadingStatus.PENDING,
         priority: priorityFromFlutter(data.prioridad),
+        readingFormat: formatFromFlutter(data.formato),
       },
     });
 
@@ -1024,6 +1097,7 @@ if (automaticCover) {
           priority: priorityFromFlutter(
             data.prioridad,
           ),
+          readingFormat: formatFromFlutter(data.formato),
         },
       });
 
