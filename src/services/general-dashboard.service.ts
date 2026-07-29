@@ -155,6 +155,9 @@ export async function getGeneralDashboard(userId: string) {
   const popularById = new Map(
     popularGroups.map((item) => [item.bookId, item._count.userId]),
   );
+  const monthCompletions = completions.filter(
+    ({ finishedAt }) => finishedAt >= start && finishedAt < end,
+  );
   const months = new Set(completions.map(({ finishedAt }) => monthKey(finishedAt)));
   const completedBookIds = new Set(completions.map((item) => item.bookId));
   const libraryByBookId = new Map(
@@ -281,9 +284,7 @@ export async function getGeneralDashboard(userId: string) {
       clubes: user.clubMemberships.length,
       leyendo: user.library.length,
       terminados: completions.length,
-      terminadosMes: completions.filter(
-        ({ finishedAt }) => finishedAt >= start && finishedAt < end,
-      ).length,
+      terminadosMes: monthCompletions.length,
       paginasLeidas: completions.reduce(
         (total, item) => total + (item.book.totalPages ?? 0),
         0,
@@ -348,6 +349,14 @@ export async function getGeneralDashboard(userId: string) {
     calendario: {
       anio: now.getUTCFullYear(),
       mes: now.getUTCMonth() + 1,
+      librosLeidos: monthCompletions.map(({ id, book, finishedAt }) => ({
+        id: `${id}:${book.id}`,
+        bookId: book.id,
+        titulo: book.title,
+        coverUrl: book.coverUrl ?? '',
+        fechaFin: finishedAt.toISOString(),
+        paginas: book.totalPages ?? 0,
+      })),
       eventos: [...events.entries()]
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([fecha, event]) => ({
