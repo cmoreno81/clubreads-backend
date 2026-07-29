@@ -62,6 +62,7 @@ test('el dashboard general funciona sin exigir un club activo', () => {
   assert.match(generalDashboard, /calendario/);
   assert.match(generalDashboard, /tendencias/);
   assert.match(generalDashboard, /communityFormats/);
+  assert.match(generalDashboard, /prisma\.library\.groupBy/);
   assert.match(generalDashboard, /readingFormat: \{ not: null \}/);
   assert.doesNotMatch(generalDashboard, /getCurrentClubContext/);
 });
