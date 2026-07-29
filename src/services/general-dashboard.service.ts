@@ -189,7 +189,8 @@ export async function getGeneralDashboard(userId: string) {
         const current = byPosition.get(position);
         if (
           !current ||
-          (libraryByBookId.has(book.id) && !libraryByBookId.has(current.id))
+          (libraryByBookId.has(book.id) && !libraryByBookId.has(current.id)) ||
+          (!current.coverUrl && Boolean(book.coverUrl))
         ) {
           byPosition.set(position, book);
         }
