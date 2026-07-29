@@ -28,6 +28,7 @@ export async function getGeneralDashboard(userId: string) {
     popularGroups,
     totals,
     personalLibrary,
+    communityFormats,
   ] =
     await Promise.all([
       prisma.user.findUnique({
@@ -117,6 +118,11 @@ export async function getGeneralDashboard(userId: string) {
           },
         },
         orderBy: { updatedAt: 'desc' },
+      }),
+      prisma.readingCompletion.groupBy({
+        by: ['readingFormat'],
+        where: { readingFormat: { not: null } },
+        _count: { id: true },
       }),
     ]);
 
@@ -247,6 +253,24 @@ export async function getGeneralDashboard(userId: string) {
       clubes: totals[0],
       lectoras: totals[1],
       lecturasActivas: totals[2],
+      formatos: {
+        fisico:
+          communityFormats.find(
+            ({ readingFormat }) => readingFormat === 'PHYSICAL',
+          )?._count.id ?? 0,
+        digital:
+          communityFormats.find(
+            ({ readingFormat }) => readingFormat === 'DIGITAL',
+          )?._count.id ?? 0,
+        audiolibro:
+          communityFormats.find(
+            ({ readingFormat }) => readingFormat === 'AUDIOBOOK',
+          )?._count.id ?? 0,
+        total: communityFormats.reduce(
+          (sum, item) => sum + item._count.id,
+          0,
+        ),
+      },
     },
   };
 }
