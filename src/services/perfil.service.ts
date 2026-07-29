@@ -107,6 +107,7 @@ export async function getPerfilUsuario(
             include: {
               books: {
                 where: { deletedAt: null },
+                include: { author: true },
               },
             },
           },
@@ -339,6 +340,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
       return {
         id: series.id,
         nombre: series.name,
+        autor: books.find((book) => book.author)?.author?.name ?? '',
         leidos: read,
         totalConocidos: books.length,
         totalSaga: knownTotal,
