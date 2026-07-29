@@ -267,11 +267,23 @@ export async function getGeneralDashboard(userId: string) {
         ),
       );
       const next = books.find((book) => !completedBookIds.has(book.id)) ?? null;
+      const representativeCover =
+        next?.coverUrl?.trim() ||
+        [...books]
+          .reverse()
+          .find(
+            (book) =>
+              completedBookIds.has(book.id) && Boolean(book.coverUrl?.trim()),
+          )
+          ?.coverUrl?.trim() ||
+        books.find((book) => Boolean(book.coverUrl?.trim()))?.coverUrl?.trim() ||
+        '';
       return {
         id: series.id,
         nombre: series.name,
         leidos: read,
         total,
+        coverUrl: representativeCover,
         siguiente: next
           ? {
               id: next.id,
