@@ -327,9 +327,20 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         };
       });
       const read = volumes.filter(({ estado }) => estado === 'LEIDO').length;
-      const knownTotal = series.totalBooks ?? books.length;
+      const highestOrder = books.reduce((highest, book) => {
+        const value = numeroSaga(book.seriesOrder);
+        return Number.isFinite(value) &&
+          value !== Number.MAX_SAFE_INTEGER
+          ? Math.max(highest, Math.ceil(value))
+          : highest;
+      }, 0);
+      const knownTotal = Math.max(
+        series.totalBooks ?? 0,
+        books.length,
+        highestOrder,
+      );
       const isComplete =
-        series.totalBooks != null && read >= series.totalBooks;
+        series.totalBooks != null && read >= knownTotal;
       const next =
         volumes.find(
           ({ estado }) => estado !== 'LEIDO' && estado !== 'LEYENDO',
@@ -346,7 +357,9 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         totalSaga: knownTotal,
         estado: isComplete
           ? 'COMPLETADA'
-          : read === books.length && books.length > 0
+          : read === 0
+            ? 'PENDIENTE'
+            : read === books.length && books.length > 0
             ? 'AL_DIA'
             : 'EN_CURSO',
         volumenes: volumes,

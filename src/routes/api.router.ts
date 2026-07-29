@@ -88,6 +88,7 @@ import {
   handleAddSeriesCatalogVolume,
   handleImportCatalogBook,
   handleSearchGeneralCatalog,
+  handleUpdateSeriesVolumeOrder,
 } from '../controllers/catalog.controller.js';
 
 export const apiRouter = Router();
@@ -112,6 +113,7 @@ const POST_ONLY_ACTIONS = new Set([
   'invitacionClub',
   'importarLibroCatalogo',
   'vincularVolumenSaga',
+  'actualizarNumeroVolumenSaga',
 ]);
 
 async function handleApi(req: Request, res: Response) {
@@ -232,6 +234,12 @@ async function handleApi(req: Request, res: Response) {
           return requireAuthentication(req, res, () => {});
         }
         return handleAddSeriesCatalogVolume(req, res);
+
+      case 'actualizarNumeroVolumenSaga':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleUpdateSeriesVolumeOrder(req, res);
 
       case 'crearClub':
         if (!req.auth) {

@@ -403,6 +403,21 @@ export async function addSeriesCatalogVolume(
 
   const resolved = await resolveCatalogBook(user.id, data);
   if (!resolved.ok) return resolved;
+  const occupied = await prisma.book.findFirst({
+    where: {
+      seriesId: series.id,
+      seriesOrder: order,
+      id: { not: resolved.book.id },
+      deletedAt: null,
+    },
+  });
+  if (occupied) {
+    return {
+      ok: false,
+      codigo: 'NUMERO_SAGA_OCUPADO',
+      mensaje: `El volumen ${order} ya corresponde a ${occupied.title}`,
+    };
+  }
   const book = await prisma.book.update({
     where: { id: resolved.book.id },
     data: {
@@ -430,5 +445,45 @@ export async function addSeriesCatalogVolume(
     codigo: 'VOLUMEN_SAGA_VINCULADO',
     mensaje: 'Volumen añadido al catálogo de la saga',
     libro: { id: book.id, titulo: book.title },
+  };
+}
+
+export async function updateSeriesVolumeOrder(
+  userName: string,
+  data: Record<string, unknown>,
+) {
+  await authenticatedUser(userName);
+  const bookId = String(data.bookId ?? '').trim();
+  const order = String(data.numero ?? '').trim().replace(',', '.');
+  const parsedOrder = Number.parseFloat(order);
+  if (!bookId || !Number.isFinite(parsedOrder) || parsedOrder <= 0) {
+    return { ok: false, mensaje: 'Indica un número de volumen válido' };
+  }
+  const book = await prisma.book.findUnique({ where: { id: bookId } });
+  if (!book?.seriesId) {
+    return { ok: false, mensaje: 'El libro no pertenece a una saga' };
+  }
+  const occupied = await prisma.book.findFirst({
+    where: {
+      seriesId: book.seriesId,
+      seriesOrder: order,
+      id: { not: book.id },
+      deletedAt: null,
+    },
+  });
+  if (occupied) {
+    return {
+      ok: false,
+      codigo: 'NUMERO_SAGA_OCUPADO',
+      mensaje: `El volumen ${order} ya corresponde a ${occupied.title}`,
+    };
+  }
+  await prisma.book.update({
+    where: { id: book.id },
+    data: { seriesOrder: order, standalone: false },
+  });
+  return {
+    ok: true,
+    mensaje: 'Número de volumen actualizado',
   };
 }

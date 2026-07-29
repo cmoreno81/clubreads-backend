@@ -6,10 +6,23 @@ import {
   addSeriesCatalogVolume,
   importCatalogBook,
   searchGeneralCatalog,
+  updateSeriesVolumeOrder,
 } from '../services/catalog.service.js';
 
 export async function handleGeneralCatalog(req: Request, res: Response) {
   return res.json(await getGeneralCatalog(requestUserName(req)));
+}
+
+export async function handleUpdateSeriesVolumeOrder(
+  req: Request,
+  res: Response,
+) {
+  return res.json(
+    await updateSeriesVolumeOrder(
+      requestUserName(req),
+      (req.body ?? {}) as Record<string, unknown>,
+    ),
+  );
 }
 
 export async function handleSearchGeneralCatalog(req: Request, res: Response) {
