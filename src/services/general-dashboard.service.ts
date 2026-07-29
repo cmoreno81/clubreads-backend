@@ -21,7 +21,14 @@ function currentMonthRange(now = new Date()) {
 export async function getGeneralDashboard(userId: string) {
   const now = new Date();
   const { start, end } = currentMonthRange(now);
-  const [user, completions, monthLibrary, popularGroups, totals] =
+  const [
+    user,
+    completions,
+    monthLibrary,
+    popularGroups,
+    totals,
+    personalLibrary,
+  ] =
     await Promise.all([
       prisma.user.findUnique({
         where: { id: userId },
@@ -99,6 +106,18 @@ export async function getGeneralDashboard(userId: string) {
           },
         }),
       ]),
+      prisma.library.findMany({
+        where: {
+          userId,
+          status: ReadingStatus.PENDING,
+        },
+        include: {
+          book: {
+            include: { genre: true },
+          },
+        },
+        orderBy: { updatedAt: 'desc' },
+      }),
     ]);
 
   if (!user) return null;
@@ -183,6 +202,27 @@ export async function getGeneralDashboard(userId: string) {
       paginaActual: currentPage,
       paginas: book.totalPages,
     })),
+    miBiblioteca: personalLibrary
+      .sort((left, right) => {
+        const priority = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
+        const byPriority =
+          priority[left.priority] - priority[right.priority];
+        if (byPriority !== 0) return byPriority;
+        return right.updatedAt.getTime() - left.updatedAt.getTime();
+      })
+      .slice(0, 16)
+      .map(({ book, priority }) => ({
+        id: book.id,
+        titulo: book.title,
+        genero: book.genre.name,
+        coverUrl: book.coverUrl ?? '',
+        prioridad:
+          priority === 'HIGH'
+            ? 'ALTA'
+            : priority === 'LOW'
+              ? 'BAJA'
+              : 'MEDIA',
+      })),
     calendario: {
       anio: now.getUTCFullYear(),
       mes: now.getUTCMonth() + 1,

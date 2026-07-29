@@ -79,3 +79,8 @@ test('cualquier integrante puede configurar la lectura oficial del club', () => 
     /requestedType === ReadingType\.CLUBVISION[\s\S]*requireClubRole/,
   );
 });
+
+test('la biblioteca identifica a la persona autenticada sin usar usuario', () => {
+  assert.match(books, /const \{ club, user \} = await getCurrentClubContext/);
+  assert.match(books, /yaLoTengo: item\.userId === user\?\.id/);
+});
