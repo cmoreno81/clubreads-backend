@@ -10,6 +10,7 @@ import {
   subirAvatarDesdeUrl,
 } from './cloudinary.service.js';
 import { getCurrentClubContext } from './club-context.service.js';
+import { formatToFlutter } from './books.service.js';
 
 function fechaToFlutter(fecha?: Date | null) {
   if (!fecha) return '';
@@ -164,6 +165,7 @@ const terminados = historialTerminados.map((item) => ({
   fechaFin: fechaToFlutter(item.finishedAt),
   valoracion: ratingToFlutter(item.rating),
   resena: item.review ?? '',
+  formato: formatToFlutter(item.readingFormat),
   coverUrl: item.book.coverUrl ?? '',
   esRelectura: item.isReread,
 }));

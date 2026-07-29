@@ -30,6 +30,12 @@ enum Priority {
   LOW
 }
 
+enum ReadingFormat {
+  PHYSICAL
+  DIGITAL
+  AUDIOBOOK
+}
+
 enum HistoryEvent {
   STATUS_CHANGED
   PRIORITY_CHANGED
@@ -403,6 +409,7 @@ model Library {
   status ReadingStatus
 
   priority Priority @default(MEDIUM)
+  readingFormat ReadingFormat?
 
   startedAt DateTime?
 
@@ -440,6 +447,7 @@ model ReadingCompletion {
   isReread   Boolean   @default(false)
   rating     Float?
   review     String?   @db.Text
+  readingFormat ReadingFormat?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

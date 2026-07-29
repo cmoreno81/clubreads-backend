@@ -15,6 +15,7 @@ import {
   handleLibros,
   handleLibrosFinalizados,
   handleAnadirLibroExistente,
+  handleActualizarPreferenciasLibro,
   handleIniciarLectura,
   handleActualizarEstado,
   handleActualizarValoracion,
@@ -244,6 +245,9 @@ async function handleApi(req: Request, res: Response) {
 
       case 'anadirLibroExistente':
         return handleAnadirLibroExistente(req, res);
+
+      case 'actualizarPreferenciasLibro':
+        return handleActualizarPreferenciasLibro(req, res);
       
       case 'quitarLibroPendientes':
         return handleQuitarLibroPendientes(req, res);  
