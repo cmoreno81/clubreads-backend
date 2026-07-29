@@ -98,6 +98,13 @@ export async function getPerfilUsuario(
       book: {
         include: {
           genre: true,
+          series: {
+            include: {
+              books: {
+                where: { deletedAt: null },
+              },
+            },
+          },
           reviews: {
             where: {
               userId: user.id,
@@ -264,6 +271,93 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
     .sort((a, b) => b.total - a.total)
     .slice(0, 5);
 
+  const finalizadosIds = new Set(
+    historialTerminados.map((item) => item.bookId),
+  );
+  const bibliotecaPorId = new Map(
+    biblioteca.map((item) => [item.bookId, item]),
+  );
+  const seriesPersonales = new Map<
+    string,
+    NonNullable<(typeof biblioteca)[number]['book']['series']>
+  >();
+
+  for (const item of biblioteca) {
+    if (item.book.series) {
+      seriesPersonales.set(item.book.series.id, item.book.series);
+    }
+  }
+
+  const numeroSaga = (value: string | null) => {
+    const parsed = Number.parseFloat(value?.replace(',', '.') ?? '');
+    return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+  };
+
+  const sagas = [...seriesPersonales.values()]
+    .map((series) => {
+      const books = [...series.books].sort((left, right) => {
+        const byOrder =
+          numeroSaga(left.seriesOrder) - numeroSaga(right.seriesOrder);
+        return byOrder !== 0
+          ? byOrder
+          : left.title.localeCompare(right.title, 'es');
+      });
+      const volumes = books.map((book) => {
+        const library = bibliotecaPorId.get(book.id);
+        const status = finalizadosIds.has(book.id)
+          ? 'LEIDO'
+          : library?.status === ReadingStatus.READING ||
+              library?.status === ReadingStatus.REREADING
+            ? 'LEYENDO'
+            : library
+              ? 'PENDIENTE'
+              : 'NO_ANADIDO';
+        return {
+          bookId: book.id,
+          titulo: book.title,
+          numero: book.seriesOrder ?? '',
+          coverUrl: book.coverUrl ?? '',
+          estado: status,
+        };
+      });
+      const read = volumes.filter(({ estado }) => estado === 'LEIDO').length;
+      const knownTotal = series.totalBooks ?? books.length;
+      const isComplete =
+        series.totalBooks != null && read >= series.totalBooks;
+      const next =
+        volumes.find(
+          ({ estado }) => estado !== 'LEIDO' && estado !== 'LEYENDO',
+        ) ?? null;
+      const reading =
+        volumes.find(({ estado }) => estado === 'LEYENDO') ?? null;
+
+      return {
+        id: series.id,
+        nombre: series.name,
+        leidos: read,
+        totalConocidos: books.length,
+        totalSaga: knownTotal,
+        estado: isComplete
+          ? 'COMPLETADA'
+          : read === books.length && books.length > 0
+            ? 'AL_DIA'
+            : 'EN_CURSO',
+        volumenes: volumes,
+        siguiente: reading ?? next,
+      };
+    })
+    .sort((left, right) => {
+      const order: Record<string, number> = {
+        EN_CURSO: 0,
+        AL_DIA: 1,
+        COMPLETADA: 2,
+      };
+      const byStatus = order[left.estado] - order[right.estado];
+      return byStatus !== 0
+        ? byStatus
+        : left.nombre.localeCompare(right.nombre, 'es');
+    });
+
   return {
     ok: true,
     usuario: user.name,
@@ -286,6 +380,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
     abandonados,
     pendientes,
     generosFavoritos,
+    sagas,
   };
 }
 
