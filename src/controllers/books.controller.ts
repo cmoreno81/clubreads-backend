@@ -117,6 +117,7 @@ const data = await actualizarEstado(
   String(body.reflexion || req.query.reflexion || ''),
   String(body.motivoPausa || req.query.motivoPausa || ''),
   String(body.fechaInicio || req.query.fechaInicio || ''),
+  String(body.fechaFin || req.query.fechaFin || ''),
   String(body.formato || req.query.formato || ''),
 );
 
