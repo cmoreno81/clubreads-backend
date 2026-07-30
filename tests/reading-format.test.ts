@@ -43,3 +43,10 @@ test('las sagas toleran pequeñas erratas y Windy City queda unificada', () => {
   assert.match(seriesMerge, /'windy city', 'wyndy city'/);
   assert.match(seriesMerge, /UPDATE "Book"/);
 });
+
+test('editar solo las mayúsculas renombra y reúne sagas equivalentes', () => {
+  assert.match(service, /preferredSeriesId/);
+  assert.match(service, /name: nombre/);
+  assert.match(service, /seriesId:\s*\{\s*in:/);
+  assert.match(service, /tx\.series\.deleteMany/);
+});

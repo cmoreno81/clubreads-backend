@@ -194,10 +194,14 @@ function distanciaEdicion(left: string, right: string) {
   return previous[right.length];
 }
 
-async function buscarOCrearSaga(nombre: string, genreId: string) {
+async function buscarOCrearSaga(
+  nombre: string,
+  genreId: string,
+  preferredSeriesId?: string | null,
+) {
   const normalizado = normalizarTitulo(nombre);
   const existentes = await prisma.series.findMany();
-  const coincidencia = existentes.find((series) => {
+  const equivalentes = existentes.filter((series) => {
     const candidata = normalizarTitulo(series.name);
     if (candidata === normalizado) return true;
     return (
@@ -206,7 +210,63 @@ async function buscarOCrearSaga(nombre: string, genreId: string) {
       distanciaEdicion(candidata, normalizado) <= 1
     );
   });
-  if (coincidencia) return coincidencia;
+  const preferida = preferredSeriesId
+    ? equivalentes.find((series) => series.id === preferredSeriesId)
+    : null;
+  const coincidencia = preferida ?? equivalentes[0];
+
+  if (coincidencia) {
+    const duplicadas = equivalentes.filter(
+      (series) => series.id !== coincidencia.id,
+    );
+    const totalBooks = Math.max(
+      coincidencia.totalBooks ?? 0,
+      ...equivalentes.map((series) => series.totalBooks ?? 0),
+    );
+
+    if (
+      coincidencia.name !== nombre ||
+      duplicadas.length > 0 ||
+      (coincidencia.totalBooks ?? 0) !== totalBooks
+    ) {
+      await prisma.$transaction(async (tx) => {
+        if (duplicadas.length > 0) {
+          await tx.book.updateMany({
+            where: {
+              seriesId: {
+                in: duplicadas.map((series) => series.id),
+              },
+            },
+            data: {
+              seriesId: coincidencia.id,
+            },
+          });
+          await tx.series.deleteMany({
+            where: {
+              id: {
+                in: duplicadas.map((series) => series.id),
+              },
+            },
+          });
+        }
+        await tx.series.update({
+          where: { id: coincidencia.id },
+          data: {
+            name: nombre,
+            genreId,
+            totalBooks: totalBooks > 0 ? totalBooks : null,
+          },
+        });
+      });
+    }
+
+    return {
+      ...coincidencia,
+      name: nombre,
+      genreId,
+      totalBooks: totalBooks > 0 ? totalBooks : null,
+    };
+  }
   return prisma.series.create({
     data: { name: nombre, genreId },
   });
@@ -1548,7 +1608,7 @@ if (duplicado) {
 
   const series =
     !standalone && seriesName
-      ? await buscarOCrearSaga(seriesName, genre.id)
+      ? await buscarOCrearSaga(seriesName, genre.id, actual.seriesId)
       : null;
 
 const actualizado = await prisma.book.update({
