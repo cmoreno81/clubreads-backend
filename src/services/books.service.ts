@@ -336,6 +336,7 @@ export async function getLibros(usuario: string) {
     include: {
       book: {
         include: {
+          author: true,
           genre: true,
           series: true,
         },
@@ -353,6 +354,7 @@ export async function getLibros(usuario: string) {
     bookId: item.book.id,
     usuario: item.user.name,
     libro: item.book.title,
+    autor: item.book.author?.name ?? '',
     genero: item.book.genre.name,
     saga: item.book.series?.name ?? '',
     numSaga: item.book.seriesOrder ?? '',
@@ -388,6 +390,7 @@ export async function getLibrosFinalizados(usuario: string) {
 
       book: {
         include: {
+          author: true,
           genre: true,
           series: true,
           reviews: true,
@@ -410,6 +413,7 @@ export async function getLibrosFinalizados(usuario: string) {
       bookId: item.book.id,
       usuario: item.user.name,
       libro: item.book.title,
+      autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
       saga: item.book.series?.name ?? '',
       numSaga: item.book.seriesOrder ?? '',
@@ -1102,6 +1106,9 @@ export async function crearLibro(data: any) {
   )
     .trim()
     .replace(/\s+/g, ' ');
+  const suppliedAuthorName = String(
+    data.autor || data.author || '',
+  ).trim().replace(/\s+/g, ' ');
   const paginas = Number(data.paginas || data.totalPages || 0);
 
   if (paginas < 0 || !Number.isInteger(paginas)) {
@@ -1244,6 +1251,11 @@ const automaticCover =
     ? coverMatch.candidate
     : null;
 
+const automaticAuthorName =
+  !suppliedAuthorName && automaticCover?.authors.length === 1
+    ? automaticCover.authors[0].trim()
+    : '';
+
 if (automaticCover) {
   console.log(
     '🖼️ PORTADA ENCONTRADA:',
@@ -1262,9 +1274,26 @@ if (automaticCover) {
    */
   const book = await prisma.$transaction(
     async (tx) => {
+      const resolvedAuthorName = suppliedAuthorName || automaticAuthorName;
+      const automaticAuthor = resolvedAuthorName
+        ? (
+            await tx.author.findFirst({
+              where: {
+                name: {
+                  equals: resolvedAuthorName,
+                  mode: 'insensitive',
+                },
+              },
+            })
+          ) ?? await tx.author.create({
+            data: { name: resolvedAuthorName },
+          })
+        : null;
+
       const createdBook = await tx.book.create({
         data: {
           title,
+          authorId: automaticAuthor?.id ?? null,
           genreId: genre.id,
           seriesId: series?.id ?? null,
           seriesOrder: seriesOrder || null,
@@ -1521,6 +1550,9 @@ export async function editarLibro(data: any) {
   )
     .trim()
     .replace(/\s+/g, ' ');
+  const suppliedAuthorName = String(
+    data.autor || data.author || '',
+  ).trim().replace(/\s+/g, ' ');
   const paginasFueEnviada =
     Object.prototype.hasOwnProperty.call(data, 'paginas') ||
     Object.prototype.hasOwnProperty.call(data, 'totalPages');
@@ -1620,12 +1652,28 @@ if (duplicado) {
       ? await buscarOCrearSaga(seriesName, genre.id, actual.seriesId)
       : null;
 
+const suppliedAuthor = suppliedAuthorName
+  ? (
+      await prisma.author.findFirst({
+        where: {
+          name: {
+            equals: suppliedAuthorName,
+            mode: 'insensitive',
+          },
+        },
+      })
+    ) ?? await prisma.author.create({
+      data: { name: suppliedAuthorName },
+    })
+  : null;
+
 const actualizado = await prisma.book.update({
   where: {
     id: bookId,
   },
   data: {
     title,
+    authorId: suppliedAuthor?.id ?? actual.authorId,
     genreId: genre.id,
     standalone,
 

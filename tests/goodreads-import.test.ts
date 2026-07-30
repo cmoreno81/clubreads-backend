@@ -16,6 +16,14 @@ const router = await readFile(
   new URL('../src/routes/api.router.ts', import.meta.url),
   'utf8',
 );
+const authorBackfill = await readFile(
+  new URL('../scripts/backfill-book-authors.ts', import.meta.url),
+  'utf8',
+);
+const booksService = await readFile(
+  new URL('../src/services/books.service.ts', import.meta.url),
+  'utf8',
+);
 
 test('la importación de Goodreads exige autenticación y solo admite POST', () => {
   assert.match(router, /'previsualizarImportacionGoodreads'/);
@@ -81,6 +89,26 @@ test('solo se completan metadatos vacíos del libro compartido', () => {
   assert.match(
     service,
     /if \(!book\.publicationYear && row\.publicationYear\)/,
+  );
+  assert.match(service, /if \(!book\.authorId && row\.author\.trim\(\)\)/);
+  assert.match(service, /data\.author = \{ connect: \{ id: author\.id \} \}/);
+});
+
+test('un título antiguo sin autor no une dos obras homónimas', () => {
+  assert.match(service, /titleHasSeveralImportedAuthors/);
+  assert.match(
+    service,
+    /El título existe sin autor y el archivo contiene varias obras homónimas/,
+  );
+  assert.match(authorBackfill, /hasCompetingAuthor/);
+  assert.match(authorBackfill, /!hasCompetingAuthor/);
+});
+
+test('el autor puede completarse manualmente sin borrar el existente', () => {
+  assert.match(booksService, /data\.autor \|\| data\.author/);
+  assert.match(
+    booksService,
+    /authorId: suppliedAuthor\?\.id \?\? actual\.authorId/,
   );
 });
 

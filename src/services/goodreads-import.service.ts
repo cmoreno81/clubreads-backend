@@ -219,6 +219,14 @@ async function buildPreview(userId: string, rows: GoodreadsRow[]) {
   }
 
   const seen = new Set<string>();
+  const importedAuthorsByTitle = new Map<string, Set<string>>();
+  for (const row of rows) {
+    for (const title of importTitleVariants(row.title)) {
+      const authors = importedAuthorsByTitle.get(title) ?? new Set<string>();
+      authors.add(importAuthorIdentity(row.author));
+      importedAuthorsByTitle.set(title, authors);
+    }
+  }
   return rows.map<ImportPreviewItem>((row) => {
     if (!row.title || !row.author) {
       return {
@@ -257,9 +265,18 @@ async function buildPreview(userId: string, rows: GoodreadsRow[]) {
     const uniqueTitleMatches = [
       ...new Map(exactTitleMatches.map((book) => [book.id, book])).values(),
     ];
-    const fallbackTitleMatches = uniqueTitleMatches.length === 1
-      ? uniqueTitleMatches
-      : uniqueTitleMatches.filter(
+    const titleHasSeveralImportedAuthors = importTitleVariants(row.title).some(
+      (title) => (importedAuthorsByTitle.get(title)?.size ?? 0) > 1,
+    );
+    const soleTitleMatch = uniqueTitleMatches.length === 1
+      ? uniqueTitleMatches[0]
+      : null;
+    const fallbackTitleMatches =
+      soleTitleMatch &&
+        !soleTitleMatch.authorId &&
+        !titleHasSeveralImportedAuthors
+        ? [soleTitleMatch]
+        : uniqueTitleMatches.filter(
           (book) =>
             importAuthorIdentity(book.author?.name ?? '') ===
             importAuthorIdentity(row.author),
@@ -288,6 +305,20 @@ async function buildPreview(userId: string, rows: GoodreadsRow[]) {
     }
     const match = candidates[0];
     if (!match) {
+      if (
+        soleTitleMatch &&
+        !soleTitleMatch.authorId &&
+        titleHasSeveralImportedAuthors
+      ) {
+        return {
+          index: row.index,
+          titulo: row.title,
+          autor: row.author,
+          accion: 'REVISAR',
+          mensaje:
+            'El título existe sin autor y el archivo contiene varias obras homónimas; revísalo para no unir libros distintos.',
+        };
+      }
       return {
         index: row.index,
         titulo: row.title,
@@ -349,6 +380,7 @@ async function fillEmptyBookMetadata(
   tx: Prisma.TransactionClient,
   book: {
     id: string;
+    authorId: string | null;
     isbn: string | null;
     totalPages: number | null;
     publicationYear: number | null;
@@ -361,6 +393,20 @@ async function fillEmptyBookMetadata(
   if (!book.totalPages && row.pages) data.totalPages = row.pages;
   if (!book.publicationYear && row.publicationYear) {
     data.publicationYear = row.publicationYear;
+  }
+  if (!book.authorId && row.author.trim()) {
+    const existingAuthor = await tx.author.findFirst({
+      where: {
+        name: {
+          equals: row.author.trim(),
+          mode: 'insensitive',
+        },
+      },
+    });
+    const author = existingAuthor ?? await tx.author.create({
+      data: { name: row.author.trim() },
+    });
+    data.author = { connect: { id: author.id } };
   }
   if (Object.keys(data).length > 0) {
     await tx.book.update({ where: { id: book.id }, data });
