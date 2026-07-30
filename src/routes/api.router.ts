@@ -91,6 +91,11 @@ import {
   handleSearchGeneralCatalog,
   handleUpdateSeriesVolumeOrder,
 } from '../controllers/catalog.controller.js';
+import {
+  handleConfirmGoodreadsImport,
+  handlePreviewGoodreadsImport,
+} from '../controllers/goodreads-import.controller.js';
+import { GoodreadsImportError } from '../services/goodreads-import.service.js';
 
 export const apiRouter = Router();
 
@@ -115,6 +120,8 @@ const POST_ONLY_ACTIONS = new Set([
   'importarLibroCatalogo',
   'vincularVolumenSaga',
   'actualizarNumeroVolumenSaga',
+  'previsualizarImportacionGoodreads',
+  'confirmarImportacionGoodreads',
 ]);
 
 async function handleApi(req: Request, res: Response) {
@@ -229,6 +236,18 @@ async function handleApi(req: Request, res: Response) {
           return requireAuthentication(req, res, () => {});
         }
         return handleImportCatalogBook(req, res);
+
+      case 'previsualizarImportacionGoodreads':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handlePreviewGoodreadsImport(req, res);
+
+      case 'confirmarImportacionGoodreads':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleConfirmGoodreadsImport(req, res);
 
       case 'vincularVolumenSaga':
         if (!req.auth) {
@@ -394,7 +413,8 @@ async function handleApi(req: Request, res: Response) {
 
     if (
       error instanceof ClubContextError ||
-      error instanceof AuthError
+      error instanceof AuthError ||
+      error instanceof GoodreadsImportError
     ) {
       return res.status(error.statusCode).json({
         ok: false,
