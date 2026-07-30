@@ -25,6 +25,7 @@ export async function getGeneralDashboard(userId: string) {
   const [
     user,
     completions,
+    finishedLibrary,
     monthLibrary,
     popularGroups,
     totals,
@@ -68,6 +69,13 @@ export async function getGeneralDashboard(userId: string) {
         where: { userId },
         orderBy: { finishedAt: 'desc' },
         include: { book: true },
+      }),
+      prisma.library.findMany({
+        where: { userId, status: ReadingStatus.FINISHED },
+        select: {
+          bookId: true,
+          book: { select: { totalPages: true } },
+        },
       }),
       prisma.library.findMany({
         where: {
@@ -175,6 +183,19 @@ export async function getGeneralDashboard(userId: string) {
   const monthLibraryByBookId = new Map(
     monthLibrary.map((item) => [item.bookId, item]),
   );
+  const completedBookIds = new Set([
+    ...completions.map((item) => item.bookId),
+    ...finishedLibrary.map((item) => item.bookId),
+  ]);
+  const pagesByCompletedBook = new Map<string, number>();
+  for (const item of completions) {
+    pagesByCompletedBook.set(item.bookId, item.book.totalPages ?? 0);
+  }
+  for (const item of finishedLibrary) {
+    if (!pagesByCompletedBook.has(item.bookId)) {
+      pagesByCompletedBook.set(item.bookId, item.book.totalPages ?? 0);
+    }
+  }
   const pagesForBook = (bookId: string, totalPages: number | null) => {
     if (totalPages != null && totalPages > 0) return totalPages;
     const currentPage = monthLibraryByBookId.get(bookId)?.currentPage;
@@ -206,7 +227,6 @@ export async function getGeneralDashboard(userId: string) {
       })),
   ];
   const months = new Set(completions.map(({ finishedAt }) => monthKey(finishedAt)));
-  const completedBookIds = new Set(completions.map((item) => item.bookId));
   const libraryByBookId = new Map(
     seriesLibrary.map((item) => [item.bookId, item]),
   );
@@ -370,10 +390,10 @@ export async function getGeneralDashboard(userId: string) {
     resumen: {
       clubes: user.clubMemberships.length,
       leyendo: user.library.length,
-      terminados: completions.length,
+      terminados: completedBookIds.size,
       terminadosMes: monthCompletions.length,
-      paginasLeidas: completions.reduce(
-        (total, item) => total + (item.book.totalPages ?? 0),
+      paginasLeidas: [...pagesByCompletedBook.values()].reduce(
+        (total, pages) => total + pages,
         0,
       ),
       rachaMeses: streak,

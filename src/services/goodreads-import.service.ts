@@ -6,6 +6,7 @@ import {
 
 import { prisma } from '../prisma.js';
 import { canonicalBookTitle } from './catalog.service.js';
+import { findImportedBookCover } from './book-cover.service.js';
 
 const MAX_IMPORT_ROWS = 2_000;
 
@@ -20,6 +21,7 @@ type GoodreadsRow = {
   pages: number | null;
   publicationYear: number | null;
   dateRead: Date | null;
+  dateAdded: Date | null;
   exclusiveShelf: string;
   review: string;
 };
@@ -38,6 +40,13 @@ type ImportPreviewItem = {
   accion: ImportAction;
   mensaje: string;
   bookId?: string;
+};
+
+type CoverTask = {
+  bookId: string;
+  title: string;
+  author: string;
+  isbn: string;
 };
 
 function normalize(value: string) {
@@ -109,6 +118,7 @@ function parseRows(value: unknown): GoodreadsRow[] {
       pages: positiveInteger(row.pages),
       publicationYear: positiveInteger(row.publicationYear),
       dateRead: optionalDate(row.dateRead),
+      dateAdded: optionalDate(row.dateAdded),
       exclusiveShelf: normalize(String(row.exclusiveShelf ?? 'to-read')),
       review: String(row.review ?? '').trim().slice(0, 20_000),
     };
@@ -123,6 +133,18 @@ function importedStatus(shelf: string) {
   if (shelf === 'read') return ReadingStatus.FINISHED;
   if (shelf === 'currently-reading') return ReadingStatus.READING;
   return ReadingStatus.PENDING;
+}
+
+function importedFinishedAt(row: GoodreadsRow, now = new Date()) {
+  if (row.exclusiveShelf !== 'read') return null;
+  if (row.dateRead) return row.dateRead;
+  if (
+    row.dateAdded &&
+    row.dateAdded.getUTCFullYear() < now.getUTCFullYear()
+  ) {
+    return row.dateAdded;
+  }
+  return new Date(Date.UTC(now.getUTCFullYear() - 1, 11, 31, 12));
 }
 
 async function userForImport(userName: string) {
@@ -292,6 +314,7 @@ async function addPersonalData(
   row: GoodreadsRow,
 ) {
   const status = importedStatus(row.exclusiveShelf);
+  const finishedAt = importedFinishedAt(row);
   await tx.library.create({
     data: {
       userId,
@@ -299,7 +322,7 @@ async function addPersonalData(
       status,
       priority: Priority.MEDIUM,
       readingFormat: null,
-      finishedAt: status === ReadingStatus.FINISHED ? row.dateRead : null,
+      finishedAt,
     },
   });
 
@@ -313,16 +336,45 @@ async function addPersonalData(
       },
     });
   }
-  if (status === ReadingStatus.FINISHED && row.dateRead) {
+  if (status === ReadingStatus.FINISHED && finishedAt) {
     await tx.readingCompletion.create({
       data: {
         userId,
         bookId,
-        finishedAt: row.dateRead,
+        finishedAt,
         rating: row.rating,
         review: row.review || null,
       },
     });
+  }
+}
+
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function enrichMissingCovers(tasks: CoverTask[]) {
+  const uniqueTasks = [
+    ...new Map(tasks.map((task) => [task.bookId, task])).values(),
+  ];
+  for (const task of uniqueTasks) {
+    const book = await prisma.book.findUnique({
+      where: { id: task.bookId },
+      select: { coverUrl: true },
+    });
+    if (!book || book.coverUrl?.trim()) continue;
+
+    const coverUrl = await findImportedBookCover(task);
+    if (coverUrl) {
+      await prisma.book.updateMany({
+        where: {
+          id: task.bookId,
+          OR: [{ coverUrl: null }, { coverUrl: '' }],
+        },
+        data: { coverUrl },
+      });
+    }
+    await wait(120);
   }
 }
 
@@ -342,6 +394,7 @@ export async function confirmGoodreadsImport(
     let created = 0;
     let added = 0;
     let protectedCount = 0;
+    const coverTasks: CoverTask[] = [];
 
     for (const item of accepted) {
       const row = rows[item.index]!;
@@ -354,6 +407,14 @@ export async function confirmGoodreadsImport(
       }
       if (item.accion === 'PROTEGIDO') {
         protectedCount += 1;
+        if (book && !book.coverUrl?.trim()) {
+          coverTasks.push({
+            bookId: book.id,
+            title: book.title,
+            author: row.author,
+            isbn: row.isbn13 || row.isbn,
+          });
+        }
         continue;
       }
       if (!book) {
@@ -383,9 +444,21 @@ export async function confirmGoodreadsImport(
       } else {
         added += 1;
       }
+      if (!book.coverUrl?.trim()) {
+        coverTasks.push({
+          bookId: book.id,
+          title: book.title,
+          author: row.author,
+          isbn: row.isbn13 || row.isbn,
+        });
+      }
       await addPersonalData(tx, user.id, book.id, row);
     }
-    return { created, added, protectedCount };
+    return { created, added, protectedCount, coverTasks };
+  });
+
+  void enrichMissingCovers(result.coverTasks).catch(() => {
+    // La importación ya está guardada; una portada ausente no la revierte.
   });
 
   return {
@@ -397,7 +470,8 @@ export async function confirmGoodreadsImport(
       paraRevisar: preview.filter((item) => item.accion === 'REVISAR').length,
       omitidos: preview.filter((item) => item.accion === 'OMITIR').length,
     },
-    mensaje: 'Importación terminada sin sobrescribir datos de ClubReads.',
+    mensaje:
+      'Importación terminada. Las portadas pendientes se completarán automáticamente.',
   };
 }
 

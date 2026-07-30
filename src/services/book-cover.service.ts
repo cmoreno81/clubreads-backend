@@ -37,6 +37,12 @@ export type BookCoverMatch = {
   safeToApply: boolean;
 };
 
+type ImportedBookIdentity = {
+  title: string;
+  author: string;
+  isbn: string;
+};
+
 const OPEN_LIBRARY_SEARCH_URL =
   'https://openlibrary.org/search.json';
 
@@ -48,6 +54,10 @@ function normalizeText(value: string) {
     .replace(/[“”"'’`´:;,.!?¿¡()[\]{}]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeIsbn(value: string) {
+  return value.replace(/[^0-9Xx]/g, '').toUpperCase();
 }
 
 function titleWithoutArticle(value: string) {
@@ -335,4 +345,59 @@ export async function findBestBookCover(
       candidates.slice(0, 5),
     safeToApply,
   };
+}
+
+async function coverExists(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6_000);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'image/*',
+        'User-Agent': 'ClubReads/1.0 (goodreads-import)',
+      },
+      signal: controller.signal,
+    });
+    const isImage =
+      response.ok &&
+      (response.headers.get('content-type') ?? '').startsWith('image/');
+    await response.body?.cancel();
+    return isImage;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function findImportedBookCover(
+  identity: ImportedBookIdentity,
+) {
+  const isbn = normalizeIsbn(identity.isbn);
+  if (isbn.length === 10 || isbn.length === 13) {
+    const isbnCover =
+      `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`;
+    if (await coverExists(isbnCover)) return isbnCover;
+  }
+
+  try {
+    const candidates = await searchBookCoverCandidates(identity.title);
+    const normalizedAuthor = normalizeText(identity.author);
+    const safe = candidates.find((candidate) => {
+      const sameAuthor =
+        !normalizedAuthor ||
+        candidate.authors.some((author) => {
+          const normalizedCandidate = normalizeText(author);
+          return (
+            normalizedCandidate === normalizedAuthor ||
+            normalizedCandidate.includes(normalizedAuthor) ||
+            normalizedAuthor.includes(normalizedCandidate)
+          );
+        });
+      return candidate.score >= 96 && sameAuthor;
+    });
+    return safe?.coverUrl ?? null;
+  } catch {
+    return null;
+  }
 }

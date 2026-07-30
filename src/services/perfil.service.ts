@@ -169,7 +169,11 @@ export async function getPerfilUsuario(
     0,
   );
 
-const terminados = historialTerminados.map((item) => ({
+const historialBookIds = new Set(
+  historialTerminados.map((item) => item.bookId),
+);
+const terminados = [
+  ...historialTerminados.map((item) => ({
   completionId: item.id,
   libraryId: bibliotecaPorLibro.get(item.bookId)?.id ?? '',
   bookId: item.bookId,
@@ -182,7 +186,31 @@ const terminados = historialTerminados.map((item) => ({
   formato: formatToFlutter(item.readingFormat),
   coverUrl: item.book.coverUrl ?? '',
   esRelectura: item.isReread,
-}));
+  })),
+  ...biblioteca
+    .filter(
+      (item) =>
+        item.status === ReadingStatus.FINISHED &&
+        !historialBookIds.has(item.bookId),
+    )
+    .map((item) => {
+      const review = item.book.reviews[0];
+      return {
+        completionId: '',
+        libraryId: item.id,
+        bookId: item.bookId,
+        libro: item.book.title,
+        genero: item.book.genre.name,
+        fechaInicio: fechaToFlutter(item.startedAt),
+        fechaFin: '',
+        valoracion: ratingToFlutter(review?.rating),
+        resena: review?.review ?? '',
+        formato: formatToFlutter(item.readingFormat),
+        coverUrl: item.book.coverUrl ?? '',
+        esRelectura: false,
+      };
+    }),
+];
 
 const abandonados = biblioteca
   .filter(
@@ -278,9 +306,12 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
     .sort((a, b) => b.total - a.total)
     .slice(0, 5);
 
-  const finalizadosIds = new Set(
-    historialTerminados.map((item) => item.bookId),
-  );
+  const finalizadosIds = new Set([
+    ...historialTerminados.map((item) => item.bookId),
+    ...biblioteca
+      .filter((item) => item.status === ReadingStatus.FINISHED)
+      .map((item) => item.bookId),
+  ]);
   const bibliotecaPorId = new Map(
     biblioteca.map((item) => [item.bookId, item]),
   );
@@ -475,7 +506,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
     avatarUrl: user.avatarUrl ?? '',
 
     resumen: {
-      terminados: ultimaFinalizacionPorLibro.size,
+      terminados: finalizadosIds.size,
       relecturas: historialTerminados.filter((item) => item.isReread).length,
       leyendo: leyendo.length,
       pendientes: pendientes.length,

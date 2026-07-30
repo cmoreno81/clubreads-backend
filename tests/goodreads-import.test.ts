@@ -52,3 +52,25 @@ test('la confirmación completa se ejecuta dentro de una transacción', () => {
   assert.match(service, /prisma\.\$transaction\(async \(tx\) =>/);
   assert.match(service, /await addPersonalData\(tx,/);
 });
+
+test('una lectura sin fecha usa una fecha histórica y nunca el año actual', () => {
+  assert.match(
+    service,
+    /row\.dateAdded\.getUTCFullYear\(\) < now\.getUTCFullYear\(\)/,
+  );
+  assert.match(
+    service,
+    /Date\.UTC\(now\.getUTCFullYear\(\) - 1, 11, 31, 12\)/,
+  );
+  assert.match(service, /if \(row\.dateRead\) return row\.dateRead/);
+});
+
+test('las portadas vacías se completan sin sustituir las existentes', () => {
+  assert.match(service, /findImportedBookCover/);
+  assert.match(service, /if \(!book \|\| book\.coverUrl\?\.trim\(\)\) continue/);
+  assert.match(
+    service,
+    /OR: \[\{ coverUrl: null \}, \{ coverUrl: '' \}\]/,
+  );
+  assert.match(service, /void enrichMissingCovers/);
+});
