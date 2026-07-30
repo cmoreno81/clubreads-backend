@@ -223,6 +223,13 @@ async function buscarOCrearSaga(
       coincidencia.totalBooks ?? 0,
       ...equivalentes.map((series) => series.totalBooks ?? 0),
     );
+    const publicationStatus = equivalentes.some(
+      (series) => series.publicationStatus === 'COMPLETED',
+    )
+      ? 'COMPLETED'
+      : equivalentes.some((series) => series.publicationStatus === 'ONGOING')
+        ? 'ONGOING'
+        : 'UNKNOWN';
 
     if (
       coincidencia.name !== nombre ||
@@ -255,6 +262,7 @@ async function buscarOCrearSaga(
             name: nombre,
             genreId,
             totalBooks: totalBooks > 0 ? totalBooks : null,
+            publicationStatus,
           },
         });
       });
@@ -265,6 +273,7 @@ async function buscarOCrearSaga(
       name: nombre,
       genreId,
       totalBooks: totalBooks > 0 ? totalBooks : null,
+      publicationStatus,
     };
   }
   return prisma.series.create({

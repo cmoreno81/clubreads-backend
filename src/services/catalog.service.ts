@@ -2,6 +2,7 @@ import {
   Priority,
   ReadingFormat,
   ReadingStatus,
+  SeriesPublicationStatus,
 } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
@@ -532,6 +533,60 @@ export async function updateSeriesVolumeOrder(
   return {
     ok: true,
     mensaje: 'Número de volumen actualizado',
+  };
+}
+
+export async function updateSeriesPublicationStatus(
+  userName: string,
+  data: Record<string, unknown>,
+) {
+  await authenticatedUser(userName);
+  const seriesId = String(data.sagaId ?? '').trim();
+  const status = String(data.estadoEditorial ?? '').trim().toUpperCase();
+  const allowed = new Set(Object.values(SeriesPublicationStatus));
+  if (!seriesId || !allowed.has(status as SeriesPublicationStatus)) {
+    return { ok: false, mensaje: 'Selecciona un estado editorial válido' };
+  }
+
+  const series = await prisma.series.findUnique({
+    where: { id: seriesId },
+    include: { books: { where: { deletedAt: null } } },
+  });
+  if (!series) return { ok: false, mensaje: 'Saga no encontrada' };
+
+  const rawTotal = data.totalPrevisto;
+  const total = rawTotal == null || String(rawTotal).trim() === ''
+    ? null
+    : Number.parseInt(String(rawTotal), 10);
+  const highestPosition = series.books.reduce((highest, book) => {
+    const position = seriesPosition(book.seriesOrder);
+    return position === Number.MAX_SAFE_INTEGER
+      ? highest
+      : Math.max(highest, Math.ceil(position));
+  }, 0);
+  const minimum = Math.max(series.books.length, highestPosition);
+  if (total != null && (!Number.isInteger(total) || total < minimum)) {
+    return {
+      ok: false,
+      mensaje: `El total previsto no puede ser inferior a ${minimum}`,
+    };
+  }
+
+  const updated = await prisma.series.update({
+    where: { id: seriesId },
+    data: {
+      publicationStatus: status as SeriesPublicationStatus,
+      totalBooks: total,
+    },
+  });
+  return {
+    ok: true,
+    mensaje: 'Estado editorial actualizado',
+    saga: {
+      id: updated.id,
+      estadoEditorial: updated.publicationStatus,
+      totalPrevisto: updated.totalBooks,
+    },
   };
 }
 

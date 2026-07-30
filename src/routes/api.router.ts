@@ -89,6 +89,7 @@ import {
   handleAddSeriesCatalogVolume,
   handleImportCatalogBook,
   handleSearchGeneralCatalog,
+  handleUpdateSeriesPublicationStatus,
   handleUpdateSeriesVolumeOrder,
 } from '../controllers/catalog.controller.js';
 import {
@@ -120,6 +121,7 @@ const POST_ONLY_ACTIONS = new Set([
   'importarLibroCatalogo',
   'vincularVolumenSaga',
   'actualizarNumeroVolumenSaga',
+  'actualizarEstadoEditorialSaga',
   'previsualizarImportacionGoodreads',
   'confirmarImportacionGoodreads',
 ]);
@@ -260,6 +262,12 @@ async function handleApi(req: Request, res: Response) {
           return requireAuthentication(req, res, () => {});
         }
         return handleUpdateSeriesVolumeOrder(req, res);
+
+      case 'actualizarEstadoEditorialSaga':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleUpdateSeriesPublicationStatus(req, res);
 
       case 'crearClub':
         if (!req.auth) {

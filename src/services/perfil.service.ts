@@ -338,6 +338,14 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
       }
       seriesPersonales.set(key, {
         ...current,
+        publicationStatus:
+          current.publicationStatus === 'COMPLETED' ||
+          item.book.series.publicationStatus === 'COMPLETED'
+            ? 'COMPLETED'
+            : current.publicationStatus === 'ONGOING' ||
+                item.book.series.publicationStatus === 'ONGOING'
+              ? 'ONGOING'
+              : 'UNKNOWN',
         totalBooks: Math.max(
           current.totalBooks ?? 0,
           item.book.series.totalBooks ?? 0,
@@ -460,7 +468,9 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
       const allKnownVolumesRead =
         books.length > 0 && read === books.length;
       const isComplete =
-        series.totalBooks != null && read >= knownTotal;
+        series.publicationStatus === 'COMPLETED' &&
+        allKnownVolumesRead &&
+        !hasPreviousGaps;
       const next =
         volumes.find(
           ({ estado }) => estado !== 'LEIDO' && estado !== 'LEYENDO',
@@ -476,6 +486,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         leidos: read,
         totalConocidos: books.length,
         totalSaga: knownTotal,
+        estadoEditorial: series.publicationStatus,
         estado: isComplete
           ? 'COMPLETADA'
           : !hasStarted

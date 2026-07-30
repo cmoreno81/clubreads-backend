@@ -156,7 +156,15 @@ model Series {
 
   totalBooks Int?
 
+  publicationStatus SeriesPublicationStatus @default(UNKNOWN)
+
   books Book[]
+}
+
+enum SeriesPublicationStatus {
+  UNKNOWN
+  ONGOING
+  COMPLETED
 }
 
 //

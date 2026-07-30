@@ -251,6 +251,14 @@ export async function getGeneralDashboard(userId: string) {
       }
       personalSeries.set(key, {
         ...current,
+        publicationStatus:
+          current.publicationStatus === 'COMPLETED' ||
+          item.book.series.publicationStatus === 'COMPLETED'
+            ? 'COMPLETED'
+            : current.publicationStatus === 'ONGOING' ||
+                item.book.series.publicationStatus === 'ONGOING'
+              ? 'ONGOING'
+              : 'UNKNOWN',
         totalBooks: Math.max(
           current.totalBooks ?? 0,
           item.book.series.totalBooks ?? 0,
@@ -331,6 +339,7 @@ export async function getGeneralDashboard(userId: string) {
         nombre: series.name,
         leidos: read,
         total,
+        estadoEditorial: series.publicationStatus,
         iniciada: read > 0 || hasActiveReading,
         coverUrl: representativeCover,
         siguiente: next
@@ -343,7 +352,12 @@ export async function getGeneralDashboard(userId: string) {
           : null,
       };
     })
-    .filter((series) => series.iniciada && series.leidos < series.total)
+    .filter(
+      (series) =>
+        series.iniciada &&
+        series.estadoEditorial !== 'COMPLETED' &&
+        series.leidos < series.total,
+    )
     .sort((left, right) => right.leidos - left.leidos)
     .slice(0, 6);
   let streak = 0;

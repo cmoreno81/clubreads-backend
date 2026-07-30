@@ -6,6 +6,7 @@ import {
   addSeriesCatalogVolume,
   importCatalogBook,
   searchGeneralCatalog,
+  updateSeriesPublicationStatus,
   updateSeriesVolumeOrder,
 } from '../services/catalog.service.js';
 
@@ -19,6 +20,18 @@ export async function handleUpdateSeriesVolumeOrder(
 ) {
   return res.json(
     await updateSeriesVolumeOrder(
+      requestUserName(req),
+      (req.body ?? {}) as Record<string, unknown>,
+    ),
+  );
+}
+
+export async function handleUpdateSeriesPublicationStatus(
+  req: Request,
+  res: Response,
+) {
+  return res.json(
+    await updateSeriesPublicationStatus(
       requestUserName(req),
       (req.body ?? {}) as Record<string, unknown>,
     ),
