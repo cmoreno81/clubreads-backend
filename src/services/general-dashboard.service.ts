@@ -406,6 +406,10 @@ export async function getGeneralDashboard(userId: string) {
       leyendo: user.library.length,
       terminados: completedBookIds.size,
       terminadosMes: monthCompletions.length,
+      paginasMes: monthCompletions.reduce(
+        (total, item) => total + (item.book.totalPages ?? 0),
+        0,
+      ),
       paginasLeidas: [...pagesByCompletedBook.values()].reduce(
         (total, pages) => total + pages,
         0,
