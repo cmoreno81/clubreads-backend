@@ -284,14 +284,35 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
   const bibliotecaPorId = new Map(
     biblioteca.map((item) => [item.bookId, item]),
   );
-  const seriesPersonales = new Map<
-    string,
-    NonNullable<(typeof biblioteca)[number]['book']['series']>
-  >();
+  type SeriePersonal = NonNullable<
+    (typeof biblioteca)[number]['book']['series']
+  >;
+  const seriesPersonales = new Map<string, SeriePersonal>();
 
   for (const item of biblioteca) {
     if (item.book.series) {
-      seriesPersonales.set(item.book.series.id, item.book.series);
+      const key = canonicalBookTitle(item.book.series.name);
+      const current = seriesPersonales.get(key);
+      if (!current) {
+        seriesPersonales.set(key, {
+          ...item.book.series,
+          books: [...item.book.series.books],
+        });
+        continue;
+      }
+
+      const books = new Map(current.books.map((book) => [book.id, book]));
+      for (const book of item.book.series.books) {
+        books.set(book.id, book);
+      }
+      seriesPersonales.set(key, {
+        ...current,
+        totalBooks: Math.max(
+          current.totalBooks ?? 0,
+          item.book.series.totalBooks ?? 0,
+        ) || null,
+        books: [...books.values()],
+      });
     }
   }
 
@@ -396,6 +417,17 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         highestOrder,
         declaredInOrders,
       );
+      const knownPositions = new Set(
+        books
+          .map((book) => datosNumeroSaga(book.seriesOrder).posicion)
+          .filter((position): position is number => position != null),
+      );
+      const hasPreviousGaps = Array.from(
+        { length: highestOrder },
+        (_, index) => index + 1,
+      ).some((position) => !knownPositions.has(position));
+      const allKnownVolumesRead =
+        books.length > 0 && read === books.length;
       const isComplete =
         series.totalBooks != null && read >= knownTotal;
       const next =
@@ -416,7 +448,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
           ? 'COMPLETADA'
           : read === 0
             ? 'PENDIENTE'
-            : read === books.length && books.length > 0
+            : allKnownVolumesRead && !hasPreviousGaps
             ? 'AL_DIA'
             : 'EN_CURSO',
         volumenes: volumes,

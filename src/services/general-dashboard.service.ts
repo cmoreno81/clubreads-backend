@@ -1,6 +1,7 @@
 import { ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
+import { canonicalBookTitle } from './catalog.service.js';
 
 function monthKey(date: Date) {
   return `${date.getUTCFullYear()}-${String(
@@ -209,13 +210,33 @@ export async function getGeneralDashboard(userId: string) {
   const libraryByBookId = new Map(
     seriesLibrary.map((item) => [item.bookId, item]),
   );
-  const personalSeries = new Map<
-    string,
-    NonNullable<(typeof seriesLibrary)[number]['book']['series']>
-  >();
+  type PersonalSeries = NonNullable<
+    (typeof seriesLibrary)[number]['book']['series']
+  >;
+  const personalSeries = new Map<string, PersonalSeries>();
   for (const item of seriesLibrary) {
     if (item.book.series) {
-      personalSeries.set(item.book.series.id, item.book.series);
+      const key = canonicalBookTitle(item.book.series.name);
+      const current = personalSeries.get(key);
+      if (!current) {
+        personalSeries.set(key, {
+          ...item.book.series,
+          books: [...item.book.series.books],
+        });
+        continue;
+      }
+      const books = new Map(current.books.map((book) => [book.id, book]));
+      for (const book of item.book.series.books) {
+        books.set(book.id, book);
+      }
+      personalSeries.set(key, {
+        ...current,
+        totalBooks: Math.max(
+          current.totalBooks ?? 0,
+          item.book.series.totalBooks ?? 0,
+        ) || null,
+        books: [...books.values()],
+      });
     }
   }
   const seriesNumber = (value: string | null) => {

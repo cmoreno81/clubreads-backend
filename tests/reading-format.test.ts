@@ -8,9 +8,21 @@ const migration = readFileSync(
   'utf8',
 );
 const service = readFileSync('src/services/books.service.ts', 'utf8');
+const profileService = readFileSync(
+  'src/services/perfil.service.ts',
+  'utf8',
+);
+const dashboardService = readFileSync(
+  'src/services/general-dashboard.service.ts',
+  'utf8',
+);
 const routes = readFileSync('src/routes/api.router.ts', 'utf8');
 const seriesMerge = readFileSync(
   'prisma/migrations/20260729144500_merge_windy_city_series/migration.sql',
+  'utf8',
+);
+const caseSeriesMerge = readFileSync(
+  'prisma/migrations/20260730095500_merge_case_duplicate_series/migration.sql',
   'utf8',
 );
 
@@ -49,4 +61,26 @@ test('editar solo las mayúsculas renombra y reúne sagas equivalentes', () => {
   assert.match(service, /name: nombre/);
   assert.match(service, /seriesId:\s*\{\s*in:/);
   assert.match(service, /tx\.series\.deleteMany/);
+});
+
+test('el perfil y el dashboard agrupan fichas históricas equivalentes', () => {
+  assert.match(
+    profileService,
+    /const key = canonicalBookTitle\(item\.book\.series\.name\)/,
+  );
+  assert.match(
+    dashboardService,
+    /const key = canonicalBookTitle\(item\.book\.series\.name\)/,
+  );
+  assert.match(caseSeriesMerge, /TRANSLATE/);
+  assert.match(caseSeriesMerge, /UPDATE "Book"/);
+  assert.match(caseSeriesMerge, /DELETE FROM "Series"/);
+});
+
+test('una saga con volúmenes anteriores ausentes no figura al día', () => {
+  assert.match(profileService, /hasPreviousGaps/);
+  assert.match(
+    profileService,
+    /allKnownVolumesRead && !hasPreviousGaps/,
+  );
 });
