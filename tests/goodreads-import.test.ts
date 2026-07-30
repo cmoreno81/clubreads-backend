@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   importAuthorIdentity,
   importTitleVariants,
+  isRatedFinishedGoodreadsRow,
 } from '../src/services/goodreads-import.service.js';
 
 const service = await readFile(
@@ -38,6 +39,36 @@ test('los libros existentes protegen los datos personales de ClubReads', () => {
   assert.doesNotMatch(
     service,
     /library\.update\([\s\S]*priority:[\s\S]*row/,
+  );
+});
+
+test('solo admite libros finalizados y valorados', () => {
+  assert.equal(
+    isRatedFinishedGoodreadsRow({ exclusiveShelf: 'read', rating: 5 }),
+    true,
+  );
+  assert.equal(
+    isRatedFinishedGoodreadsRow({ exclusiveShelf: 'read', rating: null }),
+    false,
+  );
+  assert.equal(
+    isRatedFinishedGoodreadsRow({ exclusiveShelf: 'to-read', rating: 5 }),
+    false,
+  );
+  assert.equal(
+    isRatedFinishedGoodreadsRow({
+      exclusiveShelf: 'currently-reading',
+      rating: 4,
+    }),
+    false,
+  );
+  assert.match(
+    service,
+    /const eligibleRows = rows\.filter\(isRatedFinishedGoodreadsRow\)/,
+  );
+  assert.match(
+    service,
+    /const rows = parsedRows\.filter\(isRatedFinishedGoodreadsRow\)/,
   );
 });
 

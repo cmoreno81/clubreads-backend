@@ -160,6 +160,12 @@ function importedStatus(shelf: string) {
   return ReadingStatus.PENDING;
 }
 
+export function isRatedFinishedGoodreadsRow(
+  row: Pick<GoodreadsRow, 'exclusiveShelf' | 'rating'>,
+) {
+  return row.exclusiveShelf === 'read' && row.rating !== null;
+}
+
 function importedFinishedAt(row: GoodreadsRow, now = new Date()) {
   if (row.exclusiveShelf !== 'read') return null;
   if (row.dateRead) return row.dateRead;
@@ -311,16 +317,16 @@ async function buildPreview(userId: string, rows: GoodreadsRow[]) {
   });
 }
 
-function previewSummary(items: ImportPreviewItem[]) {
+function previewSummary(items: ImportPreviewItem[], excluded = 0) {
   const count = (action: ImportAction) =>
     items.filter((item) => item.accion === action).length;
   return {
-    total: items.length,
+    total: items.length + excluded,
     nuevos: count('NUEVO'),
     paraAnadir: count('ANADIR'),
     protegidos: count('PROTEGIDO'),
     paraRevisar: count('REVISAR'),
-    omitidos: count('OMITIR'),
+    omitidos: count('OMITIR') + excluded,
   };
 }
 
@@ -330,10 +336,11 @@ export async function previewGoodreadsImport(
 ) {
   const user = await userForImport(userName);
   const rows = parseRows(rawRows);
-  const items = await buildPreview(user.id, rows);
+  const eligibleRows = rows.filter(isRatedFinishedGoodreadsRow);
+  const items = await buildPreview(user.id, eligibleRows);
   return {
     ok: true,
-    resumen: previewSummary(items),
+    resumen: previewSummary(items, rows.length - eligibleRows.length),
     libros: items,
   };
 }
@@ -436,7 +443,8 @@ export async function confirmGoodreadsImport(
   rawRows: unknown,
 ) {
   const user = await userForImport(userName);
-  const rows = parseRows(rawRows);
+  const parsedRows = parseRows(rawRows);
+  const rows = parsedRows.filter(isRatedFinishedGoodreadsRow);
   const preview = await buildPreview(user.id, rows);
   const accepted = preview.filter((item) =>
     item.accion === 'NUEVO' || item.accion === 'ANADIR' ||
@@ -521,10 +529,13 @@ export async function confirmGoodreadsImport(
       anadidos: result.added,
       protegidos: result.protectedCount,
       paraRevisar: preview.filter((item) => item.accion === 'REVISAR').length,
-      omitidos: preview.filter((item) => item.accion === 'OMITIR').length,
+      omitidos:
+        preview.filter((item) => item.accion === 'OMITIR').length +
+        parsedRows.length -
+        rows.length,
     },
     mensaje:
-      'Importación terminada. Las portadas pendientes se completarán automáticamente.',
+      'Importación terminada. Solo se han importado libros finalizados y valorados.',
   };
 }
 
