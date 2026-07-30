@@ -288,6 +288,13 @@ export async function getGeneralDashboard(userId: string) {
         ),
       );
       const next = books.find((book) => !completedBookIds.has(book.id)) ?? null;
+      const hasActiveReading = books.some((book) => {
+        const status = libraryByBookId.get(book.id)?.status;
+        return (
+          status === ReadingStatus.READING ||
+          status === ReadingStatus.REREADING
+        );
+      });
       const representativeCover =
         next?.coverUrl?.trim() ||
         [...books]
@@ -304,6 +311,7 @@ export async function getGeneralDashboard(userId: string) {
         nombre: series.name,
         leidos: read,
         total,
+        iniciada: read > 0 || hasActiveReading,
         coverUrl: representativeCover,
         siguiente: next
           ? {
@@ -315,7 +323,7 @@ export async function getGeneralDashboard(userId: string) {
           : null,
       };
     })
-    .filter((series) => series.leidos > 0 && series.leidos < series.total)
+    .filter((series) => series.iniciada && series.leidos < series.total)
     .sort((left, right) => right.leidos - left.leidos)
     .slice(0, 6);
   let streak = 0;

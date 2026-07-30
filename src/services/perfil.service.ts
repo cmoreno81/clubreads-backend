@@ -436,6 +436,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         ) ?? null;
       const reading =
         volumes.find(({ estado }) => estado === 'LEYENDO') ?? null;
+      const hasStarted = read > 0 || reading != null;
 
       return {
         id: series.id,
@@ -446,7 +447,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         totalSaga: knownTotal,
         estado: isComplete
           ? 'COMPLETADA'
-          : read === 0
+          : !hasStarted
             ? 'PENDIENTE'
             : allKnownVolumesRead && !hasPreviousGaps
             ? 'AL_DIA'
@@ -484,7 +485,8 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
       likesRecibidos,
       clubes: user._count.clubMemberships,
       sagasAbiertas: sagas.filter(
-        ({ estado, leidos }) => leidos > 0 && estado !== 'COMPLETADA',
+        ({ estado }) =>
+          estado !== 'PENDIENTE' && estado !== 'COMPLETADA',
       ).length,
     },
 
