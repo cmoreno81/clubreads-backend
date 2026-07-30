@@ -76,11 +76,16 @@ export async function getPerfilUsuario(
     };
   }
 
-  const { club } = await getCurrentClubContext(solicitante);
+  const ownProfile = nombre === solicitante.trim();
+  const club = ownProfile
+    ? null
+    : (await getCurrentClubContext(solicitante)).club;
   const user = await prisma.user.findFirst({
     where: {
       name: nombre,
-      clubMemberships: { some: { clubId: club.id } },
+      ...(club
+        ? { clubMemberships: { some: { clubId: club.id } } }
+        : {}),
     },
     include: {
       _count: {
@@ -470,7 +475,10 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
       const isComplete =
         series.publicationStatus === 'COMPLETED' &&
         allKnownVolumesRead &&
-        !hasPreviousGaps;
+        !hasPreviousGaps &&
+        knownTotal > 0 &&
+        books.length >= knownTotal &&
+        read >= knownTotal;
       const next =
         volumes.find(
           ({ estado }) => estado !== 'LEIDO' && estado !== 'LEYENDO',

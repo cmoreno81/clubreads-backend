@@ -9,7 +9,7 @@ export async function getTendenciasClub(usuario = '') {
   const { club } = await getCurrentClubContext(usuario);
   const leyendoAhora = await prisma.library.findMany({
     where: {
-      status: 'READING',
+      status: { in: ['READING', 'REREADING'] },
       user: { clubMemberships: { some: { clubId: club.id } } },
     },
     include: {
@@ -26,15 +26,43 @@ export async function getTendenciasClub(usuario = '') {
   });
 
   const generos = new Map<string, number>();
-  const libros = new Map<string, number>();
-  const lectoras = new Map<string, number>();
+  const libros = new Map<
+    string,
+    {
+      id: string;
+      nombre: string;
+      total: number;
+      coverUrl: string;
+    }
+  >();
+  const lectores = new Map<
+    string,
+    {
+      id: string;
+      nombre: string;
+      total: number;
+      avatarUrl: string;
+    }
+  >();
 
   for (const item of leyendoAhora) {
     const genero = item.book.genre?.name ?? 'Sin género';
+    const libro = libros.get(item.book.id);
+    const lector = lectores.get(item.user.id);
 
     generos.set(genero, (generos.get(genero) ?? 0) + 1);
-    libros.set(item.book.title, (libros.get(item.book.title) ?? 0) + 1);
-    lectoras.set(item.user.name, (lectoras.get(item.user.name) ?? 0) + 1);
+    libros.set(item.book.id, {
+      id: item.book.id,
+      nombre: item.book.title,
+      total: (libro?.total ?? 0) + 1,
+      coverUrl: item.book.coverUrl ?? '',
+    });
+    lectores.set(item.user.id, {
+      id: item.user.id,
+      nombre: item.user.name,
+      total: (lector?.total ?? 0) + 1,
+      avatarUrl: item.user.avatarUrl ?? '',
+    });
   }
 
   const generosTop = top(
@@ -44,14 +72,12 @@ export async function getTendenciasClub(usuario = '') {
   );
 
   const librosTop = top(
-    Array.from(libros.entries())
-      .map(([nombre, total]) => ({ nombre, total }))
+    Array.from(libros.values())
       .sort((a, b) => b.total - a.total),
   );
 
-  const lectorasTop = top(
-    Array.from(lectoras.entries())
-      .map(([nombre, total]) => ({ nombre, total }))
+  const lectoresTop = top(
+    Array.from(lectores.values())
       .sort((a, b) => b.total - a.total),
   );
 
@@ -62,7 +88,7 @@ export async function getTendenciasClub(usuario = '') {
     : 'El club está repartido entre varias lecturas.';
 
   const narrador = generoPrincipal
-    ? `Ahora mismo ${generoPrincipal.total} lectora${generoPrincipal.total === 1 ? '' : 's'} están leyendo ${generoPrincipal.nombre}. Parece que este género está marcando el ritmo del club.`
+    ? `Ahora mismo ${generoPrincipal.total} ${generoPrincipal.total === 1 ? 'persona está' : 'personas están'} leyendo ${generoPrincipal.nombre}. Parece que este género está marcando el ritmo del club.`
     : 'No hay una tendencia clara todavía. El club está explorando lecturas distintas.';
 
   return {
@@ -70,7 +96,7 @@ export async function getTendenciasClub(usuario = '') {
     narrador,
     generos: generosTop,
     libros: librosTop,
-    lectoras: lectorasTop,
+    lectoras: lectoresTop,
     totalLeyendo: leyendoAhora.length,
   };
 }

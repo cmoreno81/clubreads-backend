@@ -14,6 +14,8 @@ test('el estado editorial se añade sin romper las sagas existentes', () => {
 test('completada exige confirmación editorial y todos los volúmenes leídos', () => {
   assert.match(profile, /series\.publicationStatus === 'COMPLETED'/);
   assert.match(profile, /allKnownVolumesRead[\s\S]*!hasPreviousGaps/);
+  assert.match(profile, /books\.length >= knownTotal/);
+  assert.match(profile, /read >= knownTotal/);
   assert.match(profile, /estadoEditorial: series\.publicationStatus/);
 });
 

@@ -94,6 +94,6 @@ test('leer el primer volumen convierte la saga en empezada y en curso', () => {
   );
   assert.match(
     dashboardService,
-    /series\.iniciada && series\.leidos < series\.total/,
+    /series\.iniciada[\s\S]*series\.estadoEditorial !== 'COMPLETED'[\s\S]*series\.leidos < series\.total/,
   );
 });

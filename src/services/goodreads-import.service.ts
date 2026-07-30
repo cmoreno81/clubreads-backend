@@ -129,6 +129,25 @@ function identity(row: GoodreadsRow) {
   return `${canonicalBookTitle(row.title)}:${normalize(row.author)}`;
 }
 
+export function importTitleVariants(value: string) {
+  const canonical = canonicalBookTitle(value);
+  const withoutSeriesSuffix = canonical
+    .replace(
+      /\s*\((?=[^)]*(?:#\s*\d+|\b(?:book|libro|series|serie|universe|universo|saga|trilogy|trilogia)\b))[^)]*\)\s*$/i,
+      '',
+    )
+    .replace(/\s+(?:#|n[ºo.]?\s*)\d+\s*$/i, '')
+    .trim();
+  return [...new Set([canonical, withoutSeriesSuffix].filter(Boolean))];
+}
+
+function workKeys(title: string, author: string) {
+  const normalizedAuthor = normalize(author);
+  return importTitleVariants(title).map(
+    (variant) => `${variant}:${normalizedAuthor}`,
+  );
+}
+
 function importedStatus(shelf: string) {
   if (shelf === 'read') return ReadingStatus.FINISHED;
   if (shelf === 'currently-reading') return ReadingStatus.READING;
@@ -178,8 +197,9 @@ async function buildPreview(userId: string, rows: GoodreadsRow[]) {
   for (const book of books) {
     const isbn = normalizedIsbn(book.isbn);
     if (isbn) byIsbn.set(isbn, [...(byIsbn.get(isbn) ?? []), book]);
-    const key = `${canonicalBookTitle(book.title)}:${normalize(book.author?.name ?? '')}`;
-    byWork.set(key, [...(byWork.get(key) ?? []), book]);
+    for (const key of workKeys(book.title, book.author?.name ?? '')) {
+      byWork.set(key, [...(byWork.get(key) ?? []), book]);
+    }
   }
 
   const seen = new Set<string>();
@@ -214,9 +234,14 @@ async function buildPreview(userId: string, rows: GoodreadsRow[]) {
       ...(row.isbn13 ? byIsbn.get(row.isbn13) ?? [] : []),
       ...(row.isbn ? byIsbn.get(row.isbn) ?? [] : []),
     ];
-    const candidates = isbnMatches.length > 0
-      ? [...new Map(isbnMatches.map((book) => [book.id, book])).values()]
-      : byWork.get(identity(row)) ?? [];
+    const titleMatches = workKeys(row.title, row.author)
+      .flatMap((key) => byWork.get(key) ?? []);
+    const candidates = [
+      ...new Map(
+        (isbnMatches.length > 0 ? isbnMatches : titleMatches)
+          .map((book) => [book.id, book]),
+      ).values(),
+    ];
 
     if (candidates.length > 1) {
       return {
