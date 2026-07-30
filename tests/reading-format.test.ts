@@ -84,3 +84,16 @@ test('una saga con volúmenes anteriores ausentes no figura al día', () => {
     /allKnownVolumesRead && !hasPreviousGaps/,
   );
 });
+
+test('leer el primer volumen convierte la saga en empezada y en curso', () => {
+  assert.match(profileService, /const hasStarted = read > 0 \|\| reading != null/);
+  assert.match(profileService, /: !hasStarted\s*\?\s*'PENDIENTE'/);
+  assert.match(
+    dashboardService,
+    /status === ReadingStatus\.READING[\s\S]*ReadingStatus\.REREADING/,
+  );
+  assert.match(
+    dashboardService,
+    /series\.iniciada && series\.leidos < series\.total/,
+  );
+});

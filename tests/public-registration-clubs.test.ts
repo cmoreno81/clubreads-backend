@@ -67,7 +67,10 @@ test('el dashboard general funciona sin exigir un club activo', () => {
   assert.doesNotMatch(generalDashboard, /getCurrentClubContext/);
   assert.match(profile, /seriesPersonales/);
   assert.match(profile, /sagasAbiertas/);
-  assert.match(profile, /\(\{ estado, leidos \}\) => leidos > 0/);
+  assert.match(
+    profile,
+    /estado !== 'PENDIENTE' && estado !== 'COMPLETADA'/,
+  );
   assert.match(profile, /siguiente: reading \?\? next/);
 });
 
