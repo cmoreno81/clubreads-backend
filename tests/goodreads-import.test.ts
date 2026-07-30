@@ -89,4 +89,8 @@ test('reconoce títulos de Goodreads con la saga y el volumen entre paréntesis'
     importTitleVariants('Dungeon Crawler Carl (Dungeon Crawler Carl, #1)')
       .includes('dungeon crawler carl'),
   );
+  assert.ok(
+    importTitleVariants('Nuncanoche (Crónicas de Nuncanoche #1)')
+      .includes('nuncanoche'),
+  );
 });
