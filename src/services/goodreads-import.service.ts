@@ -58,6 +58,12 @@ function normalize(value: string) {
     .replace(/\s+/g, ' ');
 }
 
+export function importAuthorIdentity(value: string) {
+  return normalize(value)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function normalizedIsbn(value: unknown) {
   return String(value ?? '').replace(/[^0-9Xx]/g, '').toUpperCase();
 }
@@ -142,7 +148,7 @@ export function importTitleVariants(value: string) {
 }
 
 function workKeys(title: string, author: string) {
-  const normalizedAuthor = normalize(author);
+  const normalizedAuthor = importAuthorIdentity(author);
   return importTitleVariants(title).map(
     (variant) => `${variant}:${normalizedAuthor}`,
   );
@@ -193,10 +199,14 @@ async function buildPreview(userId: string, rows: GoodreadsRow[]) {
   });
   const byIsbn = new Map<string, typeof books>();
   const byWork = new Map<string, typeof books>();
+  const byTitle = new Map<string, typeof books>();
 
   for (const book of books) {
     const isbn = normalizedIsbn(book.isbn);
     if (isbn) byIsbn.set(isbn, [...(byIsbn.get(isbn) ?? []), book]);
+    for (const title of importTitleVariants(book.title)) {
+      byTitle.set(title, [...(byTitle.get(title) ?? []), book]);
+    }
     for (const key of workKeys(book.title, book.author?.name ?? '')) {
       byWork.set(key, [...(byWork.get(key) ?? []), book]);
     }
@@ -236,9 +246,27 @@ async function buildPreview(userId: string, rows: GoodreadsRow[]) {
     ];
     const titleMatches = workKeys(row.title, row.author)
       .flatMap((key) => byWork.get(key) ?? []);
+    const exactTitleMatches = importTitleVariants(row.title)
+      .flatMap((title) => byTitle.get(title) ?? []);
+    const uniqueTitleMatches = [
+      ...new Map(exactTitleMatches.map((book) => [book.id, book])).values(),
+    ];
+    const fallbackTitleMatches = uniqueTitleMatches.length === 1
+      ? uniqueTitleMatches
+      : uniqueTitleMatches.filter(
+          (book) =>
+            importAuthorIdentity(book.author?.name ?? '') ===
+            importAuthorIdentity(row.author),
+        );
     const candidates = [
       ...new Map(
-        (isbnMatches.length > 0 ? isbnMatches : titleMatches)
+        (
+          isbnMatches.length > 0
+            ? isbnMatches
+            : titleMatches.length > 0
+              ? titleMatches
+              : fallbackTitleMatches
+        )
           .map((book) => [book.id, book]),
       ).values(),
     ];

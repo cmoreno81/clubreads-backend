@@ -188,7 +188,9 @@ export async function getMoodClub(usuarioActual = '') {
         ? `${comentario.user.name} respondió en ${comentario.conversation.reading.book.title} ${tiempoRelativo(comentario.createdAt)}`
         : `${comentario.user.name} comentó en ${comentario.conversation.reading.book.title} ${tiempoRelativo(comentario.createdAt)}`,
       tipo: 'COMENTARIO',
+      bookId: comentario.conversation.reading.book.id,
       libro: comentario.conversation.reading.book.title,
+      coverUrl: comentario.conversation.reading.book.coverUrl ?? '',
       capitulo: comentario.conversation.title,
     })),
     ...terminadosRecientes.slice(0, 5).map((lectura) => ({
@@ -196,7 +198,9 @@ export async function getMoodClub(usuarioActual = '') {
       icono: '📚',
       texto: `${lectura.user.name} terminó ${lectura.book.title} ${tiempoRelativo(lectura.finishedAt!)}`,
       tipo: 'LIBRO',
+      bookId: lectura.book.id,
       libro: lectura.book.title,
+      coverUrl: lectura.book.coverUrl ?? '',
       capitulo: '',
     })),
   ];

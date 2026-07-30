@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { importTitleVariants } from '../src/services/goodreads-import.service.js';
+import {
+  importAuthorIdentity,
+  importTitleVariants,
+} from '../src/services/goodreads-import.service.js';
 
 const service = await readFile(
   new URL('../src/services/goodreads-import.service.ts', import.meta.url),
@@ -93,4 +96,18 @@ test('reconoce títulos de Goodreads con la saga y el volumen entre paréntesis'
     importTitleVariants('Nuncanoche (Crónicas de Nuncanoche #1)')
       .includes('nuncanoche'),
   );
+  assert.ok(
+    importTitleVariants('Mentiras (Serie Mindf*ck #4)')
+      .includes('mentiras'),
+  );
+  assert.ok(
+    importTitleVariants('Ángel escarlata (Serie Mindf*ck, #3)')
+      .includes('angel escarlata'),
+  );
+  assert.deepEqual(importTitleVariants('Yesteryear'), ['yesteryear']);
+});
+
+test('tolera signos y espacios diferentes en los nombres de autor', () => {
+  assert.equal(importAuthorIdentity('S.T. Abby'), 's t abby');
+  assert.equal(importAuthorIdentity('S. T. Abby'), 's t abby');
 });
