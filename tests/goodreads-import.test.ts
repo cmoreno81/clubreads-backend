@@ -42,12 +42,24 @@ test('los libros existentes protegen los datos personales de ClubReads', () => {
   assert.match(service, /accion: 'PROTEGIDO'/);
   assert.match(
     service,
-    /if \(item\.accion === 'PROTEGIDO'\)[\s\S]*continue;/,
+    /if \(item\.accion === 'PROTEGIDO'\)[\s\S]*fillEmptyPersonalReview[\s\S]*continue;/,
   );
   assert.doesNotMatch(
     service,
     /library\.update\([\s\S]*priority:[\s\S]*row/,
   );
+});
+
+test('una reimportación recupera reseñas vacías sin sustituir las de ClubReads', () => {
+  assert.match(service, /if \(!importedReview \|\| row\.rating === null\) return false/);
+  assert.match(service, /else if \(!existingReview\.review\?\.trim\(\)\)/);
+  assert.match(service, /data: \{ review: importedReview \}/);
+  assert.match(service, /if \(completion && !completion\.review\?\.trim\(\)\)/);
+  assert.doesNotMatch(
+    service,
+    /review\.update\([\s\S]{0,250}rating: row\.rating/,
+  );
+  assert.match(service, /resenasRecuperadas: result\.restoredReviews/);
 });
 
 test('solo admite libros finalizados y valorados', () => {

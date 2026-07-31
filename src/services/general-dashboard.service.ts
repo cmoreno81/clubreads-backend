@@ -1,6 +1,7 @@
 import { ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
+import { getClubvisionNoticeMomentFor } from '../utils/clubvision-calendar.js';
 import { canonicalBookTitle } from './catalog.service.js';
 
 function monthKey(date: Date) {
@@ -19,6 +20,91 @@ function currentMonthRange(now = new Date()) {
   return { start, end };
 }
 
+type DashboardClub = {
+  id: string;
+  name: string;
+};
+
+async function eligibleClubvisionCandidates(clubId: string) {
+  const previousWinners = await prisma.clubvisionResult.findMany({
+    where: {
+      clubId,
+      winnerBookId: { not: null },
+    },
+    select: { winnerBookId: true },
+    distinct: ['winnerBookId'],
+  });
+  const excludedBookIds = previousWinners.flatMap((result) =>
+    result.winnerBookId ? [result.winnerBookId] : [],
+  );
+  const candidates = await prisma.library.groupBy({
+    by: ['bookId'],
+    where: {
+      status: ReadingStatus.PENDING,
+      user: {
+        clubMemberships: {
+          some: { clubId },
+        },
+      },
+      ...(excludedBookIds.length > 0
+        ? { bookId: { notIn: excludedBookIds } }
+        : {}),
+    },
+    _count: { userId: true },
+    having: {
+      userId: {
+        _count: { gte: 2 },
+      },
+    },
+  });
+  return candidates.length;
+}
+
+async function getClubvisionNotice(clubs: DashboardClub[], now: Date) {
+  const moment = getClubvisionNoticeMomentFor(now);
+  if (!moment || clubs.length === 0) return null;
+
+  const readyClubs = (
+    await Promise.all(
+      clubs.map(async (club) => {
+        const existing = await prisma.clubvision.findUnique({
+          where: {
+            clubId_edition: {
+              clubId: club.id,
+              edition: moment.edition,
+            },
+          },
+          select: {
+            _count: {
+              select: { candidates: true },
+            },
+          },
+        });
+        const candidates =
+          existing?._count.candidates ??
+          (moment.type === 'GALA'
+            ? 0
+            : await eligibleClubvisionCandidates(club.id));
+        return candidates >= 5
+          ? {
+              id: club.id,
+              nombre: club.name,
+              candidatas: candidates,
+            }
+          : null;
+      }),
+    )
+  ).filter((club) => club !== null);
+
+  if (readyClubs.length === 0) return null;
+  return {
+    tipo: moment.type,
+    edicion: moment.edition,
+    clubesPreparados: readyClubs.length,
+    clubes: readyClubs,
+  };
+}
+
 export async function getGeneralDashboard(userId: string) {
   const now = new Date();
   const { start, end } = currentMonthRange(now);
@@ -32,6 +118,7 @@ export async function getGeneralDashboard(userId: string) {
     personalLibrary,
     seriesLibrary,
     communityFormats,
+    latestBooks,
   ] =
     await Promise.all([
       prisma.user.findUnique({
@@ -162,9 +249,25 @@ export async function getGeneralDashboard(userId: string) {
         where: { readingFormat: { not: null } },
         _count: { id: true },
       }),
+      prisma.book.findMany({
+        where: { deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: {
+          author: true,
+          genre: true,
+        },
+      }),
     ]);
 
   if (!user) return null;
+  const clubvisionNotice = await getClubvisionNotice(
+    user.clubMemberships.map(({ club }) => ({
+      id: club.id,
+      name: club.name,
+    })),
+    now,
+  );
 
   const popularBooks = await prisma.book.findMany({
     where: { id: { in: popularGroups.map((item) => item.bookId) } },
@@ -470,6 +573,15 @@ export async function getGeneralDashboard(userId: string) {
               ? 'BAJA'
               : 'MEDIA',
       })),
+    ultimasIncorporaciones: latestBooks.map((book) => ({
+      id: book.id,
+      titulo: book.title,
+      autor: book.author?.name ?? '',
+      genero: book.genre.name,
+      coverUrl: book.coverUrl ?? '',
+      fechaAlta: book.createdAt.toISOString(),
+    })),
+    clubvisionAviso: clubvisionNotice,
     sagasAbiertas: openSeries,
     estanteriaAnual: yearCompletions.map(
       ({ id, book, finishedAt, isReread }) => ({

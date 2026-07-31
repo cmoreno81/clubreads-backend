@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   getClubvisionCalendarFor,
+  getClubvisionNoticeMomentFor,
   getClubvisionStage,
 } from '../src/utils/clubvision-calendar.js';
 
@@ -33,4 +34,34 @@ test('la zona de Madrid no adelanta el mes durante la víspera', () => {
   );
 
   assert.deepEqual(calendar, { edition: '2026-07', day: 31 });
+});
+
+test('la víspera anuncia la apertura de la edición siguiente', () => {
+  assert.deepEqual(
+    getClubvisionNoticeMomentFor(
+      new Date('2026-07-31T10:00:00+02:00'),
+    ),
+    { type: 'APERTURA', edition: '2026-08' },
+  );
+});
+
+test('los avisos distinguen votación, gala y días sin evento', () => {
+  assert.equal(
+    getClubvisionNoticeMomentFor(
+      new Date('2026-08-01T10:00:00+02:00'),
+    )?.type,
+    'VOTACION',
+  );
+  assert.equal(
+    getClubvisionNoticeMomentFor(
+      new Date('2026-08-03T10:00:00+02:00'),
+    )?.type,
+    'GALA',
+  );
+  assert.equal(
+    getClubvisionNoticeMomentFor(
+      new Date('2026-08-04T10:00:00+02:00'),
+    ),
+    null,
+  );
 });

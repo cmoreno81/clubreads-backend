@@ -76,6 +76,27 @@ test('el dashboard general funciona sin exigir un club activo', () => {
   assert.match(profile, /siguiente: reading \?\? next/);
 });
 
+test('los avisos de Clubvisión solo aparecen en clubes preparados', () => {
+  assert.match(
+    generalDashboard,
+    /if \(!moment \|\| clubs\.length === 0\) return null/,
+  );
+  assert.match(generalDashboard, /candidates >= 5/);
+  assert.match(generalDashboard, /readyClubs\.length === 0/);
+});
+
+test('las últimas incorporaciones proceden del catálogo global', () => {
+  assert.match(
+    generalDashboard,
+    /prisma\.book\.findMany\(\{[\s\S]*deletedAt: null[\s\S]*createdAt: 'desc'/,
+  );
+  assert.match(generalDashboard, /ultimasIncorporaciones/);
+  assert.doesNotMatch(
+    generalDashboard,
+    /ultimasIncorporaciones:[\s\S]*clubId/,
+  );
+});
+
 test('la comunidad cuenta cuentas nuevas y lectoras históricas con club', () => {
   assert.match(generalDashboard, /passwordHash: \{ not: null \}/);
   assert.match(generalDashboard, /clubMemberships: \{ some: \{\} \}/);

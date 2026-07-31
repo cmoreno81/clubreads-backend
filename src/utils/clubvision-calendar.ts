@@ -1,4 +1,5 @@
 export type ClubvisionStage = 'VOTACION' | 'RESULTADOS' | 'LECTURA';
+export type ClubvisionNoticeType = 'APERTURA' | 'VOTACION' | 'GALA';
 
 export function getClubvisionCalendarFor(date: Date) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -25,4 +26,24 @@ export function getClubvisionStage(
   if (day >= 4) return 'LECTURA';
   if (day >= 3 || allMembersVoted) return 'RESULTADOS';
   return 'VOTACION';
+}
+
+export function getClubvisionNoticeMomentFor(
+  date: Date,
+): { type: ClubvisionNoticeType; edition: string } | null {
+  const current = getClubvisionCalendarFor(date);
+  const tomorrow = getClubvisionCalendarFor(
+    new Date(date.getTime() + 24 * 60 * 60 * 1000),
+  );
+
+  if (tomorrow.day === 1) {
+    return { type: 'APERTURA', edition: tomorrow.edition };
+  }
+  if (current.day === 1 || current.day === 2) {
+    return { type: 'VOTACION', edition: current.edition };
+  }
+  if (current.day === 3) {
+    return { type: 'GALA', edition: current.edition };
+  }
+  return null;
 }

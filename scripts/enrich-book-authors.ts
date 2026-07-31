@@ -14,13 +14,20 @@ type Result = {
   bookId: string;
   title: string;
   isbn: string | null;
-  status: 'SAFE_ISBN' | 'SAFE_CONSENSUS' | 'AMBIGUOUS' | 'NOT_FOUND' | 'ERROR';
+  status:
+    | 'SAFE_ISBN'
+    | 'SAFE_CONSENSUS'
+    | 'REVIEW_OPEN_LIBRARY'
+    | 'AMBIGUOUS'
+    | 'NOT_FOUND'
+    | 'ERROR';
   author: string | null;
   evidence: string;
   applied: boolean;
 };
 
 const apply = process.argv.includes('--apply');
+let googleRateLimited = false;
 
 function normalized(value: string) {
   return value
@@ -60,11 +67,13 @@ async function requestGoogleBooks(query: string, includeKey: boolean): Promise<R
 }
 
 async function googleBooks(query: string): Promise<Candidate[]> {
+  if (googleRateLimited) return [];
   let response = await requestGoogleBooks(query, true);
   if (response.status === 429 && process.env.GOOGLE_BOOKS_API_KEY) {
     await response.body?.cancel();
     response = await requestGoogleBooks(query, false);
   }
+  if (response.status === 429) googleRateLimited = true;
   if (!response.ok) throw new Error(`GOOGLE_BOOKS_HTTP_${response.status}`);
   const payload = await response.json() as {
     items?: Array<{
@@ -161,10 +170,16 @@ async function main() {
       }
 
       if (!author && status === 'NOT_FOUND') {
-        const [google, open] = await Promise.all([
+        const [googleResult, openResult] = await Promise.allSettled([
           googleBooks(`intitle:${book.title}`),
           openLibrary(book.title),
         ]);
+        const google = googleResult.status === 'fulfilled'
+          ? googleResult.value
+          : [];
+        const open = openResult.status === 'fulfilled'
+          ? openResult.value
+          : [];
         const googleExact = google.filter((candidate) => exactTitle(book.title, candidate.title));
         const openExact = open.filter((candidate) => exactTitle(book.title, candidate.title));
         const googleAuthor = uniqueAuthor(googleExact);
@@ -173,9 +188,25 @@ async function main() {
           author = googleAuthor;
           status = 'SAFE_CONSENSUS';
           evidence = 'Google Books y Open Library coinciden en título y autor';
+        } else if (
+          !googleAuthor &&
+          openExact.length >= 2 &&
+          openAuthor
+        ) {
+          author = openAuthor;
+          status = 'REVIEW_OPEN_LIBRARY';
+          evidence =
+            `${openExact.length} ediciones de Open Library coinciden en título y autor`;
         } else if (googleExact.length > 0 || openExact.length > 0) {
           status = 'AMBIGUOUS';
           evidence = 'Las fuentes no ofrecen un único autor coincidente';
+        } else if (
+          googleResult.status === 'rejected' &&
+          openResult.status === 'rejected'
+        ) {
+          throw new Error(
+            `GOOGLE: ${String(googleResult.reason)}; OPEN_LIBRARY: ${String(openResult.reason)}`,
+          );
         }
       }
 
@@ -212,7 +243,14 @@ async function main() {
     ? 'reports/book-authors-multiprovider-apply.json'
     : 'reports/book-authors-multiprovider-preview.json';
   await writeFile(path, JSON.stringify(results, null, 2), 'utf8');
-  for (const status of ['SAFE_ISBN', 'SAFE_CONSENSUS', 'AMBIGUOUS', 'NOT_FOUND', 'ERROR'] as const) {
+  for (const status of [
+    'SAFE_ISBN',
+    'SAFE_CONSENSUS',
+    'REVIEW_OPEN_LIBRARY',
+    'AMBIGUOUS',
+    'NOT_FOUND',
+    'ERROR',
+  ] as const) {
     console.log(`${status}: ${results.filter((item) => item.status === status).length}`);
   }
   console.log(`Aplicados: ${results.filter((item) => item.applied).length}`);

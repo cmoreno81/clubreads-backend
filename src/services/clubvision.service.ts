@@ -108,6 +108,12 @@ async function getOrCreateCurrentClubvision(
           _count: { gte: 2 },
         },
       },
+      orderBy: {
+        _count: {
+          userId: 'desc',
+        },
+      },
+      take: 5,
     });
 
     await tx.clubvisionCandidate.createMany({

@@ -455,6 +455,55 @@ async function addPersonalData(
   }
 }
 
+async function fillEmptyPersonalReview(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  bookId: string,
+  row: GoodreadsRow,
+) {
+  const importedReview = row.review.trim();
+  if (!importedReview || row.rating === null) return false;
+
+  const existingReview = await tx.review.findUnique({
+    where: { userId_bookId: { userId, bookId } },
+    select: { id: true, review: true },
+  });
+  let restored = false;
+
+  if (!existingReview) {
+    await tx.review.create({
+      data: {
+        userId,
+        bookId,
+        rating: row.rating,
+        review: importedReview,
+      },
+    });
+    restored = true;
+  } else if (!existingReview.review?.trim()) {
+    await tx.review.update({
+      where: { id: existingReview.id },
+      data: { review: importedReview },
+    });
+    restored = true;
+  }
+
+  const completion = await tx.readingCompletion.findFirst({
+    where: { userId, bookId },
+    orderBy: { finishedAt: 'desc' },
+    select: { id: true, review: true },
+  });
+  if (completion && !completion.review?.trim()) {
+    await tx.readingCompletion.update({
+      where: { id: completion.id },
+      data: { review: importedReview },
+    });
+    restored = true;
+  }
+
+  return restored;
+}
+
 function wait(milliseconds: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -501,6 +550,7 @@ export async function confirmGoodreadsImport(
     let created = 0;
     let added = 0;
     let protectedCount = 0;
+    let restoredReviews = 0;
     const coverTasks: CoverTask[] = [];
 
     for (const item of accepted) {
@@ -514,6 +564,12 @@ export async function confirmGoodreadsImport(
       }
       if (item.accion === 'PROTEGIDO') {
         protectedCount += 1;
+        if (
+          book &&
+          await fillEmptyPersonalReview(tx, user.id, book.id, row)
+        ) {
+          restoredReviews += 1;
+        }
         if (book && !book.coverUrl?.trim()) {
           coverTasks.push({
             bookId: book.id,
@@ -561,7 +617,13 @@ export async function confirmGoodreadsImport(
       }
       await addPersonalData(tx, user.id, book.id, row);
     }
-    return { created, added, protectedCount, coverTasks };
+    return {
+      created,
+      added,
+      protectedCount,
+      restoredReviews,
+      coverTasks,
+    };
   });
 
   void enrichMissingCovers(result.coverTasks).catch(() => {
@@ -574,6 +636,7 @@ export async function confirmGoodreadsImport(
       nuevos: result.created,
       anadidos: result.added,
       protegidos: result.protectedCount,
+      resenasRecuperadas: result.restoredReviews,
       paraRevisar: preview.filter((item) => item.accion === 'REVISAR').length,
       omitidos:
         preview.filter((item) => item.accion === 'OMITIR').length +
