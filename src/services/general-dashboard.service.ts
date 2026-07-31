@@ -596,13 +596,14 @@ export async function getGeneralDashboard(userId: string) {
     calendario: {
       anio: now.getUTCFullYear(),
       mes: now.getUTCMonth() + 1,
-      librosLeidos: monthCompletions.map(({ id, book, finishedAt }) => ({
+      librosLeidos: monthCompletions.map(({ id, book, finishedAt, rating }) => ({
         id: `${id}:${book.id}`,
         bookId: book.id,
         titulo: book.title,
         coverUrl: book.coverUrl ?? '',
         fechaFin: finishedAt.toISOString(),
         paginas: pagesForBook(book.id, book.totalPages),
+        valoracion: rating ?? null,
       })),
       lecturasCalendario: calendarReadings,
       eventos: [...events.entries()]
