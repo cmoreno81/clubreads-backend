@@ -510,7 +510,7 @@ export async function getGeneralDashboard(userId: string) {
       terminados: completedBookIds.size,
       terminadosMes: monthCompletions.length,
       paginasMes: monthCompletions.reduce(
-        (total, item) => total + (item.book.totalPages ?? 0),
+        (total, item) => total + pagesForBook(item.book.id, item.book.totalPages),
         0,
       ),
       paginasLeidas: [...pagesByCompletedBook.values()].reduce(
