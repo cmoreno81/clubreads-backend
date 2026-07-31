@@ -12,7 +12,23 @@ function ratingAverage(ratings: number[]) {
 
 function currentMonthKey() {
   const now = new Date();
-  return `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(now);
+  const v = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return `${v.month}/${v.year}`;
+}
+
+function itemMonthKey(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(date);
+  const v = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return `${v.month}/${v.year}`;
 }
 
 function tiempoRelativo(fecha: Date) {
@@ -100,7 +116,7 @@ export async function getDashboard(usuario = '') {
   const contadorUsuarios = new Map<string, number>();
 
   for (const item of finishedBooks) {
-    const itemMonth = `${String(item.finishedAt.getMonth() + 1).padStart(2, '0')}/${item.finishedAt.getFullYear()}`;
+    const itemMonth = itemMonthKey(item.finishedAt);
 
     if (itemMonth !== month) continue;
 

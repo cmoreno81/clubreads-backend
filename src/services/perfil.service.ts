@@ -556,7 +556,82 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
     pendientes,
     generosFavoritos,
     sagas,
+    historicoMeses: buildHistoricoMeses(historialTerminados),
   };
+}
+
+// ─────────────────────────────────────────────
+// Histórico de meses lectores
+// ─────────────────────────────────────────────
+
+function buildHistoricoMeses(
+  historial: Array<{
+    id: string;
+    bookId: string;
+    startedAt: Date | null;
+    finishedAt: Date;
+    rating: number | null;
+    book: { title: string; coverUrl: string | null };
+  }>,
+) {
+  // Agrupa las lecturas por mes (Europe/Madrid)
+  const mesesMap = new Map<
+    string,
+    {
+      anio: number;
+      mes: number;
+      lecturas: Array<{
+        id: string;
+        bookId: string;
+        titulo: string;
+        coverUrl: string;
+        fechaInicio: string;
+        fechaFin: string;
+        valoracion: number | null;
+      }>;
+    }
+  >();
+
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  for (const item of historial) {
+    const parts = fmt.formatToParts(item.finishedAt);
+    const v = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    const key = `${v.year}-${v.month}`;
+    const anio = Number(v.year);
+    const mes  = Number(v.month);
+
+    if (!mesesMap.has(key)) {
+      mesesMap.set(key, { anio, mes, lecturas: [] });
+    }
+
+    const startParts = item.startedAt
+      ? fmt.formatToParts(item.startedAt)
+      : null;
+    const sv = startParts
+      ? Object.fromEntries(startParts.map((p) => [p.type, p.value]))
+      : null;
+
+    mesesMap.get(key)!.lecturas.push({
+      id: item.id,
+      bookId: item.bookId,
+      titulo: item.book.title,
+      coverUrl: item.book.coverUrl ?? '',
+      fechaInicio: sv ? `${sv.day}/${sv.month}/${sv.year}` : '',
+      fechaFin: `${v.day}/${v.month}/${v.year}`,
+      valoracion: item.rating ?? null,
+    });
+  }
+
+  // Ordenar de más reciente a más antiguo
+  return Array.from(mesesMap.entries())
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([, data]) => data);
 }
 
 export async function actualizarFechasLectura(params: {
