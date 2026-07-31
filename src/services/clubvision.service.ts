@@ -92,7 +92,7 @@ async function getOrCreateCurrentClubvision(
     const eligibleCandidates = await tx.library.groupBy({
       by: ['bookId'],
       where: {
-        status: ReadingStatus.PENDING,
+        status: { in: [ReadingStatus.PENDING, ReadingStatus.READING, ReadingStatus.PAUSED] },
         user: {
           clubMemberships: {
             some: { clubId: club.id },
@@ -113,7 +113,6 @@ async function getOrCreateCurrentClubvision(
           userId: 'desc',
         },
       },
-      take: 5,
     });
 
     await tx.clubvisionCandidate.createMany({
@@ -534,7 +533,7 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
   if (normalizedVotes.length !== 5 || uniqueVotes.size !== 5) {
     return {
       ok: false,
-      mensaje: 'Debes votar exactamente cinco libros diferentes',
+      mensaje: 'Debes ordenar exactamente cinco libros diferentes',
     };
   }
 
@@ -553,7 +552,6 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
   );
 
   if (
-    candidates.length !== 5 ||
     normalizedVotes.some((title) => !candidatesByTitle.has(title))
   ) {
     return {
