@@ -430,9 +430,11 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
           : library?.status === ReadingStatus.READING ||
               library?.status === ReadingStatus.REREADING
             ? 'LEYENDO'
-            : library
-              ? 'PENDIENTE'
-              : 'NO_ANADIDO';
+            : library?.status === ReadingStatus.ABANDONED
+              ? 'ABANDONADO'
+              : library
+                ? 'PENDIENTE'
+                : 'NO_ANADIDO';
         return {
           bookId: book.id,
           titulo: book.title,
@@ -443,6 +445,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         };
       });
       const read = volumes.filter(({ estado }) => estado === 'LEIDO').length;
+      const hasAbandoned = volumes.some(({ estado }) => estado === 'ABANDONADO');
       const highestOrder = books.reduce((highest, book) => {
         const value = numeroSaga(book.seriesOrder);
         return Number.isFinite(value) &&
@@ -497,11 +500,15 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         estadoEditorial: series.publicationStatus,
         estado: isComplete
           ? 'COMPLETADA'
-          : !hasStarted
-            ? 'PENDIENTE'
-            : allKnownVolumesRead && !hasPreviousGaps
-            ? 'AL_DIA'
-            : 'EN_CURSO',
+          : hasAbandoned && !hasStarted
+            ? 'ABANDONADA'
+            : hasAbandoned
+              ? 'ABANDONADA'
+              : !hasStarted
+                ? 'PENDIENTE'
+                : allKnownVolumesRead && !hasPreviousGaps
+                ? 'AL_DIA'
+                : 'EN_CURSO',
         volumenes: volumes,
         siguiente: reading ?? next,
       };
@@ -511,6 +518,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         EN_CURSO: 0,
         AL_DIA: 1,
         COMPLETADA: 2,
+        ABANDONADA: 3,
       };
       const byStatus = order[left.estado] - order[right.estado];
       return byStatus !== 0
@@ -536,7 +544,9 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
       clubes: user._count.clubMemberships,
       sagasAbiertas: sagas.filter(
         ({ estado }) =>
-          estado !== 'PENDIENTE' && estado !== 'COMPLETADA',
+          estado !== 'PENDIENTE' &&
+          estado !== 'COMPLETADA' &&
+          estado !== 'ABANDONADA',
       ).length,
     },
 
