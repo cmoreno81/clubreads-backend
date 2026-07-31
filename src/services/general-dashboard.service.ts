@@ -11,12 +11,19 @@ function monthKey(date: Date) {
 }
 
 function currentMonthRange(now = new Date()) {
-  const start = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
-  );
-  const end = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
-  );
+  // Calculamos el mes actual en Europe/Madrid para que coincida con
+  // la hora local española (evita que a las 22h-00h UTC cambie de mes).
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const v = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  const year  = Number(v.year);
+  const month = Number(v.month) - 1; // 0-based for Date.UTC
+  const start = new Date(Date.UTC(year, month, 1));
+  const end   = new Date(Date.UTC(year, month + 1, 1));
   return { start, end };
 }
 
@@ -107,6 +114,17 @@ async function getClubvisionNotice(clubs: DashboardClub[], now: Date) {
 
 export async function getGeneralDashboard(userId: string) {
   const now = new Date();
+  // Usamos Europe/Madrid para que el mes del dashboard coincida con la
+  // hora local española, igual que el calendario de Clubvisión.
+  const madridParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const madridValues = Object.fromEntries(madridParts.map((p) => [p.type, p.value]));
+  const madridYear  = Number(madridValues.year);
+  const madridMonth = Number(madridValues.month); // 1-12
   const { start, end } = currentMonthRange(now);
   const [
     user,
@@ -594,8 +612,8 @@ export async function getGeneralDashboard(userId: string) {
       }),
     ),
     calendario: {
-      anio: now.getUTCFullYear(),
-      mes: now.getUTCMonth() + 1,
+      anio: madridYear,
+      mes: madridMonth,
       librosLeidos: monthCompletions.map(({ id, book, finishedAt, rating }) => ({
         id: `${id}:${book.id}`,
         bookId: book.id,
