@@ -92,7 +92,7 @@ async function getOrCreateCurrentClubvision(
     const eligibleCandidates = await tx.library.groupBy({
       by: ['bookId'],
       where: {
-        status: { in: [ReadingStatus.PENDING, ReadingStatus.READING, ReadingStatus.PAUSED] },
+        status: ReadingStatus.PENDING,
         user: {
           clubMemberships: {
             some: { clubId: club.id },
@@ -408,6 +408,7 @@ export async function getClubvision(usuario: string) {
   const candidatas = candidates.map((candidate) => ({
     libro: candidate.book.title,
     genero: candidate.book.genre.name,
+    coverUrl: candidate.book.coverUrl ?? '',
     interesadas: candidate.book.library.length,
     usuarias: candidate.book.library.map((entry) => entry.user.name),
   }));
@@ -423,6 +424,12 @@ export async function getClubvision(usuario: string) {
 
   const ganador = winner?.winnerTitle ?? '';
   const puntosGanador = winner?.points ?? 0;
+  const ganadorCoverUrl = winner?.winnerBookId
+    ? (await prisma.book.findUnique({
+        where: { id: winner.winnerBookId },
+        select: { coverUrl: true },
+      }))?.coverUrl ?? ''
+    : '';
   const lectoras = winner?.winnerBookId
     ? await prisma.library.findMany({
         where: {
@@ -478,6 +485,7 @@ export async function getClubvision(usuario: string) {
           : '',
 
     ganador,
+    ganadorCoverUrl,
     lecturaConfigurada,
     lectoras: lectoras.map((entry) => entry.user.name),
 
