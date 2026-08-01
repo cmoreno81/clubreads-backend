@@ -3,6 +3,7 @@ import { ClubRole } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
 import { ClubContextError } from './club-context.service.js';
+import { subirAvatarDesdeBase64, subirAvatarDesdeUrl } from './cloudinary.service.js';
 
 function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, ' ');
@@ -283,8 +284,29 @@ export async function updateClub(
     }
     updateData.name = nombre;
   }
-  if (data.descripcion !== undefined) updateData.description = data.descripcion.trim() || null;
-  if (data.avatarUrl !== undefined) updateData.avatarUrl = data.avatarUrl.trim() || null;
+  if (data.descripcion !== undefined) {
+    updateData.description = data.descripcion.trim() || null;
+  }
+  if (data.avatarUrl !== undefined) {
+    const avatar = data.avatarUrl.trim();
+    if (!avatar) {
+      updateData.avatarUrl = null;
+    } else if (avatar.startsWith('data:image/')) {
+      // Imagen desde galería — subir a Cloudinary
+      const resultado = await subirAvatarDesdeBase64({
+        imageBase64: avatar,
+        usuario: `club_${clubId}`,
+      });
+      updateData.avatarUrl = resultado.url;
+    } else {
+      // URL externa — subir a Cloudinary
+      const resultado = await subirAvatarDesdeUrl({
+        imageUrl: avatar,
+        usuario: `club_${clubId}`,
+      });
+      updateData.avatarUrl = resultado.url;
+    }
+  }
 
   const updated = await prisma.club.update({
     where: { id: clubId },
