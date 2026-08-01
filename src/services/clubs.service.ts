@@ -208,3 +208,114 @@ export async function getInvite(userId: string, clubIdValue: string) {
   }
   return { ok: true, codigo: code, clubId, nombre: membership.club.name };
 }
+
+// ─────────────────────────────────────────────
+// Salir de un club
+// ─────────────────────────────────────────────
+export async function leaveClub(userId: string, clubId: string) {
+  const membership = await prisma.clubMember.findUnique({
+    where: { clubId_userId: { clubId, userId } },
+    include: { club: true },
+  });
+  if (!membership) {
+    throw new ClubContextError('No perteneces a ese club', 403, 'NOT_CLUB_MEMBER');
+  }
+  if (membership.role === ClubRole.OWNER) {
+    throw new ClubContextError(
+      'La propietaria no puede salir del club. Transfiere la propiedad primero.',
+      400,
+      'OWNER_CANNOT_LEAVE',
+    );
+  }
+  await prisma.$transaction([
+    prisma.clubMember.delete({
+      where: { clubId_userId: { clubId, userId } },
+    }),
+    // Si era el club activo, lo desvinculamos
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        activeClubId: membership.club.id === undefined ? null : undefined,
+      },
+    }),
+  ]);
+  // Limpiar activeClubId si era este club
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { activeClubId: true },
+  });
+  if (user?.activeClubId === clubId) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { activeClubId: null },
+    });
+  }
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────
+// Actualizar datos del club (solo OWNER/ADMIN)
+// ─────────────────────────────────────────────
+export async function updateClub(
+  userId: string,
+  clubId: string,
+  data: { nombre?: string; descripcion?: string; avatarUrl?: string },
+) {
+  const membership = await prisma.clubMember.findUnique({
+    where: { clubId_userId: { clubId, userId } },
+  });
+  if (!membership || (membership.role !== ClubRole.OWNER && membership.role !== ClubRole.ADMIN)) {
+    throw new ClubContextError(
+      'No tienes permiso para editar este club',
+      403,
+      'INSUFFICIENT_CLUB_ROLE',
+    );
+  }
+  const updateData: Record<string, unknown> = {};
+  if (data.nombre !== undefined) {
+    const nombre = normalizeName(data.nombre);
+    if (nombre.length < 3 || nombre.length > 80) {
+      throw new ClubContextError(
+        'El nombre debe tener entre 3 y 80 caracteres',
+        400,
+        'INVALID_CLUB_NAME',
+      );
+    }
+    updateData.name = nombre;
+  }
+  if (data.descripcion !== undefined) updateData.description = data.descripcion.trim() || null;
+  if (data.avatarUrl !== undefined) updateData.avatarUrl = data.avatarUrl.trim() || null;
+
+  const updated = await prisma.club.update({
+    where: { id: clubId },
+    data: updateData,
+  });
+  return { ok: true, nombre: updated.name, avatarUrl: updated.avatarUrl ?? '' };
+}
+
+// ─────────────────────────────────────────────
+// Miembros del club
+// ─────────────────────────────────────────────
+export async function getClubMembers(userId: string, clubId: string) {
+  const membership = await prisma.clubMember.findUnique({
+    where: { clubId_userId: { clubId, userId } },
+  });
+  if (!membership) {
+    throw new ClubContextError('No perteneces a ese club', 403, 'NOT_CLUB_MEMBER');
+  }
+  const members = await prisma.clubMember.findMany({
+    where: { clubId },
+    include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+    orderBy: { joinedAt: 'asc' },
+  });
+  return {
+    ok: true,
+    miembros: members.map((m) => ({
+      id: m.user.id,
+      nombre: m.user.name,
+      avatarUrl: m.user.avatarUrl ?? '',
+      rol: m.role,
+      desde: m.joinedAt.toISOString(),
+    })),
+  };
+}

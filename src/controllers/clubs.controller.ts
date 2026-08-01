@@ -6,6 +6,9 @@ import {
   joinClub,
   listMyClubs,
   selectClub,
+  leaveClub,
+  updateClub,
+  getClubMembers,
 } from '../services/clubs.service.js';
 
 export async function handleMyClubs(req: Request, res: Response) {
@@ -47,4 +50,25 @@ export async function handleClubInvite(req: Request, res: Response) {
       String(req.body?.clubId ?? req.query.clubId ?? ''),
     ),
   );
+}
+
+export async function handleLeaveClub(req: Request, res: Response) {
+  return res.json(
+    await leaveClub(req.auth!.userId, String(req.body?.clubId ?? '')),
+  );
+}
+
+export async function handleUpdateClub(req: Request, res: Response) {
+  return res.json(
+    await updateClub(req.auth!.userId, String(req.body?.clubId ?? ''), {
+      nombre: req.body?.nombre,
+      descripcion: req.body?.descripcion,
+      avatarUrl: req.body?.avatarUrl,
+    }),
+  );
+}
+
+export async function handleGetClubMembers(req: Request, res: Response) {
+  const clubId = String(req.query.clubId ?? req.body?.clubId ?? '');
+  return res.json(await getClubMembers(req.auth!.userId, clubId));
 }

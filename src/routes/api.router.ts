@@ -79,9 +79,12 @@ import {
 import {
   handleClubInvite,
   handleCreateClub,
+  handleGetClubMembers,
   handleJoinClub,
+  handleLeaveClub,
   handleMyClubs,
   handleSelectClub,
+  handleUpdateClub,
 } from '../controllers/clubs.controller.js';
 import { handleGeneralDashboard } from '../controllers/general-dashboard.controller.js';
 import { handleLibrosPorAutor } from '../controllers/general-dashboard.controller.js';
@@ -299,6 +302,24 @@ async function handleApi(req: Request, res: Response) {
           return requireAuthentication(req, res, () => {});
         }
         return handleClubInvite(req, res);
+
+      case 'salirClub':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleLeaveClub(req, res);
+
+      case 'editarClub':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleUpdateClub(req, res);
+
+      case 'miembrosClub':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleGetClubMembers(req, res);
 
       case 'usuarios':
         return handleUsuarios(req, res);
