@@ -76,6 +76,7 @@ async function getOrCreateCurrentClubvision(
       },
     });
 
+    // Excluir solo los libros que han ganado en ediciones anteriores
     const previousWinners = await tx.clubvisionResult.findMany({
       where: {
         clubId: club.id,
@@ -492,6 +493,12 @@ export async function getClubvision(usuario: string) {
     lectoras: lectoras.map((entry) => entry.user.name),
 
     totalCandidatas: candidatas.length,
+    // Primeras portadas para el collage animado en la card del club
+    portadasCandidatas: [...candidatas]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 12)
+      .map((c) => c.coverUrl)
+      .filter((url) => url && url.length > 0),
 
     comentarios: 0,
     likes: 0,
