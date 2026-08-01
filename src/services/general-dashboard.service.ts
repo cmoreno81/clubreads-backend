@@ -294,40 +294,42 @@ export async function getGeneralDashboard(userId: string) {
     popularGroups.map((item) => [item.bookId, item._count.userId]),
   );
 
-  // Autores más presentes en las bibliotecas de las usuarias
-  const popularAuthorsRaw = await prisma.library.groupBy({
-    by: ['bookId'],
-    _count: { userId: true },
-    orderBy: { _count: { userId: 'desc' } },
-    take: 50,
+  // Autoras más presentes en las bibliotecas — contamos libros únicos por autora
+  // usando la tabla Book directamente (no Library, para no contar duplicados por usuaria)
+  const booksInLibrary = await prisma.library.findMany({
+    select: { bookId: true },
+    distinct: ['bookId'],
   });
-  const popularAuthorBookIds = popularAuthorsRaw.map((r) => r.bookId);
-  const authorBooks = await prisma.book.findMany({
+  const libraryBookIds = booksInLibrary.map((r) => r.bookId);
+  const booksWithAuthors = await prisma.book.findMany({
     where: {
-      id: { in: popularAuthorBookIds },
+      id: { in: libraryBookIds },
       authorId: { not: null },
+      author: { deletedAt: null },
     },
-    include: { author: true },
+    select: {
+      authorId: true,
+      author: { select: { id: true, name: true, photoUrl: true, deletedAt: true } },
+    },
   });
-  // Suma de lectoras por autor
-  const authorCountMap = new Map<string, { author: typeof authorBooks[0]['author'], libros: number }>();
-  for (const book of authorBooks) {
-    if (!book.author) continue;
-    const existing = authorCountMap.get(book.authorId!);
+  // Contar libros únicos por autora
+  const authorCountMap = new Map<string, { author: NonNullable<typeof booksWithAuthors[0]['author']>, libros: number }>();
+  for (const book of booksWithAuthors) {
+    if (!book.author || !book.authorId) continue;
+    const existing = authorCountMap.get(book.authorId);
     if (existing) {
-      existing.libros += 1; // cuenta libros únicos, no lectoras
+      existing.libros += 1;
     } else {
-      authorCountMap.set(book.authorId!, { author: book.author, libros: 1 });
+      authorCountMap.set(book.authorId, { author: book.author, libros: 1 });
     }
   }
   const trendingAuthors = Array.from(authorCountMap.values())
-    .filter((e) => e.author && !e.author.deletedAt)
     .sort((a, b) => b.libros - a.libros)
     .slice(0, 10)
     .map((e) => ({
-      id: e.author!.id,
-      nombre: e.author!.name,
-      photoUrl: e.author!.photoUrl ?? '',
+      id: e.author.id,
+      nombre: e.author.name,
+      photoUrl: e.author.photoUrl ?? '',
       libros: e.libros,
     }));
   const monthCompletions = completions.filter(
