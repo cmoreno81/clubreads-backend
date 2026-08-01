@@ -138,7 +138,11 @@ export async function getMoodClub(usuarioActual = '') {
     ]);
 
   const distribucion = Object.fromEntries(MOODS.map((mood) => [mood, 0]));
-  for (const voto of votos) distribucion[voto.mood]++;
+  const votantes: Record<string, string[]> = Object.fromEntries(MOODS.map((mood) => [mood, []]));
+  for (const voto of votos) {
+    distribucion[voto.mood]++;
+    votantes[voto.mood].push(voto.user.name);
+  }
 
   const miMood = votos.find((voto) => voto.user.name === usuarioActual.trim())?.mood ?? null;
   const dominante = MOODS.reduce<ClubMood | null>((mejor, mood) => {
@@ -230,7 +234,7 @@ export async function getMoodClub(usuarioActual = '') {
       : 'Cada comentario, reacción y página terminada va construyendo la historia de esta semana.',
     estados,
     actividad,
-    moodSemanal: { miMood, total: votos.length, distribucion },
+    moodSemanal: { miMood, total: votos.length, distribucion, votantes },
     resumen: {
       comentariosSemana: comentarios.length,
       reaccionesSemana,
