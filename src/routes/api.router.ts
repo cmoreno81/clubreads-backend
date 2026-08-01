@@ -101,6 +101,7 @@ import {
   handlePreviewGoodreadsImport,
 } from '../controllers/goodreads-import.controller.js';
 import { GoodreadsImportError } from '../services/goodreads-import.service.js';
+import { handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas } from '../controllers/notifications.controller.js';
 
 export const apiRouter = Router();
 
@@ -224,6 +225,18 @@ async function handleApi(req: Request, res: Response) {
           return requireAuthentication(req, res, () => {});
         }
         return handleGeneralDashboard(req, res);
+
+      case 'notificaciones':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetNotificaciones(req, res);
+
+      case 'marcarLeida':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleMarcarLeida(req, res);
+
+      case 'marcarTodasLeidas':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleMarcarTodasLeidas(req, res);
 
       case 'librosPorAutor':
         if (!req.auth) {

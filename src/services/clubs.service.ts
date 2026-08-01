@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { ClubRole } from '@prisma/client';
+import { notifyNuevaMiembro } from './notifications.service.js';
 
 import { prisma } from '../prisma.js';
 import { ClubContextError } from './club-context.service.js';
@@ -162,6 +163,16 @@ export async function joinClub(userId: string, codeValue: string) {
       data: { activeClubId: club.id },
     }),
   ]);
+  // Notificar a los miembros existentes
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+  if (user) {
+    notifyNuevaMiembro({
+      clubId: club.id,
+      nuevaMiembroNombre: user.name,
+      nuevaMiembroUserId: userId,
+    }).catch(console.error);
+  }
+
   return { ok: true, clubId: club.id, nombre: club.name };
 }
 

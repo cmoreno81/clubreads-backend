@@ -1,5 +1,10 @@
 import type { Club } from '@prisma/client';
 import { ReadingStatus } from '@prisma/client';
+import {
+  notifyClubvisionAbierta,
+  notifyClubvisionResultados,
+  notifyLecturaNueva,
+} from './notifications.service.js';
 import { prisma } from '../prisma.js';
 import {
   getCurrentClubContext,
@@ -75,6 +80,8 @@ async function getOrCreateCurrentClubvision(
         openedAt: getNow(),
       },
     });
+    // Notificar apertura de votación
+    notifyClubvisionAbierta(club.id).catch(console.error);
 
     // Excluir solo los libros que han ganado en ediciones anteriores
     const previousWinners = await tx.clubvisionResult.findMany({
@@ -236,6 +243,11 @@ async function calculateClubvisionResult(clubvision: {
         closedAt: getNow(),
       },
     });
+    // Notificar resultados
+    notifyClubvisionResultados(
+      clubvision.clubId,
+      result.winnerTitle,
+    ).catch(console.error);
 
     return result;
   });
@@ -285,6 +297,14 @@ export async function synchronizeCurrentClubvision(
         winnerBookId: result.winnerBookId,
       },
     });
+    // Notificar inicio de lectura
+    if (result.winnerBookId && result.winnerTitle) {
+      notifyLecturaNueva(
+        clubvision.clubId,
+        result.winnerTitle,
+        result.winnerBookId,
+      ).catch(console.error);
+    }
   }
 
   return clubvision;

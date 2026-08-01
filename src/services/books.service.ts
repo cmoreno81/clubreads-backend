@@ -6,6 +6,7 @@ import {
   ReadingStatus,
 } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { notifyLibroTerminado, notifyLibroNuevoBiblioteca } from './notifications.service.js';
 import { findBestBookCover } from './book-cover.service.js';
 import {
   ratingFromFlutter,
@@ -960,6 +961,20 @@ await prisma.$transaction(async (tx) => {
           readingFormat: requestedFormat ?? currentLibrary?.readingFormat,
         },
       });
+      // Notificar libro terminado a los clubs de la usuaria
+      const memberships = await tx.clubMember.findMany({
+        where: { userId: user.id },
+        select: { clubId: true },
+      });
+      for (const m of memberships) {
+        notifyLibroTerminado({
+          clubId: m.clubId,
+          lectoraNombre: user.name,
+          lectoraUserId: user.id,
+          bookTitle: book.title,
+          bookId: book.id,
+        }).catch(console.error);
+      }
     }
 
     await tx.review.upsert({
@@ -1192,6 +1207,20 @@ export async function crearLibro(data: any) {
         readingFormat: formatFromFlutter(data.formato),
       },
     });
+
+    // Notificar libro nuevo en biblioteca
+    const memberships2 = await prisma.clubMember.findMany({
+      where: { userId: user.id },
+      select: { clubId: true },
+    });
+    for (const m of memberships2) {
+      notifyLibroNuevoBiblioteca({
+        clubId: m.clubId,
+        autoraNombre: user.name,
+        autoraUserId: user.id,
+        libros: [existingBook.title],
+      }).catch(console.error);
+    }
 
     return {
       ok: true,

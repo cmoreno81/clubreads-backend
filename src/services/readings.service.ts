@@ -6,6 +6,7 @@ import {
   ReadingStatus,
 } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { notifyComentarioLectura } from './notifications.service.js';
 import { synchronizeCurrentClubvision } from './clubvision.service.js';
 import {
   getCurrentClubContext,
@@ -752,6 +753,7 @@ export async function enviarComentarioLectura(data: {
         },
       },
     },
+    include: { reading: { select: { bookId: true } } },
   });
 
   if (!conversation) return { ok: false, mensaje: 'Capítulo no encontrado' };
@@ -765,6 +767,21 @@ export async function enviarComentarioLectura(data: {
       color: tipo === 'QUOTE' ? color : null,
     },
   });
+
+  // Notificar a otros participantes del hilo
+  const participantes = await prisma.comment.findMany({
+    where: { conversationId: conversation.id, userId: { not: user.id } },
+    select: { userId: true },
+    distinct: ['userId'],
+  });
+  notifyComentarioLectura({
+    clubId: club.id,
+    autorNombre: user.name,
+    autorUserId: user.id,
+    bookTitle: libro,
+    bookId: conversation.reading?.bookId ?? '',
+    participantes: participantes.map((p) => p.userId),
+  }).catch(console.error);
 
   return { ok: true };
 }

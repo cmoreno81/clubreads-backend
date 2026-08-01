@@ -257,6 +257,7 @@ model User {
 
   ownedClubs      Club[]       @relation("OwnedClubs")
   clubMemberships ClubMember[]
+  notifications   Notification[]
 
   activeClubId String?
 
@@ -721,4 +722,40 @@ model ClubvisionResult {
 
   @@unique([clubId, edition])
   @@index([edition])
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICACIONES IN-APP
+// ─────────────────────────────────────────────
+
+enum NotificationType {
+  CLUBVISION_ABIERTA
+  CLUBVISION_RESULTADOS
+  LECTURA_NUEVA
+  COMENTARIO_LECTURA
+  LIBRO_TERMINADO
+  LIBRO_NUEVO_BIBLIOTECA
+  NUEVA_MIEMBRO
+}
+
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tipo    NotificationType
+  titulo  String
+  mensaje String
+
+  leida Boolean @default(false)
+
+  // Referencias opcionales para navegación
+  clubId String?
+  bookId String?
+  extra  String? // JSON con datos adicionales
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, leida])
+  @@index([userId, createdAt])
 }
