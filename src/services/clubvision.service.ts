@@ -480,9 +480,11 @@ export async function getClubvision(usuario: string) {
     mensaje:
       estado === 'VOTACION'
         ? '🗳️ Ya puedes votar'
-        : ganador
-          ? `${ganador}${puntosGanador ? ` (${puntosGanador} puntos)` : ''}`
-          : '',
+        : estado === 'RESULTADOS'
+          ? 'Ya tenemos una nueva lectura.'
+          : estado === 'LECTURA' && ganador
+            ? ganador
+            : '',
 
     ganador,
     ganadorCoverUrl,
