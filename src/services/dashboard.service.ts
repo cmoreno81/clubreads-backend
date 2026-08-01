@@ -320,6 +320,52 @@ export async function getDashboard(usuario = '') {
     ? `${topGenre[0]} domina las lecturas actuales del club.`
     : 'El club está repartido entre varios géneros.';
 
+  // ── Ranking de afinidad anual ──
+  const yearStart = new Date(Date.UTC(new Date().getFullYear(), 0, 1));
+  let rankingAfinidad: Array<{ id: string; nombre: string; avatarUrl: string; librosComunes: number }> = [];
+
+  if (user) {
+    const misLibrosAnio = await prisma.readingCompletion.findMany({
+      where: {
+        userId: user.id,
+        finishedAt: { gte: yearStart },
+        isReread: false,
+      },
+      select: { bookId: true },
+    });
+    const misBookIds = new Set(misLibrosAnio.map((r) => r.bookId));
+
+    const miembros = await prisma.clubMember.findMany({
+      where: { clubId: club.id, userId: { not: user.id } },
+      include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+    });
+
+    const afinidades = await Promise.all(
+      miembros.map(async (m) => {
+        const susLibros = await prisma.readingCompletion.findMany({
+          where: {
+            userId: m.userId,
+            finishedAt: { gte: yearStart },
+            isReread: false,
+            bookId: { in: [...misBookIds] },
+          },
+          select: { bookId: true },
+        });
+        return {
+          id: m.user.id,
+          nombre: m.user.name,
+          avatarUrl: m.user.avatarUrl ?? '',
+          librosComunes: susLibros.length,
+        };
+      }),
+    );
+
+    rankingAfinidad = afinidades
+      .filter((a) => a.librosComunes > 0)
+      .sort((a, b) => b.librosComunes - a.librosComunes)
+      .slice(0, 5);
+  }
+
   return {
     resumen: {
       usuarioMes: topUsuario?.[0] ?? '',
@@ -334,6 +380,7 @@ export async function getDashboard(usuario = '') {
     leyendoAhora: leyendoAhoraResponse,
 
     tendencia,
+    rankingAfinidad,
     mood: getMood(valoracionMedia),
     libroMes: [],
     clubvision,
