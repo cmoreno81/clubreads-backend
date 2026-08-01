@@ -293,6 +293,45 @@ export async function getGeneralDashboard(userId: string) {
   const popularById = new Map(
     popularGroups.map((item) => [item.bookId, item._count.userId]),
   );
+
+  // Autores más presentes en las bibliotecas de las usuarias
+  const popularAuthorsRaw = await prisma.library.groupBy({
+    by: ['bookId'],
+    _count: { userId: true },
+    orderBy: { _count: { userId: 'desc' } },
+    take: 50,
+  });
+  const popularAuthorBookIds = popularAuthorsRaw.map((r) => r.bookId);
+  const authorBooks = await prisma.book.findMany({
+    where: {
+      id: { in: popularAuthorBookIds },
+      authorId: { not: null },
+    },
+    include: { author: true },
+  });
+  // Suma de lectoras por autor
+  const authorCountMap = new Map<string, { author: typeof authorBooks[0]['author'], count: number }>();
+  for (const book of authorBooks) {
+    if (!book.author) continue;
+    const entry = popularAuthorsRaw.find((r) => r.bookId === book.id);
+    const count = entry?._count.userId ?? 0;
+    const existing = authorCountMap.get(book.authorId!);
+    if (existing) {
+      existing.count += count;
+    } else {
+      authorCountMap.set(book.authorId!, { author: book.author, count });
+    }
+  }
+  const trendingAuthors = Array.from(authorCountMap.values())
+    .filter((e) => e.author && !e.author.deletedAt)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10)
+    .map((e) => ({
+      id: e.author!.id,
+      nombre: e.author!.name,
+      photoUrl: e.author!.photoUrl ?? '',
+      libros: e.count,
+    }));
   const monthCompletions = completions.filter(
     ({ finishedAt }) => finishedAt >= start && finishedAt < end,
   );
@@ -641,6 +680,7 @@ export async function getGeneralDashboard(userId: string) {
         lectoras: popularById.get(book.id) ?? 0,
       }))
       .sort((left, right) => right.lectoras - left.lectoras),
+    autoresTendencia: trendingAuthors,
     comunidad: {
       clubes: totals[0],
       lectoras: totals[1],

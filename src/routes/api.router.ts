@@ -84,6 +84,7 @@ import {
   handleSelectClub,
 } from '../controllers/clubs.controller.js';
 import { handleGeneralDashboard } from '../controllers/general-dashboard.controller.js';
+import { handleLibrosPorAutor } from '../controllers/general-dashboard.controller.js';
 import {
   handleGeneralCatalog,
   handleAddSeriesCatalogVolume,
@@ -220,6 +221,12 @@ async function handleApi(req: Request, res: Response) {
           return requireAuthentication(req, res, () => {});
         }
         return handleGeneralDashboard(req, res);
+
+      case 'librosPorAutor':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleLibrosPorAutor(req, res);
 
       case 'catalogoGeneral':
         if (!req.auth) {
