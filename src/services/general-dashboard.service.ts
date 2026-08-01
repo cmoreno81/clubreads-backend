@@ -310,27 +310,25 @@ export async function getGeneralDashboard(userId: string) {
     include: { author: true },
   });
   // Suma de lectoras por autor
-  const authorCountMap = new Map<string, { author: typeof authorBooks[0]['author'], count: number }>();
+  const authorCountMap = new Map<string, { author: typeof authorBooks[0]['author'], libros: number }>();
   for (const book of authorBooks) {
     if (!book.author) continue;
-    const entry = popularAuthorsRaw.find((r) => r.bookId === book.id);
-    const count = entry?._count.userId ?? 0;
     const existing = authorCountMap.get(book.authorId!);
     if (existing) {
-      existing.count += count;
+      existing.libros += 1; // cuenta libros únicos, no lectoras
     } else {
-      authorCountMap.set(book.authorId!, { author: book.author, count });
+      authorCountMap.set(book.authorId!, { author: book.author, libros: 1 });
     }
   }
   const trendingAuthors = Array.from(authorCountMap.values())
     .filter((e) => e.author && !e.author.deletedAt)
-    .sort((a, b) => b.count - a.count)
+    .sort((a, b) => b.libros - a.libros)
     .slice(0, 10)
     .map((e) => ({
       id: e.author!.id,
       nombre: e.author!.name,
       photoUrl: e.author!.photoUrl ?? '',
-      libros: e.count,
+      libros: e.libros,
     }));
   const monthCompletions = completions.filter(
     ({ finishedAt }) => finishedAt >= start && finishedAt < end,
