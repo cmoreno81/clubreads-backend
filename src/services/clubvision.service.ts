@@ -683,7 +683,7 @@ export async function getMiVoto(usuario: string) {
   return {
     encontrado: true,
     usuario: user.name,
-    votos: votos.map((voto) => voto.candidate.book.title),
+    votos: votos.map((voto) => ({ titulo: voto.candidate.book.title, coverUrl: voto.candidate.book.coverUrl ?? '' })),
     votosRecibidos,
     totalUsuarios,
     votosPendientes,
