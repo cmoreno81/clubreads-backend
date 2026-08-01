@@ -496,7 +496,7 @@ export async function getClubvision(usuario: string) {
     // Primeras portadas para el collage animado en la card del club
     portadasCandidatas: [...candidatas]
       .sort(() => Math.random() - 0.5)
-      .slice(0, 20)
+      .slice(0, 40)
       .map((c) => c.coverUrl)
       .filter((url) => url && url.length > 0),
 
