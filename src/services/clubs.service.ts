@@ -265,7 +265,10 @@ export async function updateClub(
   const membership = await prisma.clubMember.findUnique({
     where: { clubId_userId: { clubId, userId } },
   });
-  if (!membership || (membership.role !== ClubRole.OWNER && membership.role !== ClubRole.ADMIN)) {
+  // Para cambiar nombre/descripción se requiere OWNER o ADMIN
+  // Para cambiar la foto cualquier miembro puede hacerlo
+  const soloFoto = data.nombre === undefined && data.descripcion === undefined;
+  if (!membership || (!soloFoto && membership.role !== ClubRole.OWNER && membership.role !== ClubRole.ADMIN)) {
     throw new ClubContextError(
       'No tienes permiso para editar este club',
       403,
