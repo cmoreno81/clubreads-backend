@@ -26,7 +26,7 @@ import {
   handleToggleProgressReaction,
 } from '../controllers/books.controller.js';
 
-import { handleDashboard } from '../controllers/dashboard.controller.js';
+import { handleDashboard, handleAfinidadDetalle } from '../controllers/dashboard.controller.js';
 
 import {
   handleLecturasActivas,
@@ -339,6 +339,10 @@ async function handleApi(req: Request, res: Response) {
 
       case 'dashboard':
         return handleDashboard(req, res);
+
+      case 'afinidadDetalle':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleAfinidadDetalle(req, res);
 
       case 'libros':
         return handleLibros(req, res);

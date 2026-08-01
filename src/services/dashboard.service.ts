@@ -410,3 +410,49 @@ export async function getDashboard(usuario = '') {
     },
   };
 }
+
+// ─────────────────────────────────────────────
+// Detalle de afinidad con una miembro concreta
+// ─────────────────────────────────────────────
+
+export async function getAfinidadDetalle(userId: string, miembroId: string) {
+  const yearStart = new Date(Date.UTC(new Date().getFullYear(), 0, 1));
+
+  const [misLibros, susLibros, miembro] = await Promise.all([
+    prisma.readingCompletion.findMany({
+      where: { userId, finishedAt: { gte: yearStart }, isReread: false },
+      select: { bookId: true },
+    }),
+    prisma.readingCompletion.findMany({
+      where: { userId: miembroId, finishedAt: { gte: yearStart }, isReread: false },
+      select: { bookId: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: miembroId },
+      select: { name: true, avatarUrl: true },
+    }),
+  ]);
+
+  const misIds = new Set(misLibros.map((r) => r.bookId));
+  const comunes = susLibros.filter((r) => misIds.has(r.bookId)).map((r) => r.bookId);
+
+  const libros = await prisma.book.findMany({
+    where: { id: { in: comunes } },
+    include: { genre: true },
+    orderBy: { title: 'asc' },
+  });
+
+  return {
+    miembro: {
+      id: miembroId,
+      nombre: miembro?.name ?? '',
+      avatarUrl: miembro?.avatarUrl ?? '',
+    },
+    librosComunes: libros.map((b) => ({
+      id: b.id,
+      titulo: b.title,
+      coverUrl: b.coverUrl ?? '',
+      genero: b.genre?.name ?? '',
+    })),
+  };
+}
