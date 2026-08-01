@@ -442,6 +442,8 @@ model Library {
 
   @@unique([userId, bookId])
   @@index([status])
+  @@index([userId, status])
+  @@index([userId, bookId])
 }
 
 model ProgressReaction {
@@ -481,6 +483,7 @@ model ReadingCompletion {
   updatedAt DateTime @updatedAt
 
   @@index([userId, finishedAt])
+  @@index([userId, isReread, finishedAt])
   @@index([bookId, finishedAt])
   @@index([isReread, finishedAt])
 }
@@ -586,6 +589,7 @@ model Comment {
   likes     Like[]
 
   @@index([conversationId])
+  @@index([conversationId, createdAt])
   @@index([userId])
   @@index([parentId])
 }
