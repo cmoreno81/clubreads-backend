@@ -6,6 +6,7 @@ import {
 } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
+import { notifyLibroNuevoBiblioteca } from './notifications.service.js';
 
 type ExternalVolume = {
   id?: unknown;
@@ -36,6 +37,24 @@ const bookInclude = {
   genre: true,
   library: true,
 } as const;
+
+async function notifyLibraryAddition(
+  user: { id: string; name: string },
+  bookTitle: string,
+) {
+  const memberships = await prisma.clubMember.findMany({
+    where: { userId: user.id },
+    select: { clubId: true },
+  });
+  for (const membership of memberships) {
+    await notifyLibroNuevoBiblioteca({
+      clubId: membership.clubId,
+      autoraNombre: user.name,
+      autoraUserId: user.id,
+      libros: [bookTitle],
+    });
+  }
+}
 
 function priorityFromFlutter(value: unknown): Priority {
   const normalized = String(value ?? '').trim().toUpperCase();
@@ -338,6 +357,7 @@ export async function importCatalogBook(
       readingFormat: formatFromFlutter(data.formato),
     },
   });
+  void notifyLibraryAddition(user, book.title).catch(console.error);
   return {
     ok: true,
     codigo: 'LIBRO_CATALOGO_ANADIDO',
@@ -471,6 +491,15 @@ export async function addSeriesCatalogVolume(
       standalone: false,
     },
   });
+  const existingLibrary = await prisma.library.findUnique({
+    where: {
+      userId_bookId: {
+        userId: user.id,
+        bookId: book.id,
+      },
+    },
+    select: { id: true },
+  });
   await prisma.library.upsert({
     where: {
       userId_bookId: {
@@ -487,6 +516,9 @@ export async function addSeriesCatalogVolume(
       readingFormat: null,
     },
   });
+  if (!existingLibrary) {
+    void notifyLibraryAddition(user, book.title).catch(console.error);
+  }
   if (Number.isInteger(requestedPosition)) {
     await prisma.seriesBookOverride.deleteMany({
       where: {
