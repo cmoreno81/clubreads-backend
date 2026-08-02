@@ -466,7 +466,35 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
           estado: status,
         };
       });
-      const read = volumes.filter(({ estado }) => estado === 'LEIDO').length;
+      const bookPositions = new Set(
+        volumes
+          .map(({ posicion }) => posicion)
+          .filter((position): position is number => position != null),
+      );
+      for (const [posicion, tipo] of overridesBySeries.get(series.id) ?? []) {
+        if (bookPositions.has(posicion)) continue;
+        volumes.push({
+          bookId: '',
+          titulo: `Tomo ${posicion}`,
+          numero: String(posicion),
+          posicion,
+          coverUrl: '',
+          estado: tipo,
+        });
+      }
+      volumes.sort((left, right) =>
+        (left.posicion ?? Number.MAX_SAFE_INTEGER) -
+        (right.posicion ?? Number.MAX_SAFE_INTEGER)
+      );
+      const read = volumes.filter(
+        ({ estado }) => estado === 'LEIDO' || estado === 'LEIDO_EXTERNO',
+      ).length;
+      const covered = volumes.filter(
+        ({ estado }) =>
+          estado === 'LEIDO' ||
+          estado === 'LEIDO_EXTERNO' ||
+          estado === 'OMITIDO',
+      ).length;
       const hasAbandoned = volumes.some(({ estado }) => estado === 'ABANDONADO');
       const highestOrder = books.reduce((highest, book) => {
         const value = numeroSaga(book.seriesOrder);
@@ -487,8 +515,8 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         declaredInOrders,
       );
       const knownPositions = new Set(
-        books
-          .map((book) => datosNumeroSaga(book.seriesOrder).posicion)
+        volumes
+          .map(({ posicion }) => posicion)
           .filter((position): position is number => position != null),
       );
       const hasPreviousGaps = Array.from(
@@ -496,17 +524,21 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         (_, index) => index + 1,
       ).some((position) => !knownPositions.has(position));
       const allKnownVolumesRead =
-        books.length > 0 && read === books.length;
+        volumes.length > 0 && covered === volumes.length;
       const isComplete =
         series.publicationStatus === 'COMPLETED' &&
         allKnownVolumesRead &&
         !hasPreviousGaps &&
         knownTotal > 0 &&
-        books.length >= knownTotal &&
-        read >= knownTotal;
+        volumes.length >= knownTotal &&
+        covered >= knownTotal;
       const next =
         volumes.find(
-          ({ estado }) => estado !== 'LEIDO' && estado !== 'LEYENDO',
+          ({ estado }) =>
+            estado !== 'LEIDO' &&
+            estado !== 'LEIDO_EXTERNO' &&
+            estado !== 'OMITIDO' &&
+            estado !== 'LEYENDO',
         ) ?? null;
       const reading =
         volumes.find(({ estado }) => estado === 'LEYENDO') ?? null;

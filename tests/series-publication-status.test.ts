@@ -14,9 +14,19 @@ test('el estado editorial se añade sin romper las sagas existentes', () => {
 test('completada exige confirmación editorial y todos los volúmenes leídos', () => {
   assert.match(profile, /series\.publicationStatus === 'COMPLETED'/);
   assert.match(profile, /allKnownVolumesRead[\s\S]*!hasPreviousGaps/);
-  assert.match(profile, /books\.length >= knownTotal/);
-  assert.match(profile, /read >= knownTotal/);
+  assert.match(profile, /volumes\.length >= knownTotal/);
+  assert.match(profile, /covered >= knownTotal/);
   assert.match(profile, /estadoEditorial: series\.publicationStatus/);
+});
+
+test('los tomos externos y omitidos cubren huecos de una saga', () => {
+  assert.match(profile, /titulo: `Tomo \$\{posicion\}`/);
+  assert.match(
+    profile,
+    /estado === 'LEIDO' \|\| estado === 'LEIDO_EXTERNO'/,
+  );
+  assert.match(profile, /estado === 'OMITIDO'/);
+  assert.match(profile, /covered === volumes\.length/);
 });
 
 test('editar el estado editorial requiere una sesión autenticada', () => {

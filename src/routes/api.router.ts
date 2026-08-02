@@ -128,6 +128,8 @@ const POST_ONLY_ACTIONS = new Set([
   'vincularVolumenSaga',
   'actualizarNumeroVolumenSaga',
   'actualizarEstadoEditorialSaga',
+  'setSeriesOverride',
+  'removeSeriesOverride',
   'previsualizarImportacionGoodreads',
   'confirmarImportacionGoodreads',
 ]);
