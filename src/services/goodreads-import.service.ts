@@ -141,10 +141,6 @@ function parseRows(value: unknown): GoodreadsRow[] {
   });
 }
 
-function identity(row: GoodreadsRow) {
-  return `${canonicalBookTitle(row.title)}:${normalize(row.author)}`;
-}
-
 export function importTitleVariants(value: string) {
   const canonical = canonicalBookTitle(value);
   const withoutSeriesSuffix = canonical
@@ -154,13 +150,35 @@ export function importTitleVariants(value: string) {
     )
     .replace(/\s+(?:#|n[ºo.]?\s*)\d+\s*$/i, '')
     .trim();
-  return [...new Set([canonical, withoutSeriesSuffix].filter(Boolean))];
+  const withoutTrailingParenthetical = canonical
+    .replace(/\s*\([^)]*\)\s*$/u, '')
+    .trim();
+  return [
+    ...new Set(
+      [canonical, withoutSeriesSuffix, withoutTrailingParenthetical]
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function workKeys(title: string, author: string) {
   const normalizedAuthor = importAuthorIdentity(author);
   return importTitleVariants(title).map(
     (variant) => `${variant}:${normalizedAuthor}`,
+  );
+}
+
+function rowAuthors(row: GoodreadsRow) {
+  return [...new Set(
+    [row.author, ...row.additionalAuthors]
+      .map(importAuthorIdentity)
+      .filter(Boolean),
+  )];
+}
+
+function rowWorkKeys(row: GoodreadsRow) {
+  return rowAuthors(row).flatMap((author) =>
+    importTitleVariants(row.title).map((title) => `${title}:${author}`)
   );
 }
 
@@ -202,8 +220,12 @@ async function userForImport(userName: string) {
   return user;
 }
 
-async function buildPreview(userId: string, rows: GoodreadsRow[]) {
-  const books = await prisma.book.findMany({
+async function buildPreview(
+  userId: string,
+  rows: GoodreadsRow[],
+  database: Prisma.TransactionClient | typeof prisma = prisma,
+) {
+  const books = await database.book.findMany({
     where: { deletedAt: null },
     include: {
       author: true,
@@ -233,7 +255,7 @@ async function buildPreview(userId: string, rows: GoodreadsRow[]) {
   for (const row of rows) {
     for (const title of importTitleVariants(row.title)) {
       const authors = importedAuthorsByTitle.get(title) ?? new Set<string>();
-      authors.add(importAuthorIdentity(row.author));
+      rowAuthors(row).forEach((author) => authors.add(author));
       importedAuthorsByTitle.set(title, authors);
     }
   }
@@ -251,7 +273,7 @@ async function buildPreview(userId: string, rows: GoodreadsRow[]) {
     const rowIdentities = [
       row.isbn13 ? `isbn:${row.isbn13}` : '',
       row.isbn ? `isbn:${row.isbn}` : '',
-      `work:${identity(row)}`,
+      ...rowWorkKeys(row).map((key) => `work:${key}`),
     ].filter(Boolean);
     if (rowIdentities.some((key) => seen.has(key))) {
       return {
@@ -268,7 +290,7 @@ async function buildPreview(userId: string, rows: GoodreadsRow[]) {
       ...(row.isbn13 ? byIsbn.get(row.isbn13) ?? [] : []),
       ...(row.isbn ? byIsbn.get(row.isbn) ?? [] : []),
     ];
-    const titleMatches = workKeys(row.title, row.author)
+    const titleMatches = rowWorkKeys(row)
       .flatMap((key) => byWork.get(key) ?? []);
     const exactTitleMatches = importTitleVariants(row.title)
       .flatMap((title) => byTitle.get(title) ?? []);
@@ -286,10 +308,10 @@ async function buildPreview(userId: string, rows: GoodreadsRow[]) {
         !soleTitleMatch.authorId &&
         !titleHasSeveralImportedAuthors
         ? [soleTitleMatch]
-        : uniqueTitleMatches.filter(
-          (book) =>
-            importAuthorIdentity(book.author?.name ?? '') ===
-            importAuthorIdentity(row.author),
+        : uniqueTitleMatches.filter((book) =>
+          rowAuthors(row).includes(
+            importAuthorIdentity(book.author?.name ?? ''),
+          )
         );
     const candidates = [
       ...new Map(
@@ -550,13 +572,26 @@ export async function confirmGoodreadsImport(
   const user = await userForImport(userName);
   const parsedRows = parseRows(rawRows);
   const rows = parsedRows.filter(isRatedFinishedGoodreadsRow);
-  const preview = await buildPreview(user.id, rows);
-  const accepted = preview.filter((item) =>
-    item.accion === 'NUEVO' || item.accion === 'ANADIR' ||
-    item.accion === 'PROTEGIDO'
-  );
 
   const result = await prisma.$transaction(async (tx) => {
+    /*
+     * Todas las confirmaciones de Goodreads comparten este bloqueo. La
+     * segunda importación espera y reconstruye su previsualización después
+     * de que la primera haya terminado, por lo que nunca crea el mismo libro
+     * basándose en una previsualización obsoleta.
+     */
+    await tx.$queryRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended('clubreads:goodreads-import', 0)
+      )::text
+    `;
+
+    const preview = await buildPreview(user.id, rows, tx);
+    const rowsByIndex = new Map(rows.map((row) => [row.index, row]));
+    const accepted = preview.filter((item) =>
+      item.accion === 'NUEVO' || item.accion === 'ANADIR' ||
+      item.accion === 'PROTEGIDO'
+    );
     let created = 0;
     let added = 0;
     let protectedCount = 0;
@@ -564,7 +599,8 @@ export async function confirmGoodreadsImport(
     const coverTasks: CoverTask[] = [];
 
     for (const item of accepted) {
-      const row = rows[item.index]!;
+      const row = rowsByIndex.get(item.index);
+      if (!row) continue;
       let book = item.bookId
         ? await tx.book.findUnique({ where: { id: item.bookId } })
         : null;
@@ -633,6 +669,7 @@ export async function confirmGoodreadsImport(
       protectedCount,
       restoredReviews,
       coverTasks,
+      preview,
     };
   }, {
     maxWait: IMPORT_TRANSACTION_MAX_WAIT_MS,
@@ -650,9 +687,10 @@ export async function confirmGoodreadsImport(
       anadidos: result.added,
       protegidos: result.protectedCount,
       resenasRecuperadas: result.restoredReviews,
-      paraRevisar: preview.filter((item) => item.accion === 'REVISAR').length,
+      paraRevisar:
+        result.preview.filter((item) => item.accion === 'REVISAR').length,
       omitidos:
-        preview.filter((item) => item.accion === 'OMITIR').length +
+        result.preview.filter((item) => item.accion === 'OMITIR').length +
         parsedRows.length -
         rows.length,
     },

@@ -192,6 +192,26 @@ test('reconoce títulos de Goodreads con la saga y el volumen entre paréntesis'
   assert.deepEqual(importTitleVariants('Yesteryear'), ['yesteryear']);
 });
 
+test('reconoce el nombre de saga entre paréntesis aunque no incluya número', () => {
+  assert.ok(
+    importTitleVariants('Jugando fuerte (La ciudad de los vientos)')
+      .includes('jugando fuerte'),
+  );
+});
+
+test('la confirmación revalida bajo bloqueo y conserva los índices del CSV', () => {
+  assert.match(service, /pg_advisory_xact_lock/);
+  assert.match(service, /buildPreview\(user\.id, rows, tx\)/);
+  assert.match(service, /const rowsByIndex = new Map/);
+  assert.match(service, /rowsByIndex\.get\(item\.index\)/);
+});
+
+test('los autores adicionales participan en la identidad de la obra', () => {
+  assert.match(service, /function rowAuthors/);
+  assert.match(service, /\[row\.author, \.\.\.row\.additionalAuthors\]/);
+  assert.match(service, /const titleMatches = rowWorkKeys\(row\)/);
+});
+
 test('tolera signos y espacios diferentes en los nombres de autor', () => {
   assert.equal(importAuthorIdentity('S.T. Abby'), 's t abby');
   assert.equal(importAuthorIdentity('S. T. Abby'), 's t abby');

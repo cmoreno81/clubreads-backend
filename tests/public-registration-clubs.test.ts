@@ -71,7 +71,7 @@ test('el dashboard general funciona sin exigir un club activo', () => {
   assert.match(profile, /sagasAbiertas/);
   assert.match(
     profile,
-    /estado !== 'PENDIENTE' && estado !== 'COMPLETADA'/,
+    /estado !== 'PENDIENTE' &&[\s\S]*estado !== 'COMPLETADA' &&[\s\S]*estado !== 'ABANDONADA'/,
   );
   assert.match(profile, /siguiente: reading \?\? next/);
 });
@@ -105,7 +105,7 @@ test('la comunidad cuenta cuentas nuevas y lectoras históricas con club', () =>
 test('cualquier integrante puede configurar la lectura oficial del club', () => {
   assert.match(
     readings,
-    /const \{ club \} = legacyRequest[\s\S]*: await requireClubMember\(data\.usuario\)/,
+    /const \{ club, user \} = legacyRequest[\s\S]*: await requireClubMember\(data\.usuario\)/,
   );
   assert.doesNotMatch(
     readings,
