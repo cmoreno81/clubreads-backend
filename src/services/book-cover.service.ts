@@ -43,6 +43,15 @@ type ImportedBookIdentity = {
   isbn: string;
 };
 
+type GoogleVolume = {
+  volumeInfo?: {
+    title?: string;
+    authors?: string[];
+    industryIdentifiers?: Array<{ identifier?: string }>;
+    imageLinks?: Record<string, string>;
+  };
+};
+
 const OPEN_LIBRARY_SEARCH_URL =
   'https://openlibrary.org/search.json';
 
@@ -58,6 +67,67 @@ function normalizeText(value: string) {
 
 function normalizeIsbn(value: string) {
   return value.replace(/[^0-9Xx]/g, '').toUpperCase();
+}
+
+function sameAuthor(expected: string, candidates: string[]) {
+  const normalizedExpected = normalizeText(expected);
+  return candidates.some((candidate) => {
+    const normalizedCandidate = normalizeText(candidate);
+    return normalizedCandidate === normalizedExpected ||
+      normalizedCandidate.includes(normalizedExpected) ||
+      normalizedExpected.includes(normalizedCandidate);
+  });
+}
+
+function googleCover(volume: GoogleVolume) {
+  const links = volume.volumeInfo?.imageLinks;
+  return (links?.extraLarge ?? links?.large ?? links?.medium ?? links?.small ??
+    links?.thumbnail ?? links?.smallThumbnail)?.replace(/^http:/, 'https:')
+    .replace('&edge=curl', '') ?? null;
+}
+
+async function searchGoogleBooks(query: string) {
+  const url = new URL('https://www.googleapis.com/books/v1/volumes');
+  url.searchParams.set('q', query);
+  url.searchParams.set('maxResults', '20');
+  url.searchParams.set('printType', 'books');
+  if (process.env.GOOGLE_BOOKS_API_KEY) {
+    url.searchParams.set('key', process.env.GOOGLE_BOOKS_API_KEY);
+  }
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) throw new Error(`GOOGLE_BOOKS_HTTP_${response.status}`);
+  const payload = await response.json() as { items?: GoogleVolume[] };
+  return payload.items ?? [];
+}
+
+async function findGoogleBooksCover(identity: ImportedBookIdentity) {
+  const isbn = normalizeIsbn(identity.isbn);
+  if (isbn.length === 10 || isbn.length === 13) {
+    const byIsbn = await searchGoogleBooks(`isbn:${isbn}`);
+    const exact = byIsbn.find((volume) =>
+      (volume.volumeInfo?.industryIdentifiers ?? []).some((identifier) =>
+        normalizeIsbn(identifier.identifier ?? '') === isbn
+      ) && googleCover(volume)
+    );
+    if (exact) return googleCover(exact);
+  }
+  if (!identity.author.trim()) return null;
+  const candidates = await searchGoogleBooks(
+    `intitle:${identity.title} inauthor:${identity.author}`,
+  );
+  const exact = candidates.find((volume) => {
+    const info = volume.volumeInfo;
+    return Boolean(
+      info?.title &&
+      calculateScore(identity.title, info.title) >= 96 &&
+      sameAuthor(identity.author, info.authors ?? []) &&
+      googleCover(volume),
+    );
+  });
+  return exact ? googleCover(exact) : null;
 }
 
 function titleWithoutArticle(value: string) {
@@ -373,6 +443,12 @@ async function coverExists(url: string) {
 export async function findImportedBookCover(
   identity: ImportedBookIdentity,
 ) {
+  try {
+    const google = await findGoogleBooksCover(identity);
+    if (google) return google;
+  } catch {
+    // Open Library permanece disponible si Google Books no responde.
+  }
   const isbn = normalizeIsbn(identity.isbn);
   if (isbn.length === 10 || isbn.length === 13) {
     const isbnCover =
@@ -382,19 +458,10 @@ export async function findImportedBookCover(
 
   try {
     const candidates = await searchBookCoverCandidates(identity.title);
-    const normalizedAuthor = normalizeText(identity.author);
     const safe = candidates.find((candidate) => {
-      const sameAuthor =
-        !normalizedAuthor ||
-        candidate.authors.some((author) => {
-          const normalizedCandidate = normalizeText(author);
-          return (
-            normalizedCandidate === normalizedAuthor ||
-            normalizedCandidate.includes(normalizedAuthor) ||
-            normalizedAuthor.includes(normalizedCandidate)
-          );
-        });
-      return candidate.score >= 96 && sameAuthor;
+      const authorMatches = !identity.author.trim() ||
+        sameAuthor(identity.author, candidate.authors);
+      return candidate.score >= 96 && authorMatches;
     });
     return safe?.coverUrl ?? null;
   } catch {

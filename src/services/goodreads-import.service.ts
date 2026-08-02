@@ -11,7 +11,8 @@ import { findBookByIdentity, lockBookIdentity } from './book-identity.service.js
 
 const MAX_IMPORT_ROWS = 2_000;
 const IMPORT_TRANSACTION_MAX_WAIT_MS = 10_000;
-const IMPORT_TRANSACTION_TIMEOUT_MS = 120_000;
+const IMPORT_BATCH_TIMEOUT_MS = 30_000;
+const IMPORT_BATCH_SIZE = 20;
 
 type GoodreadsRow = {
   index: number;
@@ -51,6 +52,15 @@ type CoverTask = {
   author: string;
   isbn: string;
 };
+
+export function chunkImportRows<T>(rows: T[], size = IMPORT_BATCH_SIZE) {
+  if (!Number.isInteger(size) || size <= 0) throw new Error('INVALID_BATCH_SIZE');
+  const chunks: T[][] = [];
+  for (let index = 0; index < rows.length; index += size) {
+    chunks.push(rows.slice(index, index + size));
+  }
+  return chunks;
+}
 
 function normalize(value: string) {
   return value
@@ -573,119 +583,135 @@ export async function confirmGoodreadsImport(
   const user = await userForImport(userName);
   const parsedRows = parseRows(rawRows);
   const rows = parsedRows.filter(isRatedFinishedGoodreadsRow);
-
-  const result = await prisma.$transaction(async (tx) => {
-    /*
-     * Todas las confirmaciones de Goodreads comparten este bloqueo. La
-     * segunda importación espera y reconstruye su previsualización después
-     * de que la primera haya terminado, por lo que nunca crea el mismo libro
-     * basándose en una previsualización obsoleta.
-     */
-    await tx.$queryRaw`
-      SELECT pg_advisory_xact_lock(
-        hashtextextended('clubreads:goodreads-import', 0)
-      )::text
-    `;
-
-    const preview = await buildPreview(user.id, rows, tx);
-    const rowsByIndex = new Map(rows.map((row) => [row.index, row]));
-    const accepted = preview.filter((item) =>
-      item.accion === 'NUEVO' || item.accion === 'ANADIR' ||
-      item.accion === 'PROTEGIDO'
-    );
-    let created = 0;
-    let added = 0;
-    let protectedCount = 0;
-    let restoredReviews = 0;
-    const coverTasks: CoverTask[] = [];
-
-    for (const item of accepted) {
-      const row = rowsByIndex.get(item.index);
-      if (!row) continue;
-      let book = item.bookId
-        ? await tx.book.findUnique({ where: { id: item.bookId } })
-        : null;
-
-      // Un libro compartido es inmutable durante la importación: al
-      // reutilizarlo solo se crean/actualizan relaciones personales.
-      if (item.accion === 'PROTEGIDO') {
-        protectedCount += 1;
-        if (
-          book &&
-          await fillEmptyPersonalReview(tx, user.id, book.id, row)
-        ) {
-          restoredReviews += 1;
-        }
-        if (book && !book.coverUrl?.trim()) {
-          coverTasks.push({
-            bookId: book.id,
-            title: book.title,
-            author: row.author,
-            isbn: row.isbn13 || row.isbn,
-          });
-        }
-        continue;
-      }
-      if (book) added += 1;
-      if (!book) {
-        const identity = {
-          title: row.title,
-          authorName: row.author,
-          isbn: row.isbn13 || row.isbn,
+  const result = {
+    created: 0,
+    added: 0,
+    protectedCount: 0,
+    restoredReviews: 0,
+    coverTasks: [] as CoverTask[],
+    reviewCount: 0,
+    omittedCount: parsedRows.length - rows.length,
+  };
+  const batches = chunkImportRows(rows);
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+    const batch = batches[batchIndex];
+    const context: { activeRow?: GoodreadsRow } = {};
+    try {
+      const batchResult = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`clubreads:goodreads-import:${user.id}`}, 0)
+          )::text
+        `;
+        const preview = await buildPreview(user.id, batch, tx);
+        const rowsByIndex = new Map(batch.map((row) => [row.index, row]));
+        const accepted = preview.filter((item) =>
+          item.accion === 'NUEVO' || item.accion === 'ANADIR' || item.accion === 'PROTEGIDO'
+        );
+        const totals = {
+          created: 0,
+          added: 0,
+          protectedCount: 0,
+          restoredReviews: 0,
+          coverTasks: [] as CoverTask[],
+          reviewCount: preview.filter((item) => item.accion === 'REVISAR').length,
+          omittedCount: preview.filter((item) => item.accion === 'OMITIR').length,
         };
-        await lockBookIdentity(tx, identity);
-        book = await findBookByIdentity(tx, identity);
-        if (book) {
-          added += 1;
+        for (const item of accepted) {
+          const row = rowsByIndex.get(item.index);
+          if (!row) continue;
+          context.activeRow = row;
+          let book = item.bookId
+            ? await tx.book.findUnique({ where: { id: item.bookId } })
+            : null;
+          if (!book) {
+            const identity = { title: row.title, authorName: row.author, isbn: row.isbn13 || row.isbn };
+            await lockBookIdentity(tx, identity);
+            book = await findBookByIdentity(tx, identity);
+          }
+          const existingBook = Boolean(book);
+          if (!book) {
+            const genre = await tx.genre.upsert({
+              where: { name: 'Sin género' }, update: {}, create: { name: 'Sin género' },
+            });
+            const author = await tx.author.upsert({
+              where: { name: row.author }, update: {}, create: { name: row.author },
+            });
+            book = await tx.book.create({
+              data: {
+                title: row.title,
+                authorId: author.id,
+                genreId: genre.id,
+                isbn: row.isbn13 || row.isbn || null,
+                totalPages: row.pages,
+                publicationYear: row.publicationYear,
+                standalone: true,
+                createdById: user.id,
+              },
+            });
+          }
+          await tx.$queryRaw`
+            SELECT pg_advisory_xact_lock(
+              hashtextextended(${`${user.id}:${book.id}:goodreads-personal`}, 0)
+            )::text
+          `;
+          const existingLibrary = await tx.library.findUnique({
+            where: { userId_bookId: { userId: user.id, bookId: book.id } },
+          });
+          // Un libro compartido es inmutable durante la importación: si ya
+          // está en la biblioteca solo completamos datos personales vacíos.
+          if (existingLibrary) {
+            totals.protectedCount += 1;
+            if (await fillEmptyPersonalReview(tx, user.id, book.id, row)) {
+              totals.restoredReviews += 1;
+            }
+          } else {
+            if (existingBook) totals.added += 1;
+            else totals.created += 1;
+            await addPersonalData(tx, user.id, book.id, row);
+          }
+          if (!book.coverUrl?.trim()) {
+            totals.coverTasks.push({
+              bookId: book.id,
+              title: book.title,
+              author: row.author,
+              isbn: row.isbn13 || row.isbn,
+            });
+          }
         }
-      }
-      if (!book) {
-        const genre = await tx.genre.upsert({
-          where: { name: 'Sin género' },
-          update: {},
-          create: { name: 'Sin género' },
-        });
-        const author = await tx.author.upsert({
-          where: { name: row.author },
-          update: {},
-          create: { name: row.author },
-        });
-        book = await tx.book.create({
-          data: {
-            title: row.title,
-            authorId: author.id,
-            genreId: genre.id,
-            isbn: row.isbn13 || row.isbn || null,
-            totalPages: row.pages,
-            publicationYear: row.publicationYear,
-            standalone: true,
-            createdById: user.id,
-          },
-        });
-        created += 1;
-      }
-      if (!book.coverUrl?.trim()) {
-        coverTasks.push({
-          bookId: book.id,
-          title: book.title,
-          author: row.author,
-          isbn: row.isbn13 || row.isbn,
-        });
-      }
-      await addPersonalData(tx, user.id, book.id, row);
+        return totals;
+      }, {
+        maxWait: IMPORT_TRANSACTION_MAX_WAIT_MS,
+        timeout: IMPORT_BATCH_TIMEOUT_MS,
+      });
+      result.created += batchResult.created;
+      result.added += batchResult.added;
+      result.protectedCount += batchResult.protectedCount;
+      result.restoredReviews += batchResult.restoredReviews;
+      result.coverTasks.push(...batchResult.coverTasks);
+      result.reviewCount += batchResult.reviewCount;
+      result.omittedCount += batchResult.omittedCount;
+    } catch (error) {
+      const processed = result.created + result.added + result.protectedCount;
+      const rowLabel = context.activeRow
+        ? `Fila ${context.activeRow.index + 1} (${context.activeRow.title || 'sin título'})`
+        : `Lote ${batchIndex + 1}`;
+      const isTimeout = error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028';
+      console.error('Fallo en lote de importación', {
+        batch: batchIndex + 1,
+        batchStart: batch[0]?.index,
+        batchEnd: batch.at(-1)?.index,
+        activeRow: context.activeRow?.index,
+        title: context.activeRow?.title,
+        error,
+      });
+      throw new GoodreadsImportError(
+        isTimeout ? 503 : 500,
+        isTimeout ? 'GOODREADS_IMPORT_BATCH_TIMEOUT' : 'GOODREADS_IMPORT_BATCH_FAILED',
+        `${rowLabel} no pudo importarse. ${processed} libros ya quedaron confirmados y puedes reintentar con seguridad.`,
+      );
     }
-    return {
-      created,
-      added,
-      protectedCount,
-      restoredReviews,
-      coverTasks,
-      preview,
-    };
-  }, {
-    maxWait: IMPORT_TRANSACTION_MAX_WAIT_MS,
-    timeout: IMPORT_TRANSACTION_TIMEOUT_MS,
-  });
+  }
 
   void enrichMissingCovers(result.coverTasks).catch(() => {
     // La importación ya está guardada; una portada ausente no la revierte.
@@ -698,12 +724,8 @@ export async function confirmGoodreadsImport(
       anadidos: result.added,
       protegidos: result.protectedCount,
       resenasRecuperadas: result.restoredReviews,
-      paraRevisar:
-        result.preview.filter((item) => item.accion === 'REVISAR').length,
-      omitidos:
-        result.preview.filter((item) => item.accion === 'OMITIR').length +
-        parsedRows.length -
-        rows.length,
+      paraRevisar: result.reviewCount,
+      omitidos: result.omittedCount,
     },
     mensaje:
       'Importación terminada. Solo se han importado libros finalizados y valorados.',

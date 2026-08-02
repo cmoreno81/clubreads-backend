@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
+  chunkImportRows,
   importAuthorIdentity,
   importTitleVariants,
   isRatedFinishedGoodreadsRow,
@@ -43,7 +44,7 @@ test('los libros existentes protegen los datos personales de ClubReads', () => {
   assert.match(service, /accion: 'PROTEGIDO'/);
   assert.match(
     service,
-    /if \(item\.accion === 'PROTEGIDO'\)[\s\S]*fillEmptyPersonalReview[\s\S]*continue;/,
+    /if \(existingLibrary\)[\s\S]*fillEmptyPersonalReview/,
   );
   assert.doesNotMatch(
     service,
@@ -127,11 +128,21 @@ test('el autor puede completarse manualmente sin borrar el existente', () => {
   );
 });
 
-test('la confirmación completa se ejecuta dentro de una transacción', () => {
+test('la confirmación masiva se divide en transacciones acotadas', () => {
   assert.match(service, /prisma\.\$transaction\(async \(tx\) =>/);
   assert.match(service, /await addPersonalData\(tx,/);
-  assert.match(service, /timeout: IMPORT_TRANSACTION_TIMEOUT_MS/);
-  assert.match(service, /const IMPORT_TRANSACTION_TIMEOUT_MS = 120_000/);
+  assert.match(service, /timeout: IMPORT_BATCH_TIMEOUT_MS/);
+  assert.match(service, /const IMPORT_BATCH_SIZE = 20/);
+  assert.match(service, /GOODREADS_IMPORT_BATCH_TIMEOUT/);
+  assert.match(service, /GOODREADS_IMPORT_BATCH_FAILED/);
+});
+
+test('una importación de 150 filas se procesa en lotes sin perder índices', () => {
+  const rows = Array.from({ length: 150 }, (_, index) => ({ index, title: `Libro ${index}` }));
+  const batches = chunkImportRows(rows);
+  assert.equal(batches.length, 8);
+  assert.deepEqual(batches.map((batch) => batch.length), [20, 20, 20, 20, 20, 20, 20, 10]);
+  assert.deepEqual(batches.flat().map((row) => row.index), rows.map((row) => row.index));
 });
 
 test('una lectura sin fecha usa una fecha histórica y nunca el año actual', () => {
@@ -192,7 +203,7 @@ test('reconoce el nombre de saga entre paréntesis aunque no incluya número', (
 
 test('la confirmación revalida bajo bloqueo y conserva los índices del CSV', () => {
   assert.match(service, /pg_advisory_xact_lock/);
-  assert.match(service, /buildPreview\(user\.id, rows, tx\)/);
+  assert.match(service, /buildPreview\(user\.id, batch, tx\)/);
   assert.match(service, /const rowsByIndex = new Map/);
   assert.match(service, /rowsByIndex\.get\(item\.index\)/);
 });

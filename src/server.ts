@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { apiRouter } from './routes/api.router.js';
+import { startMissingCoverBackfill } from './services/missing-cover-backfill.service.js';
 
 const app = express();
 
@@ -16,4 +17,5 @@ const port = Number(process.env.PORT) || 3000;
 
 app.listen(port, () => {
   console.log(`ClubLectura backend escuchando en http://localhost:${port}`);
+  startMissingCoverBackfill();
 });
