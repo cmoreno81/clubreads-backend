@@ -196,6 +196,10 @@ model Book {
 
   isbn String?
 
+  normalizedIsbn String?
+
+  canonicalKey String?
+
   publicationYear Int?
 
   totalPages Int?
@@ -222,11 +226,35 @@ model Book {
   wonClubvisions       Clubvision[]
   clubvisionCandidates ClubvisionCandidate[]
   clubvisionResults    ClubvisionResult[]    @relation("ClubvisionWinner")
+  redirectsFrom        BookRedirect[]        @relation("CanonicalBookRedirect")
 
   @@index([title])
   @@index([authorId])
   @@index([genreId])
   @@index([seriesId])
+  @@index([canonicalKey])
+  @@index([normalizedIsbn])
+}
+
+model BookRedirect {
+  oldBookId      String   @id
+  canonicalBookId String
+  canonicalBook   Book     @relation("CanonicalBookRedirect", fields: [canonicalBookId], references: [id], onDelete: Restrict)
+  reason          String?
+  createdAt       DateTime @default(now())
+
+  @@index([canonicalBookId])
+}
+
+model BookMergeAudit {
+  id              String   @id @default(cuid())
+  sourceBookId    String
+  canonicalBookId String
+  snapshot        Json
+  createdAt       DateTime @default(now())
+
+  @@index([sourceBookId])
+  @@index([canonicalBookId])
 }
 
 //
