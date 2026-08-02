@@ -44,6 +44,15 @@ type ImportPreviewItem = {
   accion: ImportAction;
   mensaje: string;
   bookId?: string;
+  candidatos?: ImportCandidate[];
+};
+
+type ImportCandidate = {
+  bookId: string;
+  titulo: string;
+  autor: string;
+  isbn: string;
+  coverUrl: string;
 };
 
 type CoverTask = {
@@ -60,6 +69,34 @@ export function chunkImportRows<T>(rows: T[], size = IMPORT_BATCH_SIZE) {
     chunks.push(rows.slice(index, index + size));
   }
   return chunks;
+}
+
+export function parseImportResolutions(value: unknown) {
+  if (value === undefined || value === null) return new Map<number, string>();
+  const entries = Array.isArray(value)
+    ? value.map((item) => {
+        const resolution = item && typeof item === 'object'
+          ? item as Record<string, unknown>
+          : {};
+        return [Number(resolution.index), String(resolution.bookId ?? '').trim()] as const;
+      })
+    : value && typeof value === 'object'
+      ? Object.entries(value as Record<string, unknown>).map(([index, bookId]) =>
+          [Number(index), String(bookId ?? '').trim()] as const
+        )
+      : [];
+  if (!Array.isArray(value) && (!value || typeof value !== 'object')) {
+    throw new GoodreadsImportError(400, 'INVALID_IMPORT_RESOLUTIONS', 'Las resoluciones de importación no son válidas.');
+  }
+  const resolutions = new Map<number, string>();
+  for (const [index, bookId] of entries) {
+    if (!Number.isInteger(index) || index < 0 || !bookId ||
+      (resolutions.has(index) && resolutions.get(index) !== bookId)) {
+      throw new GoodreadsImportError(400, 'INVALID_IMPORT_RESOLUTIONS', 'Cada resolución necesita un índice y un bookId válidos.');
+    }
+    resolutions.set(index, bookId);
+  }
+  return resolutions;
 }
 
 function normalize(value: string) {
@@ -124,12 +161,15 @@ function parseRows(value: unknown): GoodreadsRow[] {
     );
   }
 
-  return value.map((item, index) => {
+  const parsed = value.map((item, index) => {
     const row = item && typeof item === 'object'
       ? item as Record<string, unknown>
       : {};
+    const suppliedIndex = Number(row.index);
     return {
-      index,
+      index: Number.isInteger(suppliedIndex) && suppliedIndex >= 0
+        ? suppliedIndex
+        : index,
       title: String(row.title ?? '').trim().replace(/\s+/g, ' ').slice(0, 500),
       author: String(row.author ?? '').trim().replace(/\s+/g, ' ').slice(0, 250),
       additionalAuthors: Array.isArray(row.additionalAuthors)
@@ -150,6 +190,14 @@ function parseRows(value: unknown): GoodreadsRow[] {
       review: normalizeGoodreadsReview(row.review),
     };
   });
+  if (new Set(parsed.map((row) => row.index)).size !== parsed.length) {
+    throw new GoodreadsImportError(
+      400,
+      'INVALID_GOODREADS_ROW_INDEX',
+      'La importación contiene índices de fila repetidos.',
+    );
+  }
+  return parsed;
 }
 
 export function importTitleVariants(value: string) {
@@ -245,6 +293,13 @@ async function buildPreview(
         select: { id: true },
       },
     },
+  });
+  const candidateFromBook = (book: typeof books[number]): ImportCandidate => ({
+    bookId: book.id,
+    titulo: book.title,
+    autor: book.author?.name ?? '',
+    isbn: book.isbn ?? '',
+    coverUrl: book.coverUrl ?? '',
   });
   const byIsbn = new Map<string, typeof books>();
   const byWork = new Map<string, typeof books>();
@@ -344,6 +399,7 @@ async function buildPreview(
         autor: row.author,
         accion: 'REVISAR',
         mensaje: 'Hay varias coincidencias posibles; no se importará automáticamente.',
+        candidatos: candidates.map(candidateFromBook),
       };
     }
     const match = candidates[0];
@@ -360,6 +416,7 @@ async function buildPreview(
           accion: 'REVISAR',
           mensaje:
             'El título existe sin autor y el archivo contiene varias obras homónimas; revísalo para no unir libros distintos.',
+          candidatos: uniqueTitleMatches.map(candidateFromBook),
         };
       }
       return {
@@ -463,6 +520,7 @@ async function addPersonalData(
   row: GoodreadsRow,
 ) {
   const status = importedStatus(row.exclusiveShelf);
+  const startedAt = row.dateAdded;
   const finishedAt = importedFinishedAt(row);
   await tx.library.create({
     data: {
@@ -471,6 +529,7 @@ async function addPersonalData(
       status,
       priority: Priority.MEDIUM,
       readingFormat: null,
+      startedAt,
       finishedAt,
     },
   });
@@ -490,6 +549,7 @@ async function addPersonalData(
       data: {
         userId,
         bookId,
+        startedAt,
         finishedAt,
         rating: row.rating,
         review: row.review || null,
@@ -579,10 +639,30 @@ async function enrichMissingCovers(tasks: CoverTask[]) {
 export async function confirmGoodreadsImport(
   userName: string,
   rawRows: unknown,
+  rawResolutions?: unknown,
 ) {
   const user = await userForImport(userName);
   const parsedRows = parseRows(rawRows);
   const rows = parsedRows.filter(isRatedFinishedGoodreadsRow);
+  const resolutions = parseImportResolutions(rawResolutions);
+  const validatedResolutions = new Map<number, string>();
+  if (resolutions.size > 0) {
+    const offered = await buildPreview(user.id, rows);
+    for (const [index, bookId] of resolutions) {
+      const item = offered.find((candidate) => candidate.index === index);
+      if (
+        item?.accion !== 'REVISAR' ||
+        !item.candidatos?.some((candidate) => candidate.bookId === bookId)
+      ) {
+        throw new GoodreadsImportError(
+          400,
+          'INVALID_IMPORT_RESOLUTION',
+          `La resolución de la fila ${index + 1} no pertenece a los candidatos ofrecidos.`,
+        );
+      }
+      validatedResolutions.set(index, bookId);
+    }
+  }
   const result = {
     created: 0,
     added: 0,
@@ -605,7 +685,13 @@ export async function confirmGoodreadsImport(
         `;
         const preview = await buildPreview(user.id, batch, tx);
         const rowsByIndex = new Map(batch.map((row) => [row.index, row]));
-        const accepted = preview.filter((item) =>
+        const resolvedPreview = preview.map((item) => {
+          const selectedBookId = validatedResolutions.get(item.index);
+          return selectedBookId
+            ? { ...item, accion: 'ANADIR' as const, bookId: selectedBookId }
+            : item;
+        });
+        const accepted = resolvedPreview.filter((item) =>
           item.accion === 'NUEVO' || item.accion === 'ANADIR' || item.accion === 'PROTEGIDO'
         );
         const totals = {
@@ -614,16 +700,23 @@ export async function confirmGoodreadsImport(
           protectedCount: 0,
           restoredReviews: 0,
           coverTasks: [] as CoverTask[],
-          reviewCount: preview.filter((item) => item.accion === 'REVISAR').length,
-          omittedCount: preview.filter((item) => item.accion === 'OMITIR').length,
+          reviewCount: resolvedPreview.filter((item) => item.accion === 'REVISAR').length,
+          omittedCount: resolvedPreview.filter((item) => item.accion === 'OMITIR').length,
         };
         for (const item of accepted) {
           const row = rowsByIndex.get(item.index);
           if (!row) continue;
           context.activeRow = row;
           let book = item.bookId
-            ? await tx.book.findUnique({ where: { id: item.bookId } })
+            ? await tx.book.findFirst({ where: { id: item.bookId, deletedAt: null } })
             : null;
+          if (validatedResolutions.has(item.index) && !book) {
+            throw new GoodreadsImportError(
+              409,
+              'IMPORT_RESOLUTION_NO_LONGER_AVAILABLE',
+              `El candidato elegido para la fila ${item.index + 1} ya no está disponible.`,
+            );
+          }
           if (!book) {
             const identity = { title: row.title, authorName: row.author, isbn: row.isbn13 || row.isbn };
             await lockBookIdentity(tx, identity);
@@ -692,6 +785,7 @@ export async function confirmGoodreadsImport(
       result.reviewCount += batchResult.reviewCount;
       result.omittedCount += batchResult.omittedCount;
     } catch (error) {
+      if (error instanceof GoodreadsImportError) throw error;
       const processed = result.created + result.added + result.protectedCount;
       const rowLabel = context.activeRow
         ? `Fila ${context.activeRow.index + 1} (${context.activeRow.title || 'sin título'})`

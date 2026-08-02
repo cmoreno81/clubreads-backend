@@ -20,6 +20,10 @@ export async function handleConfirmGoodreadsImport(
   res: Response,
 ) {
   return res.json(
-    await confirmGoodreadsImport(requestUserName(req), req.body?.libros),
+    await confirmGoodreadsImport(
+      requestUserName(req),
+      req.body?.libros,
+      req.body?.resoluciones,
+    ),
   );
 }

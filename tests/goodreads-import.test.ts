@@ -8,6 +8,7 @@ import {
   importTitleVariants,
   isRatedFinishedGoodreadsRow,
   normalizeGoodreadsReview,
+  parseImportResolutions,
 } from '../src/services/goodreads-import.service.js';
 
 const service = await readFile(
@@ -143,6 +144,59 @@ test('una importación de 150 filas se procesa en lotes sin perder índices', ()
   assert.equal(batches.length, 8);
   assert.deepEqual(batches.map((batch) => batch.length), [20, 20, 20, 20, 20, 20, 20, 10]);
   assert.deepEqual(batches.flat().map((row) => row.index), rows.map((row) => row.index));
+});
+
+test('la previsualización ofrece los datos necesarios para resolver coincidencias', () => {
+  assert.match(service, /candidatos: candidates\.map\(candidateFromBook\)/);
+  assert.match(service, /bookId: book\.id/);
+  assert.match(service, /titulo: book\.title/);
+  assert.match(service, /autor: book\.author\?\.name/);
+  assert.match(service, /isbn: book\.isbn/);
+  assert.match(service, /coverUrl: book\.coverUrl/);
+});
+
+test('acepta resoluciones por lista o mapa y rechaza índices inválidos', () => {
+  assert.deepEqual(
+    [...parseImportResolutions([{ index: 7, bookId: 'book-7' }])],
+    [[7, 'book-7']],
+  );
+  assert.deepEqual(
+    [...parseImportResolutions({ 3: 'book-3' })],
+    [[3, 'book-3']],
+  );
+  assert.throws(
+    () => parseImportResolutions([{ index: -1, bookId: '' }]),
+    (error: unknown) => Boolean(
+      error && typeof error === 'object' &&
+      'code' in error && error.code === 'INVALID_IMPORT_RESOLUTIONS'
+    ),
+  );
+});
+
+test('solo permite elegir candidatos ofrecidos para la misma fila', () => {
+  assert.match(service, /item\?\.accion !== 'REVISAR'/);
+  assert.match(service, /candidate\.bookId === bookId/);
+  assert.match(service, /INVALID_IMPORT_RESOLUTION/);
+  assert.match(service, /validatedResolutions\.get\(item\.index\)/);
+  assert.match(service, /if \(error instanceof GoodreadsImportError\) throw error/);
+});
+
+test('la resolución conserva valoración, reseña y fechas importadas', () => {
+  assert.match(service, /const startedAt = row\.dateAdded/);
+  assert.match(service, /rating: row\.rating/);
+  assert.match(service, /review: row\.review \|\| null/);
+  assert.match(service, /startedAt,[\s\S]*finishedAt/);
+  assert.match(service, /await addPersonalData\(tx, user\.id, book\.id, row\)/);
+});
+
+test('la confirmación recibe resoluciones y conserva índices explícitos', async () => {
+  const controller = await readFile(
+    new URL('../src/controllers/goodreads-import.controller.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(controller, /req\.body\?\.resoluciones/);
+  assert.match(service, /Number\(row\.index\)/);
+  assert.match(service, /INVALID_GOODREADS_ROW_INDEX/);
 });
 
 test('una lectura sin fecha usa una fecha histórica y nunca el año actual', () => {
