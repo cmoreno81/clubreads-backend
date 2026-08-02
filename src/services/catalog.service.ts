@@ -7,6 +7,7 @@ import {
 
 import { prisma } from '../prisma.js';
 import { notifyLibroNuevoBiblioteca } from './notifications.service.js';
+import { validateReadingTransitionInput } from '../utils/reading-transition.utils.js';
 import {
   findBookByIdentity,
   lockBookIdentity,
@@ -443,6 +444,35 @@ export async function addSeriesCatalogVolume(
   const seriesId = String(data.sagaId ?? '').trim();
   const order = String(data.numero ?? '').trim().replace(',', '.');
   const parsedOrder = Number.parseFloat(order);
+  const statusWasProvided = Object.prototype.hasOwnProperty.call(data, 'estado') &&
+    String(data.estado ?? '').trim().length > 0;
+  const formatWasProvided = Object.prototype.hasOwnProperty.call(data, 'formato');
+  const requestedStatus = statusWasProvided
+    ? ({
+        PENDING: ReadingStatus.PENDING,
+        PENDIENTE: ReadingStatus.PENDING,
+        READING: ReadingStatus.READING,
+        LEYENDO: ReadingStatus.READING,
+        FINISHED: ReadingStatus.FINISHED,
+        FINALIZADO: ReadingStatus.FINISHED,
+      } as Record<string, ReadingStatus>)[String(data.estado).trim().toUpperCase()]
+    : undefined;
+  if (statusWasProvided && !requestedStatus) {
+    return { ok: false, mensaje: 'El estado indicado no es válido' };
+  }
+  const requestedFormat = formatFromFlutter(data.formato);
+  if (formatWasProvided && String(data.formato ?? '').trim() && !requestedFormat) {
+    return { ok: false, mensaje: 'El formato indicado no es válido' };
+  }
+  const now = new Date();
+  const transition = validateReadingTransitionInput({
+    status: requestedStatus ?? ReadingStatus.PENDING,
+    valoracion: data.valoracion,
+    fechaInicio: data.fechaInicio,
+    fechaFin: data.fechaFin,
+    now,
+  });
+  if (!transition.ok) return transition;
   if (!seriesId || !Number.isFinite(parsedOrder) || parsedOrder <= 0) {
     return { ok: false, mensaje: 'Indica un número de volumen válido' };
   }
@@ -451,82 +481,107 @@ export async function addSeriesCatalogVolume(
 
   const resolved = await resolveCatalogBook(user.id, data);
   if (!resolved.ok) return resolved;
-  const seriesBooks = await prisma.book.findMany({
-    where: {
-      seriesId: series.id,
-      id: { not: resolved.book.id },
-      deletedAt: null,
-    },
-  });
   const requestedPosition = seriesPosition(order);
-  const occupied = seriesBooks.find(
-    (item) => seriesPosition(item.seriesOrder) === requestedPosition,
-  );
-  if (occupied) {
+  const transactionResult = await prisma.$transaction(async (tx) => {
+    const seriesBooks = await tx.book.findMany({
+      where: { seriesId: series.id, id: { not: resolved.book.id }, deletedAt: null },
+    });
+    const occupied = seriesBooks.find((item) => seriesPosition(item.seriesOrder) === requestedPosition);
+    if (occupied) return { occupied, book: null, existingLibrary: null };
+    const book = await tx.book.update({
+      where: { id: resolved.book.id },
+      data: { seriesId: series.id, seriesOrder: order, standalone: false },
+    });
+    const existingLibrary = await tx.library.findUnique({
+      where: { userId_bookId: { userId: user.id, bookId: book.id } },
+    });
+    const effectiveStatus = requestedStatus ?? existingLibrary?.status ?? ReadingStatus.PENDING;
+    const statusDates = effectiveStatus === ReadingStatus.READING
+      ? {
+          startedAt: transition.startDate ?? existingLibrary?.startedAt ?? now,
+          finishedAt: null,
+          pausedAt: null,
+          pauseReason: null,
+        }
+      : effectiveStatus === ReadingStatus.FINISHED
+        ? {
+            startedAt: transition.startDate ?? existingLibrary?.startedAt ?? now,
+            finishedAt: transition.endDate ?? existingLibrary?.finishedAt ?? now,
+            pausedAt: null,
+            pauseReason: null,
+          }
+        : {
+            startedAt: null,
+            finishedAt: null,
+            pausedAt: null,
+            pauseReason: null,
+          };
+    await tx.library.upsert({
+      where: { userId_bookId: { userId: user.id, bookId: book.id } },
+      update: {
+        ...(statusWasProvided ? { status: effectiveStatus, ...statusDates } : {}),
+        ...(formatWasProvided ? { readingFormat: requestedFormat } : {}),
+      },
+      create: {
+        userId: user.id,
+        bookId: book.id,
+        status: effectiveStatus,
+        priority: Priority.MEDIUM,
+        readingFormat: requestedFormat,
+        ...statusDates,
+      },
+    });
+    if (
+      statusWasProvided &&
+      effectiveStatus === ReadingStatus.FINISHED &&
+      existingLibrary?.status !== ReadingStatus.FINISHED
+    ) {
+      await tx.readingCompletion.create({
+        data: {
+          userId: user.id,
+          bookId: book.id,
+          startedAt: statusDates.startedAt,
+          finishedAt: statusDates.finishedAt as Date,
+          isReread: false,
+          rating: transition.rating as number,
+          readingFormat: requestedFormat ?? existingLibrary?.readingFormat,
+        },
+      });
+      await tx.review.upsert({
+        where: { userId_bookId: { userId: user.id, bookId: book.id } },
+        update: { rating: transition.rating as number, deletedAt: null },
+        create: { userId: user.id, bookId: book.id, rating: transition.rating as number },
+      });
+    }
+    if (Number.isInteger(requestedPosition)) {
+      await tx.seriesBookOverride.deleteMany({
+        where: { userId: user.id, seriesId: series.id, posicion: requestedPosition },
+      });
+    }
+    const knownOrders = await tx.book.findMany({
+      where: { seriesId: series.id, deletedAt: null },
+      select: { seriesOrder: true },
+    });
+    const highestOrder = knownOrders.reduce((highest, item) => {
+      const value = seriesPosition(item.seriesOrder);
+      return Number.isFinite(value) ? Math.max(highest, Math.ceil(value)) : highest;
+    }, 0);
+    if ((series.totalBooks ?? 0) < highestOrder) {
+      await tx.series.update({ where: { id: series.id }, data: { totalBooks: highestOrder } });
+    }
+    return { occupied: null, book, existingLibrary };
+  });
+  if (transactionResult.occupied) {
     return {
       ok: false,
       codigo: 'NUMERO_SAGA_OCUPADO',
-      mensaje: `El volumen ${order} ya corresponde a ${occupied.title}`,
+      mensaje: `El volumen ${order} ya corresponde a ${transactionResult.occupied.title}`,
     };
   }
-  const book = await prisma.book.update({
-    where: { id: resolved.book.id },
-    data: {
-      seriesId: series.id,
-      seriesOrder: order,
-      standalone: false,
-    },
-  });
-  const existingLibrary = await prisma.library.findUnique({
-    where: {
-      userId_bookId: {
-        userId: user.id,
-        bookId: book.id,
-      },
-    },
-    select: { id: true },
-  });
-  await prisma.library.upsert({
-    where: {
-      userId_bookId: {
-        userId: user.id,
-        bookId: book.id,
-      },
-    },
-    update: {},
-    create: {
-      userId: user.id,
-      bookId: book.id,
-      status: ReadingStatus.PENDING,
-      priority: Priority.MEDIUM,
-      readingFormat: null,
-    },
-  });
+  const book = transactionResult.book!;
+  const existingLibrary = transactionResult.existingLibrary;
   if (!existingLibrary) {
     void notifyLibraryAddition(user, book.title).catch(console.error);
-  }
-  if (Number.isInteger(requestedPosition)) {
-    await prisma.seriesBookOverride.deleteMany({
-      where: {
-        userId: user.id,
-        seriesId: series.id,
-        posicion: requestedPosition,
-      },
-    });
-  }
-  const knownOrders = await prisma.book.findMany({
-    where: { seriesId: series.id, deletedAt: null },
-    select: { seriesOrder: true },
-  });
-  const highestOrder = knownOrders.reduce((highest, item) => {
-    const value = seriesPosition(item.seriesOrder);
-    return Number.isFinite(value) ? Math.max(highest, Math.ceil(value)) : highest;
-  }, 0);
-  if ((series.totalBooks ?? 0) < highestOrder) {
-    await prisma.series.update({
-      where: { id: series.id },
-      data: { totalBooks: highestOrder },
-    });
   }
   return {
     ok: true,

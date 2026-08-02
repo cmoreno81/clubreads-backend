@@ -22,6 +22,7 @@ import {
   lockBookIdentity,
   resolveCanonicalBookId,
 } from './book-identity.service.js';
+import { validateReadingTransitionInput } from '../utils/reading-transition.utils.js';
 
 function statusToFlutter(status: string) {
   if (status === ReadingStatus.READING) return 'LEYENDO';
@@ -676,82 +677,17 @@ export async function actualizarEstado(
   const status = statusFromFlutter(estado);
   const requestedFormat = formatFromFlutter(formato);
   const now = new Date();
-  const fechaInicioTexto = fechaInicio?.trim() ?? '';
-  const fechaFinTexto = fechaFin?.trim() ?? '';
-  const coincidenciaFecha = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fechaInicioTexto);
-  let fechaInicioEditada: Date | null = null;
-  let fechaFinEditada: Date | null = null;
-
-  if (fechaInicioTexto) {
-    if (!coincidenciaFecha) {
-      return { ok: false, mensaje: 'La fecha de inicio no es válida' };
-    }
-    fechaInicioEditada = new Date(
-      Date.UTC(
-        Number(coincidenciaFecha[1]),
-        Number(coincidenciaFecha[2]) - 1,
-        Number(coincidenciaFecha[3]),
-        12,
-      ),
-    );
-    if (
-      Number.isNaN(fechaInicioEditada.getTime()) ||
-      fechaInicioEditada.getUTCFullYear() !== Number(coincidenciaFecha[1]) ||
-      fechaInicioEditada.getUTCMonth() !== Number(coincidenciaFecha[2]) - 1 ||
-      fechaInicioEditada.getUTCDate() !== Number(coincidenciaFecha[3]) ||
-      fechaInicioEditada > now
-    ) {
-      return { ok: false, mensaje: 'La fecha de inicio no es válida' };
-    }
-  }
-
-  if (fechaFinTexto) {
-    const coincidenciaFin = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fechaFinTexto);
-    if (!coincidenciaFin) {
-      return { ok: false, mensaje: 'La fecha de finalización no es válida' };
-    }
-    fechaFinEditada = new Date(
-      Date.UTC(
-        Number(coincidenciaFin[1]),
-        Number(coincidenciaFin[2]) - 1,
-        Number(coincidenciaFin[3]),
-        12,
-      ),
-    );
-    if (
-      Number.isNaN(fechaFinEditada.getTime()) ||
-      fechaFinEditada.getUTCFullYear() !== Number(coincidenciaFin[1]) ||
-      fechaFinEditada.getUTCMonth() !== Number(coincidenciaFin[2]) - 1 ||
-      fechaFinEditada.getUTCDate() !== Number(coincidenciaFin[3]) ||
-      fechaFinEditada > now
-    ) {
-      return { ok: false, mensaje: 'La fecha de finalización no es válida' };
-    }
-  }
-
-  if (
-    fechaInicioEditada &&
-    fechaFinEditada &&
-    fechaFinEditada < fechaInicioEditada
-  ) {
-    return {
-      ok: false,
-      mensaje: 'La fecha de finalización no puede ser anterior al inicio',
-    };
-  }
-
-const rating = ratingFromFlutter(valoracion);
-
-if (
-  status === ReadingStatus.FINISHED &&
-  (rating === null || rating <= 0)
-) {
-  return {
-    ok: false,
-    mensaje:
-      'Los libros finalizados necesitan una valoración mayor que 0',
-  };
-}
+  const transition = validateReadingTransitionInput({
+    status,
+    valoracion,
+    fechaInicio,
+    fechaFin,
+    now,
+  });
+  if (!transition.ok) return transition;
+  const fechaInicioEditada = transition.startDate;
+  const fechaFinEditada = transition.endDate;
+  const rating = transition.rating;
 
 let startedReading = false;
 
