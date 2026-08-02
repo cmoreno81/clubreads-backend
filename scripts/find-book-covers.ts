@@ -12,6 +12,12 @@ const applyChanges =
 const includeExisting =
   process.argv.includes('--all');
 
+const createdByIndex = process.argv.indexOf('--created-by');
+const createdByName =
+  createdByIndex >= 0
+    ? process.argv[createdByIndex + 1]?.trim()
+    : undefined;
+
 const delayMs = 250;
 
 type CoverReport = {
@@ -44,6 +50,14 @@ async function main() {
   const books = await prisma.book.findMany({
     where: {
       deletedAt: null,
+
+      ...(createdByName
+        ? {
+            createdBy: {
+              name: createdByName,
+            },
+          }
+        : {}),
 
       ...(includeExisting
         ? {}
