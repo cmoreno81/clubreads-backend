@@ -6,7 +6,10 @@ import {
   ReadingStatus,
 } from '@prisma/client';
 import { prisma } from '../prisma.js';
-import { notifyComentarioLectura } from './notifications.service.js';
+import {
+  notifyComentarioLectura,
+  notifyLecturaCompartida,
+} from './notifications.service.js';
 import { synchronizeCurrentClubvision } from './clubvision.service.js';
 import {
   getCurrentClubContext,
@@ -359,7 +362,7 @@ export async function crearLectura(data: {
 }) {
   const requestedType = tipoFromFlutter(data.tipo);
   const legacyRequest = !data.usuario?.trim() && legacyApkEnabled();
-  const { club } = legacyRequest
+  const { club, user } = legacyRequest
     ? await getCurrentClubContext()
     : await requireClubMember(data.usuario);
   const title = String(data.libro || '').trim();
@@ -459,6 +462,15 @@ export async function crearLectura(data: {
     }
 
     throw error;
+  }
+
+  if (user) {
+    void notifyLecturaCompartida({
+      clubId: club.id,
+      creadoraUserId: user.id,
+      bookTitle: book.title,
+      bookId: book.id,
+    }).catch(console.error);
   }
 
   return { ok: true };
