@@ -102,6 +102,7 @@ import {
 } from '../controllers/goodreads-import.controller.js';
 import { GoodreadsImportError } from '../services/goodreads-import.service.js';
 import { handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas } from '../controllers/notifications.controller.js';
+import { handleGetSeriesOverrides, handleRemoveSeriesOverride, handleSetSeriesOverride } from '../controllers/series-override.controller.js';
 
 export const apiRouter = Router();
 
@@ -225,6 +226,18 @@ async function handleApi(req: Request, res: Response) {
           return requireAuthentication(req, res, () => {});
         }
         return handleGeneralDashboard(req, res);
+
+      case 'seriesOverrides':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetSeriesOverrides(req, res);
+
+      case 'setSeriesOverride':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleSetSeriesOverride(req, res);
+
+      case 'removeSeriesOverride':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleRemoveSeriesOverride(req, res);
 
       case 'notificaciones':
         if (!req.auth) return requireAuthentication(req, res, () => {});

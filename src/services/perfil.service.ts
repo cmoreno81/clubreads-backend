@@ -320,6 +320,20 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
   const bibliotecaPorId = new Map(
     biblioteca.map((item) => [item.bookId, item]),
   );
+
+  // Overrides de tomos (LEIDO_EXTERNO / OMITIDO)
+  const overridesRaw = await prisma.seriesBookOverride.findMany({
+    where: { userId: user?.id ?? '' },
+  });
+  // Mapa: seriesId -> Map<posicion, tipo>
+  const overridesBySeries = new Map<string, Map<number, string>>();
+  for (const o of overridesRaw) {
+    if (!overridesBySeries.has(o.seriesId)) {
+      overridesBySeries.set(o.seriesId, new Map());
+    }
+    overridesBySeries.get(o.seriesId)!.set(o.posicion, o.tipo);
+  }
+
   type SeriePersonal = NonNullable<
     (typeof biblioteca)[number]['book']['series']
   >;
@@ -425,16 +439,24 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
       });
       const volumes = books.map((book) => {
         const library = bibliotecaPorId.get(book.id);
+        const posicionNum = datosNumeroSaga(book.seriesOrder).posicion;
+        const override = posicionNum != null
+          ? overridesBySeries.get(series.id)?.get(posicionNum)
+          : undefined;
         const status = finalizadosIds.has(book.id)
           ? 'LEIDO'
-          : library?.status === ReadingStatus.READING ||
-              library?.status === ReadingStatus.REREADING
-            ? 'LEYENDO'
-            : library?.status === ReadingStatus.ABANDONED
-              ? 'ABANDONADO'
-              : library
-                ? 'PENDIENTE'
-                : 'NO_ANADIDO';
+          : override === 'LEIDO_EXTERNO'
+            ? 'LEIDO_EXTERNO'
+            : override === 'OMITIDO'
+              ? 'OMITIDO'
+              : library?.status === ReadingStatus.READING ||
+                  library?.status === ReadingStatus.REREADING
+                ? 'LEYENDO'
+                : library?.status === ReadingStatus.ABANDONED
+                  ? 'ABANDONADO'
+                  : library
+                    ? 'PENDIENTE'
+                    : 'NO_ANADIDO';
         return {
           bookId: book.id,
           titulo: book.title,

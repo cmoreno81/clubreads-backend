@@ -6,6 +6,7 @@ import {
   importAuthorIdentity,
   importTitleVariants,
   isRatedFinishedGoodreadsRow,
+  normalizeGoodreadsReview,
 } from '../src/services/goodreads-import.service.js';
 
 const service = await readFile(
@@ -60,6 +61,17 @@ test('una reimportación recupera reseñas vacías sin sustituir las de ClubRead
     /review\.update\([\s\S]{0,250}rating: row\.rating/,
   );
   assert.match(service, /resenasRecuperadas: result\.restoredReviews/);
+});
+
+test('convierte los saltos HTML de las reseñas en saltos de línea reales', () => {
+  assert.equal(
+    normalizeGoodreadsReview('Primer párrafo<br>Segundo<br />Tercero<BR/>Cuarto'),
+    'Primer párrafo\nSegundo\nTercero\nCuarto',
+  );
+  assert.equal(
+    normalizeGoodreadsReview('Primero&lt;br&gt;Segundo\r\nTercero'),
+    'Primero\nSegundo\nTercero',
+  );
 });
 
 test('solo admite libros finalizados y valorados', () => {

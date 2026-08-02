@@ -87,6 +87,14 @@ function optionalDate(value: unknown) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+export function normalizeGoodreadsReview(value: unknown) {
+  return String(value ?? '')
+    .replace(/(?:<|&lt;)br\s*\/?(?:>|&gt;)/gi, '\n')
+    .replace(/\r\n?/g, '\n')
+    .trim()
+    .slice(0, 20_000);
+}
+
 function parseRows(value: unknown): GoodreadsRow[] {
   if (!Array.isArray(value)) {
     throw new GoodreadsImportError(
@@ -126,7 +134,7 @@ function parseRows(value: unknown): GoodreadsRow[] {
       dateRead: optionalDate(row.dateRead),
       dateAdded: optionalDate(row.dateAdded),
       exclusiveShelf: normalize(String(row.exclusiveShelf ?? 'to-read')),
-      review: String(row.review ?? '').trim().slice(0, 20_000),
+      review: normalizeGoodreadsReview(row.review),
     };
   });
 }

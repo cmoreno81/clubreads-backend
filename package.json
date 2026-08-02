@@ -26,6 +26,8 @@
     "authors:multiprovider-apply": "tsx scripts/enrich-book-authors.ts --apply",
     "authors:goodreads-preview": "tsx scripts/enrich-book-authors-goodreads.ts",
     "authors:goodreads-apply": "tsx scripts/enrich-book-authors-goodreads.ts --apply",
+    "goodreads:reviews:preview": "tsx scripts/clean-goodreads-review-breaks.ts",
+    "goodreads:reviews:clean": "tsx scripts/clean-goodreads-review-breaks.ts --apply",
     "authors:isbn-preview": "tsx scripts/enrich-book-authors-isbn.ts",
     "authors:isbn-apply": "tsx scripts/enrich-book-authors-isbn.ts --apply",
     "authors:missing": "tsx scripts/backfill-book-authors.ts --missing-only",

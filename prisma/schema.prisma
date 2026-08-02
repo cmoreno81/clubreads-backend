@@ -158,7 +158,8 @@ model Series {
 
   publicationStatus SeriesPublicationStatus @default(UNKNOWN)
 
-  books Book[]
+  books     Book[]
+  overrides SeriesBookOverride[]
 }
 
 enum SeriesPublicationStatus {
@@ -258,6 +259,7 @@ model User {
   ownedClubs      Club[]       @relation("OwnedClubs")
   clubMemberships ClubMember[]
   notifications   Notification[]
+  seriesOverrides SeriesBookOverride[]
 
   activeClubId String?
 
@@ -762,4 +764,33 @@ model Notification {
 
   @@index([userId, leida])
   @@index([userId, createdAt])
+}
+
+// ─────────────────────────────────────────────
+// SAGAS: tomos leídos fuera de ClubReads u omitidos
+// ─────────────────────────────────────────────
+
+enum SeriesBookOverrideType {
+  LEIDO_EXTERNO  // Lo he leído pero no está en ClubReads
+  OMITIDO        // No quiero leerlo (subsagas, spin-offs)
+}
+
+model SeriesBookOverride {
+  id       String @id @default(cuid())
+
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  seriesId String
+  series   Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  // Posición del tomo en la saga (1, 2, 3...)
+  posicion Int
+
+  tipo     SeriesBookOverrideType
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, seriesId, posicion])
+  @@index([userId, seriesId])
 }
