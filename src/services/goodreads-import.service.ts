@@ -7,6 +7,7 @@ import {
 import { prisma } from '../prisma.js';
 import { canonicalBookTitle } from './catalog.service.js';
 import { findImportedBookCover } from './book-cover.service.js';
+import { findBookByIdentity, lockBookIdentity } from './book-identity.service.js';
 
 const MAX_IMPORT_ROWS = 2_000;
 const IMPORT_TRANSACTION_MAX_WAIT_MS = 10_000;
@@ -605,9 +606,8 @@ export async function confirmGoodreadsImport(
         ? await tx.book.findUnique({ where: { id: item.bookId } })
         : null;
 
-      if (book) {
-        await fillEmptyBookMetadata(tx, book, row);
-      }
+      // Un libro compartido es inmutable durante la importación: al
+      // reutilizarlo solo se crean/actualizan relaciones personales.
       if (item.accion === 'PROTEGIDO') {
         protectedCount += 1;
         if (
@@ -625,6 +625,19 @@ export async function confirmGoodreadsImport(
           });
         }
         continue;
+      }
+      if (book) added += 1;
+      if (!book) {
+        const identity = {
+          title: row.title,
+          authorName: row.author,
+          isbn: row.isbn13 || row.isbn,
+        };
+        await lockBookIdentity(tx, identity);
+        book = await findBookByIdentity(tx, identity);
+        if (book) {
+          added += 1;
+        }
       }
       if (!book) {
         const genre = await tx.genre.upsert({
@@ -650,8 +663,6 @@ export async function confirmGoodreadsImport(
           },
         });
         created += 1;
-      } else {
-        added += 1;
       }
       if (!book.coverUrl?.trim()) {
         coverTasks.push({

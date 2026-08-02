@@ -104,18 +104,9 @@ test('solo admite libros finalizados y valorados', () => {
   );
 });
 
-test('solo se completan metadatos vacíos del libro compartido', () => {
-  assert.match(service, /if \(!book\.isbn && isbn\) data\.isbn = isbn/);
-  assert.match(
-    service,
-    /if \(!book\.totalPages && row\.pages\) data\.totalPages = row\.pages/,
-  );
-  assert.match(
-    service,
-    /if \(!book\.publicationYear && row\.publicationYear\)/,
-  );
-  assert.match(service, /if \(!book\.authorId && row\.author\.trim\(\)\)/);
-  assert.match(service, /data\.author = \{ connect: \{ id: author\.id \} \}/);
+test('un libro compartido no modifica metadatos durante la importación', () => {
+  assert.match(service, /Un libro compartido es inmutable durante la importación/);
+  assert.doesNotMatch(service, /await fillEmptyBookMetadata\(tx, book, row\)/);
 });
 
 test('un título antiguo sin autor no une dos obras homónimas', () => {

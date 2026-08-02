@@ -7,6 +7,11 @@ import {
 
 import { prisma } from '../prisma.js';
 import { notifyLibroNuevoBiblioteca } from './notifications.service.js';
+import {
+  findBookByIdentity,
+  lockBookIdentity,
+  resolveCanonicalBookId,
+} from './book-identity.service.js';
 
 type ExternalVolume = {
   id?: unknown;
@@ -381,66 +386,47 @@ async function resolveCatalogBook(
     };
   }
 
+  const requestedId = String(data.id ?? '');
+  const canonicalId = source === 'CLUBREADS' && requestedId
+    ? await resolveCanonicalBookId(prisma, requestedId)
+    : requestedId;
   let book = source === 'CLUBREADS'
-    ? await prisma.book.findUnique({ where: { id: String(data.id ?? '') } })
+    ? await prisma.book.findFirst({ where: { id: canonicalId, deletedAt: null } })
     : null;
 
-  if (!book && isbn) {
-    book = await prisma.book.findFirst({ where: { isbn } });
-  }
-  if (!book) {
-    const candidates = await prisma.book.findMany({
-      where: {
-        OR: [
-          { title: { equals: title, mode: 'insensitive' } },
-          {
-            author: {
-              name: {
-                equals: authors[0] || 'Autor desconocido',
-                mode: 'insensitive',
-              },
-            },
-          },
-        ],
-      },
-      include: { author: true },
-      take: 100,
-    });
-    book = candidates.find((candidate) =>
-      canonicalBookTitle(candidate.title) === canonicalBookTitle(title) &&
-      normalize(candidate.author?.name ?? '') === normalize(authors[0] ?? '')
-    ) ?? null;
-  }
+  if (!book) book = await findBookByIdentity(prisma, {
+    title,
+    authorName: authors[0] || 'Autor desconocido',
+    isbn,
+  });
 
   if (!book && source !== 'CLUBREADS') {
     const genreName = String(data.genero ?? '').trim() || 'Sin género';
     const authorName = authors[0] || 'Autor desconocido';
-    const [genre, author] = await Promise.all([
-      prisma.genre.upsert({
-        where: { name: genreName },
-        update: {},
-        create: { name: genreName },
-      }),
-      prisma.author.upsert({
-        where: { name: authorName },
-        update: {},
-        create: { name: authorName },
-      }),
-    ]);
     const pages = Number(data.paginas);
     const year = Number(data.anioPublicacion);
-    book = await prisma.book.create({
-      data: {
-        title,
-        authorId: author.id,
-        genreId: genre.id,
-        isbn: isbn || null,
-        coverUrl: String(data.coverUrl ?? '').trim() || null,
-        totalPages: Number.isInteger(pages) && pages > 0 ? pages : null,
-        publicationYear: Number.isInteger(year) && year > 0 ? year : null,
-        standalone: true,
-        createdById: userId,
-      },
+    book = await prisma.$transaction(async (tx) => {
+      const identity = { title, authorName, isbn };
+      await lockBookIdentity(tx, identity);
+      const existing = await findBookByIdentity(tx, identity);
+      if (existing) return existing;
+      const [genre, author] = await Promise.all([
+        tx.genre.upsert({ where: { name: genreName }, update: {}, create: { name: genreName } }),
+        tx.author.upsert({ where: { name: authorName }, update: {}, create: { name: authorName } }),
+      ]);
+      return tx.book.create({
+        data: {
+          title,
+          authorId: author.id,
+          genreId: genre.id,
+          isbn: isbn || null,
+          coverUrl: String(data.coverUrl ?? '').trim() || null,
+          totalPages: Number.isInteger(pages) && pages > 0 ? pages : null,
+          publicationYear: Number.isInteger(year) && year > 0 ? year : null,
+          standalone: true,
+          createdById: userId,
+        },
+      });
     });
   }
   if (!book) {
@@ -561,7 +547,8 @@ export async function updateSeriesVolumeOrder(
   if (!bookId || !Number.isFinite(parsedOrder) || parsedOrder <= 0) {
     return { ok: false, mensaje: 'Indica un número de volumen válido' };
   }
-  const book = await prisma.book.findUnique({ where: { id: bookId } });
+  const canonicalBookId = await resolveCanonicalBookId(prisma, bookId);
+  const book = await prisma.book.findFirst({ where: { id: canonicalBookId, deletedAt: null } });
   if (!book?.seriesId) {
     return { ok: false, mensaje: 'El libro no pertenece a una saga' };
   }

@@ -17,6 +17,11 @@ import {
   ratingToFlutter,
 } from '../utils/rating.utils.js';
 import { getCurrentClubContext } from './club-context.service.js';
+import {
+  findBookByIdentity,
+  lockBookIdentity,
+  resolveCanonicalBookId,
+} from './book-identity.service.js';
 
 function statusToFlutter(status: string) {
   if (status === ReadingStatus.READING) return 'LEYENDO';
@@ -1151,6 +1156,7 @@ export async function crearLibro(data: any) {
   const suppliedAuthorName = String(
     data.autor || data.author || '',
   ).trim().replace(/\s+/g, ' ');
+  const suppliedIsbn = String(data.isbn || '').trim();
   const paginas = Number(data.paginas || data.totalPages || 0);
 
   if (paginas < 0 || !Number.isInteger(paginas)) {
@@ -1189,7 +1195,11 @@ export async function crearLibro(data: any) {
    * Comprobamos primero si el libro ya existe.
    * No creamos ni modificamos género o saga todavía.
    */
-  const existingBook = await buscarLibroPorTitulo(title);
+  const existingBook = await findBookByIdentity(prisma, {
+    title,
+    authorName: suppliedAuthorName,
+    isbn: suppliedIsbn,
+  });
 
   if (existingBook) {
     const existingLibrary =
@@ -1225,8 +1235,10 @@ export async function crearLibro(data: any) {
      * reutilizamos Book y creamos exclusivamente Library.
      */
 
-    await prisma.library.create({
-      data: {
+    await prisma.library.upsert({
+      where: { userId_bookId: { userId: user.id, bookId: existingBook.id } },
+      update: {},
+      create: {
         userId: user.id,
         bookId: existingBook.id,
         status: ReadingStatus.PENDING,
@@ -1328,7 +1340,7 @@ if (automaticCover) {
   /*
    * Libro y biblioteca se crean en la misma transacción.
    */
-  const book = await prisma.$transaction(
+  const result = await prisma.$transaction(
     async (tx) => {
       const resolvedAuthorName = suppliedAuthorName || automaticAuthorName;
       const automaticAuthor = resolvedAuthorName
@@ -1345,6 +1357,32 @@ if (automaticCover) {
             data: { name: resolvedAuthorName },
           })
         : null;
+
+      const identity = {
+        title,
+        authorName: automaticAuthor?.name ?? resolvedAuthorName,
+        isbn: suppliedIsbn || automaticCover?.isbn,
+      };
+      await lockBookIdentity(tx, identity);
+      const concurrentBook = await findBookByIdentity(tx, identity);
+      if (concurrentBook) {
+        const existingLibrary = await tx.library.findUnique({
+          where: { userId_bookId: { userId: user.id, bookId: concurrentBook.id } },
+          select: { id: true },
+        });
+        await tx.library.upsert({
+          where: { userId_bookId: { userId: user.id, bookId: concurrentBook.id } },
+          update: {},
+          create: {
+            userId: user.id,
+            bookId: concurrentBook.id,
+            status: ReadingStatus.PENDING,
+            priority: priorityFromFlutter(data.prioridad),
+            readingFormat: formatFromFlutter(data.formato),
+          },
+        });
+        return { book: concurrentBook, created: false, alreadyInLibrary: Boolean(existingLibrary) };
+      }
 
       const createdBook = await tx.book.create({
         data: {
@@ -1364,8 +1402,7 @@ if (automaticCover) {
           coverUrl:
             automaticCover?.coverUrl ?? null,
 
-          isbn:
-            automaticCover?.isbn ?? null,
+          isbn: suppliedIsbn || automaticCover?.isbn || null,
 
           publicationYear:
             automaticCover?.publicationYear ?? null,
@@ -1386,17 +1423,25 @@ if (automaticCover) {
         },
       });
 
-      return createdBook;
+      return { book: createdBook, created: true, alreadyInLibrary: false };
     },
   );
 
+  const book = result.book;
+
   return {
     ok: true,
-    creado: true,
-    codigo: 'LIBRO_CREADO',
+    creado: result.created,
+    codigo: result.alreadyInLibrary
+      ? 'LIBRO_YA_EN_BIBLIOTECA'
+      : result.created ? 'LIBRO_CREADO' : 'LIBRO_EXISTENTE_ANADIDO',
 
     mensaje:
-      'Libro creado y añadido a tu biblioteca',
+      result.alreadyInLibrary
+        ? 'Este libro ya está en tu biblioteca'
+        : result.created
+          ? 'Libro creado y añadido a tu biblioteca'
+          : 'El libro ya existía y se ha añadido a tu biblioteca',
 
     libro: {
       id: book.id,
@@ -1599,7 +1644,7 @@ export async function quitarLibroPendientes(
 }
 
 export async function editarLibro(data: any) {
-  const bookId = String(data.bookId || data.id || '').trim();
+  const requestedBookId = String(data.bookId || data.id || '').trim();
 
   const title = String(
     data.libro || data.titulo || data.title || '',
@@ -1613,12 +1658,14 @@ export async function editarLibro(data: any) {
     Object.prototype.hasOwnProperty.call(data, 'paginas') ||
     Object.prototype.hasOwnProperty.call(data, 'totalPages');
   const paginas = Number(data.paginas || data.totalPages || 0);
+  const isbnFueEnviado = Object.prototype.hasOwnProperty.call(data, 'isbn');
+  const isbn = String(data.isbn || '').trim() || null;
 
   if (paginasFueEnviada && (paginas < 0 || !Number.isInteger(paginas))) {
     return { ok: false, mensaje: 'El número de páginas no es válido' };
   }
 
-  if (!bookId) {
+  if (!requestedBookId) {
     return {
       ok: false,
       codigo: 'FALTA_BOOK_ID',
@@ -1634,6 +1681,7 @@ export async function editarLibro(data: any) {
     };
   }
 
+  const bookId = await resolveCanonicalBookId(prisma, requestedBookId);
   const actual = await prisma.book.findFirst({
     where: {
       id: bookId,
@@ -1649,24 +1697,15 @@ export async function editarLibro(data: any) {
     };
   }
 
-  const tituloNormalizado = normalizarTitulo(title);
-
-  const libros = await prisma.book.findMany({
-    where: {
-      deletedAt: null,
-      id: {
-        not: bookId,
-      },
-    },
-    select: {
-      id: true,
-      title: true,
-    },
+  const effectiveAuthorName = suppliedAuthorName || (
+    await prisma.author.findUnique({ where: { id: actual.authorId ?? '' }, select: { name: true } })
+  )?.name || '';
+  const duplicado = await findBookByIdentity(prisma, {
+    title,
+    authorName: effectiveAuthorName,
+    isbn: String(data.isbn || actual.isbn || ''),
+    excludeBookId: bookId,
   });
-
-  const duplicado = libros.find(
-    (book) => normalizarTitulo(book.title) === tituloNormalizado,
-  );
 
 if (duplicado) {
   return {
@@ -1723,11 +1762,18 @@ const suppliedAuthor = suppliedAuthorName
     })
   : null;
 
-const actualizado = await prisma.book.update({
-  where: {
-    id: bookId,
-  },
-  data: {
+const editResult = await prisma.$transaction(async (tx) => {
+  const finalAuthorName = suppliedAuthor?.name || effectiveAuthorName;
+  const identity = { title, authorName: finalAuthorName, isbn: isbnFueEnviado ? isbn : actual.isbn };
+  await lockBookIdentity(tx, identity);
+  const concurrentDuplicate = await findBookByIdentity(tx, {
+    ...identity,
+    excludeBookId: bookId,
+  });
+  if (concurrentDuplicate) return { duplicate: concurrentDuplicate, updated: null };
+  const updated = await tx.book.update({
+    where: { id: bookId },
+    data: {
     title,
     authorId: suppliedAuthor?.id ?? actual.authorId,
     genreId: genre.id,
@@ -1751,13 +1797,27 @@ const actualizado = await prisma.book.update({
       actual.coverUrl ||
       null,
 
+    isbn: isbnFueEnviado ? isbn : actual.isbn,
+
     totalPages: paginasFueEnviada
       ? paginas > 0
         ? paginas
         : null
       : actual.totalPages,
-  },
+    },
+  });
+  return { duplicate: null, updated };
 });
+
+if (editResult.duplicate) {
+  return {
+    ok: false,
+    codigo: 'LIBRO_DUPLICADO',
+    mensaje: `Ya existe el libro "${editResult.duplicate.title}" en el catálogo`,
+    libroExistente: { id: editResult.duplicate.id, titulo: editResult.duplicate.title },
+  };
+}
+const actualizado = editResult.updated!;
 
   return {
     ok: true,

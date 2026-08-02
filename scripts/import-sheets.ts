@@ -3,6 +3,7 @@ import path from 'node:path';
 import { parse } from 'csv-parse/sync';
 import { Priority, ReadingStatus } from '@prisma/client';
 import { prisma } from '../src/prisma.js';
+import { findBookByIdentity, lockBookIdentity } from '../src/services/book-identity.service.js';
 
 const DATA_DIR = fs.existsSync(path.join(process.cwd(), 'data'))
   ? path.join(process.cwd(), 'data')
@@ -135,11 +136,7 @@ async function getOrCreateBook(row: CsvRow) {
   clean(row['Goodreads URL']) ||
   clean(row['goodreadsUrl']);
 
-  const existing = await prisma.book.findFirst({
-    where: {
-      title,
-    },
-  });
+  const existing = await findBookByIdentity(prisma, { title, authorName: '' });
 
  if (existing) {
   return prisma.book.update({
@@ -151,15 +148,21 @@ async function getOrCreateBook(row: CsvRow) {
   });
 }
 
-  return prisma.book.create({
-    data: {
-      title,
-      genreId: genre.id,
-      seriesId: series?.id ?? null,
-      seriesOrder: seriesOrderRaw || null,
-      standalone: standaloneRaw ? boolFromSheet(standaloneRaw) : !series,
-      goodreadsUrl: goodreadsUrl || null,
-    },
+  return prisma.$transaction(async (tx) => {
+    const identity = { title, authorName: '' };
+    await lockBookIdentity(tx, identity);
+    const concurrent = await findBookByIdentity(tx, identity);
+    if (concurrent) return concurrent;
+    return tx.book.create({
+      data: {
+        title,
+        genreId: genre.id,
+        seriesId: series?.id ?? null,
+        seriesOrder: seriesOrderRaw || null,
+        standalone: standaloneRaw ? boolFromSheet(standaloneRaw) : !series,
+        goodreadsUrl: goodreadsUrl || null,
+      },
+    });
   });
 }
 
