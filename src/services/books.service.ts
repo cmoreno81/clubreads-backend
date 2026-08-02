@@ -6,7 +6,11 @@ import {
   ReadingStatus,
 } from '@prisma/client';
 import { prisma } from '../prisma.js';
-import { notifyLibroTerminado, notifyLibroNuevoBiblioteca } from './notifications.service.js';
+import {
+  notifyLibroEmpezado,
+  notifyLibroTerminado,
+  notifyLibroNuevoBiblioteca,
+} from './notifications.service.js';
 import { findBestBookCover } from './book-cover.service.js';
 import {
   ratingFromFlutter,
@@ -744,6 +748,8 @@ if (
   };
 }
 
+let startedReading = false;
+
 await prisma.$transaction(async (tx) => {
   /*
    * El advisory lock también cubre el caso excepcional en que todavía no
@@ -789,6 +795,10 @@ await prisma.$transaction(async (tx) => {
     status === ReadingStatus.READING && completionCount > 0
       ? ReadingStatus.REREADING
       : status;
+
+  startedReading =
+    effectiveStatus === ReadingStatus.READING &&
+    currentLibrary?.status !== ReadingStatus.READING;
 
   const startsNewRereading =
     effectiveStatus === ReadingStatus.REREADING &&
@@ -1047,6 +1057,23 @@ await prisma.$transaction(async (tx) => {
 }, {
   isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
 });
+
+if (startedReading) {
+  const memberships = await prisma.clubMember.findMany({
+    where: { userId: user.id },
+    select: { clubId: true },
+  });
+  for (const membership of memberships) {
+    void notifyLibroEmpezado({
+      clubId: membership.clubId,
+      lectoraNombre: user.name,
+      lectoraUserId: user.id,
+      bookTitle: book.title,
+      bookId: book.id,
+    }).catch(console.error);
+  }
+}
+
   return {
     ok: true,
   };

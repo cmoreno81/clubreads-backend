@@ -122,6 +122,27 @@ export async function notifyLecturaNueva(clubId: string, bookTitle: string, book
   });
 }
 
+export async function notifyLecturaCompartida({
+  clubId,
+  creadoraUserId,
+  bookTitle,
+  bookId,
+}: {
+  clubId: string;
+  creadoraUserId: string;
+  bookTitle: string;
+  bookId: string;
+}) {
+  await notifyClubMembers({
+    clubId,
+    excludeUserId: creadoraUserId,
+    tipo: NotificationType.LECTURA_NUEVA,
+    titulo: '📖 Nueva lectura compartida',
+    mensaje: `Se ha abierto "${bookTitle}" en Lecturas compartidas.`,
+    bookId,
+  });
+}
+
 export async function notifyComentarioLectura({
   clubId,
   autorNombre,
@@ -172,6 +193,29 @@ export async function notifyLibroTerminado({
     tipo: NotificationType.LIBRO_TERMINADO,
     titulo: '✅ Libro terminado',
     mensaje: `${lectoraNombre} ha terminado "${bookTitle}"`,
+    bookId,
+  });
+}
+
+export async function notifyLibroEmpezado({
+  clubId,
+  lectoraNombre,
+  lectoraUserId,
+  bookTitle,
+  bookId,
+}: {
+  clubId: string;
+  lectoraNombre: string;
+  lectoraUserId: string;
+  bookTitle: string;
+  bookId: string;
+}) {
+  await notifyClubMembers({
+    clubId,
+    excludeUserId: lectoraUserId,
+    tipo: NotificationType.LIBRO_EMPEZADO,
+    titulo: '📖 Nueva lectura personal',
+    mensaje: `${lectoraNombre} ha empezado a leer "${bookTitle}"`,
     bookId,
   });
 }
