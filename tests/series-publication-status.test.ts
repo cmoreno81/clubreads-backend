@@ -29,6 +29,17 @@ test('los tomos externos y omitidos cubren huecos de una saga', () => {
   assert.match(profile, /covered === volumes\.length/);
 });
 
+test('una saga finalizada no queda al día si faltan tomos previstos', () => {
+  assert.match(
+    profile,
+    /series\.publicationStatus === 'COMPLETED'[\s\S]*\? knownTotal[\s\S]*: highestOrder/,
+  );
+  assert.match(
+    profile,
+    /\{ length: requiredPositionLimit \}/,
+  );
+});
+
 test('editar el estado editorial requiere una sesión autenticada', () => {
   assert.match(routes, /'actualizarEstadoEditorialSaga'/);
   assert.match(

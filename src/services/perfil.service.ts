@@ -519,8 +519,12 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
           .map(({ posicion }) => posicion)
           .filter((position): position is number => position != null),
       );
+      const requiredPositionLimit =
+        series.publicationStatus === 'COMPLETED'
+          ? knownTotal
+          : highestOrder;
       const hasPreviousGaps = Array.from(
-        { length: highestOrder },
+        { length: requiredPositionLimit },
         (_, index) => index + 1,
       ).some((position) => !knownPositions.has(position));
       const allKnownVolumesRead =

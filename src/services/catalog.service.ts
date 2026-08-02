@@ -471,6 +471,31 @@ export async function addSeriesCatalogVolume(
       standalone: false,
     },
   });
+  await prisma.library.upsert({
+    where: {
+      userId_bookId: {
+        userId: user.id,
+        bookId: book.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: user.id,
+      bookId: book.id,
+      status: ReadingStatus.PENDING,
+      priority: Priority.MEDIUM,
+      readingFormat: null,
+    },
+  });
+  if (Number.isInteger(requestedPosition)) {
+    await prisma.seriesBookOverride.deleteMany({
+      where: {
+        userId: user.id,
+        seriesId: series.id,
+        posicion: requestedPosition,
+      },
+    });
+  }
   const knownOrders = await prisma.book.findMany({
     where: { seriesId: series.id, deletedAt: null },
     select: { seriesOrder: true },
@@ -488,7 +513,7 @@ export async function addSeriesCatalogVolume(
   return {
     ok: true,
     codigo: 'VOLUMEN_SAGA_VINCULADO',
-    mensaje: 'Volumen añadido al catálogo de la saga',
+    mensaje: 'Volumen añadido a la saga y a tu biblioteca',
     libro: { id: book.id, titulo: book.title },
   };
 }
