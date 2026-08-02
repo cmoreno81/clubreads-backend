@@ -139,6 +139,8 @@ test('el autor puede completarse manualmente sin borrar el existente', () => {
 test('la confirmación completa se ejecuta dentro de una transacción', () => {
   assert.match(service, /prisma\.\$transaction\(async \(tx\) =>/);
   assert.match(service, /await addPersonalData\(tx,/);
+  assert.match(service, /timeout: IMPORT_TRANSACTION_TIMEOUT_MS/);
+  assert.match(service, /const IMPORT_TRANSACTION_TIMEOUT_MS = 120_000/);
 });
 
 test('una lectura sin fecha usa una fecha histórica y nunca el año actual', () => {

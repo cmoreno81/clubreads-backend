@@ -9,6 +9,8 @@ import { canonicalBookTitle } from './catalog.service.js';
 import { findImportedBookCover } from './book-cover.service.js';
 
 const MAX_IMPORT_ROWS = 2_000;
+const IMPORT_TRANSACTION_MAX_WAIT_MS = 10_000;
+const IMPORT_TRANSACTION_TIMEOUT_MS = 120_000;
 
 type GoodreadsRow = {
   index: number;
@@ -632,6 +634,9 @@ export async function confirmGoodreadsImport(
       restoredReviews,
       coverTasks,
     };
+  }, {
+    maxWait: IMPORT_TRANSACTION_MAX_WAIT_MS,
+    timeout: IMPORT_TRANSACTION_TIMEOUT_MS,
   });
 
   void enrichMissingCovers(result.coverTasks).catch(() => {
