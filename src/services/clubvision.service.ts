@@ -1,5 +1,10 @@
 import type { Club } from '@prisma/client';
-import { ReadingStatus } from '@prisma/client';
+import {
+  Prisma,
+  ReadingSessionStatus,
+  ReadingStatus,
+  ReadingType,
+} from '@prisma/client';
 import {
   notifyClubvisionAbierta,
   notifyClubvisionResultados,
@@ -253,6 +258,73 @@ async function calculateClubvisionResult(clubvision: {
   });
 }
 
+export async function transitionClubvisionToReading(
+  tx: Prisma.TransactionClient,
+  params: {
+    clubvisionId: string;
+    clubId: string;
+    edition: string;
+    winnerBookId: string | null;
+  },
+) {
+  await tx.$queryRaw`
+    SELECT pg_advisory_xact_lock(
+      hashtextextended(${`clubvision:reading:${params.clubId}:${params.edition}`}, 0)
+    )::text
+  `;
+  await tx.$queryRaw`
+    SELECT "id" FROM "Clubvision"
+    WHERE "id" = ${params.clubvisionId}
+    FOR UPDATE
+  `;
+  const current = await tx.clubvision.findUnique({
+    where: { id: params.clubvisionId },
+    select: { status: true },
+  });
+  if (current?.status !== 'RESULTADOS') {
+    return { transitioned: false, officialReadingId: null };
+  }
+
+  const winnerReading = params.winnerBookId
+    ? await tx.reading.findFirst({
+        where: {
+          clubId: params.clubId,
+          bookId: params.winnerBookId,
+          status: ReadingSessionStatus.ACTIVE,
+        },
+        orderBy: [{ startedAt: 'asc' }, { id: 'asc' }],
+        select: { id: true, type: true },
+      })
+    : null;
+
+  await tx.reading.updateMany({
+    where: {
+      clubId: params.clubId,
+      status: ReadingSessionStatus.ACTIVE,
+      type: ReadingType.CLUBVISION,
+      ...(winnerReading ? { id: { not: winnerReading.id } } : {}),
+    },
+    data: { type: ReadingType.FREE },
+  });
+  if (winnerReading?.type === ReadingType.FREE) {
+    await tx.reading.update({
+      where: { id: winnerReading.id },
+      data: { type: ReadingType.CLUBVISION },
+    });
+  }
+  await tx.clubvision.update({
+    where: { id: params.clubvisionId },
+    data: {
+      status: 'LECTURA',
+      winnerBookId: params.winnerBookId,
+    },
+  });
+  return {
+    transitioned: true,
+    officialReadingId: winnerReading?.id ?? null,
+  };
+}
+
 export async function synchronizeCurrentClubvision(
   usuario = '',
   clubOverride?: Club,
@@ -290,15 +362,20 @@ export async function synchronizeCurrentClubvision(
   }
 
   if (stage === 'LECTURA' && result) {
-    await prisma.clubvision.update({
-      where: { id: clubvision.id },
-      data: {
-        status: 'LECTURA',
-        winnerBookId: result.winnerBookId,
-      },
-    });
-    // Notificar inicio de lectura
-    if (result.winnerBookId && result.winnerTitle) {
+    const transition = await prisma.$transaction((tx) =>
+      transitionClubvisionToReading(tx, {
+        clubvisionId: clubvision.id,
+        clubId: clubvision.clubId,
+        edition: clubvision.edition,
+        winnerBookId: result?.winnerBookId ?? null,
+      }),
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    // Solo la primera transición real RESULTADOS -> LECTURA notifica.
+    if (
+      transition.transitioned &&
+      result.winnerBookId &&
+      result.winnerTitle
+    ) {
       notifyLecturaNueva(
         clubvision.clubId,
         result.winnerTitle,

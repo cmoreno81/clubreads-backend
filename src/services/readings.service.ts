@@ -24,6 +24,10 @@ function tipoToFlutter(tipo: ReadingType) {
   return tipo === ReadingType.CLUBVISION ? 'OFICIAL' : 'LIBRE';
 }
 
+export function shouldShowActiveReading(type: ReadingType, readers: number) {
+  return type !== ReadingType.FREE || readers >= 2;
+}
+
 function legacyApkEnabled() {
   return process.env.AUTH_REQUIRE_ACCESS_TOKEN !== 'true';
 }
@@ -202,7 +206,7 @@ export async function getLecturasActivas(usuario = '') {
   for (const reading of readings) {
     const lectoras = lectorasByBook.get(reading.bookId) ?? 0;
 
-    if (reading.type === ReadingType.FREE && lectoras < 2) {
+    if (!shouldShowActiveReading(reading.type, lectoras)) {
       continue;
     }
 
@@ -383,18 +387,61 @@ export async function crearLectura(data: {
 
   if (!book) return { ok: false, mensaje: 'Libro no encontrado' };
 
-  const existing = await prisma.reading.findFirst({
-    where: {
-      bookId: book.id,
-      clubId: club.id,
-      status: ReadingSessionStatus.ACTIVE,
-    },
-  });
-
-  if (existing) return { ok: false, mensaje: 'La lectura ya existe' };
-
+  let created = false;
   try {
-    await prisma.$transaction(async (tx) => {
+    const outcome = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`reading:active:${club.id}:${book.id}`}, 0)
+        )::text
+      `;
+      if (requestedType === ReadingType.CLUBVISION) {
+        await tx.$queryRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`reading:official:${club.id}`}, 0)
+          )::text
+        `;
+      }
+      const existing = await tx.reading.findFirst({
+        where: {
+          bookId: book.id,
+          clubId: club.id,
+          status: ReadingSessionStatus.ACTIVE,
+        },
+        orderBy: [{ startedAt: 'asc' }, { id: 'asc' }],
+      });
+      if (existing) {
+        if (requestedType !== ReadingType.CLUBVISION) {
+          return { alreadyExists: true, created: false };
+        }
+        await tx.reading.updateMany({
+          where: {
+            clubId: club.id,
+            status: ReadingSessionStatus.ACTIVE,
+            type: ReadingType.CLUBVISION,
+            id: { not: existing.id },
+          },
+          data: { type: ReadingType.FREE },
+        });
+        if (existing.type !== ReadingType.CLUBVISION) {
+          await tx.reading.update({
+            where: { id: existing.id },
+            data: { type: ReadingType.CLUBVISION },
+          });
+        }
+        return { alreadyExists: false, created: false };
+      }
+
+      if (requestedType === ReadingType.CLUBVISION) {
+        await tx.reading.updateMany({
+          where: {
+            clubId: club.id,
+            status: ReadingSessionStatus.ACTIVE,
+            type: ReadingType.CLUBVISION,
+          },
+          data: { type: ReadingType.FREE },
+        });
+      }
       if (paginas !== undefined) {
         await tx.book.update({
           where: { id: book.id },
@@ -452,7 +499,12 @@ export async function crearLectura(data: {
       });
 
       await tx.conversation.createMany({ data: conversations });
+      return { alreadyExists: false, created: true };
     });
+    if (outcome.alreadyExists) {
+      return { ok: false, mensaje: 'La lectura ya existe' };
+    }
+    created = outcome.created;
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -464,7 +516,7 @@ export async function crearLectura(data: {
     throw error;
   }
 
-  if (user) {
+  if (user && created) {
     void notifyLecturaCompartida({
       clubId: club.id,
       creadoraUserId: user.id,
