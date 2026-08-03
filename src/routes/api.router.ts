@@ -103,7 +103,7 @@ import {
 import { GoodreadsImportError } from '../services/goodreads-import.service.js';
 import { handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas } from '../controllers/notifications.controller.js';
 import { handleGetSeriesOverrides, handleRemoveSeriesOverride, handleSetSeriesOverride } from '../controllers/series-override.controller.js';
-import { handleHideSeries, handleShowSeries } from '../controllers/hidden-user-series.controller.js';
+import { handleGetHiddenSeries, handleHideSeries, handleShowSeries } from '../controllers/hidden-user-series.controller.js';
 import { HiddenUserSeriesError } from '../services/hidden-user-series.service.js';
 
 export const apiRouter = Router();
@@ -236,6 +236,10 @@ async function handleApi(req: Request, res: Response) {
       case 'seriesOverrides':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetSeriesOverrides(req, res);
+
+      case 'sagasOcultas':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetHiddenSeries(req, res);
 
       case 'setSeriesOverride':
         if (!req.auth) return requireAuthentication(req, res, () => {});

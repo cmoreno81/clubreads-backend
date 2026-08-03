@@ -25,6 +25,30 @@ export function excludeHiddenSeries<T extends { id: string }>(
   return series.filter(({ id }) => !hiddenSeriesIds.has(id));
 }
 
+export async function getHiddenUserSeries(userId: string) {
+  const preferences = await prisma.hiddenUserSeries.findMany({
+    where: {
+      userId,
+      series: {
+        books: { some: { deletedAt: null } },
+      },
+    },
+    select: {
+      series: { select: { id: true, name: true } },
+    },
+    orderBy: {
+      series: { name: 'asc' },
+    },
+  });
+  return {
+    ok: true,
+    sagas: preferences.map(({ series }) => ({
+      id: series.id,
+      nombre: series.name,
+    })),
+  };
+}
+
 export async function hideUserSeries(userId: string, rawSeriesId: unknown) {
   const seriesId = requiredSeriesId(rawSeriesId);
   const series = await prisma.series.findUnique({
