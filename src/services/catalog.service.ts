@@ -661,9 +661,12 @@ export async function updateSeriesPublicationStatus(
     const position = seriesPosition(book.seriesOrder);
     return position === Number.MAX_SAFE_INTEGER
       ? highest
-      : Math.max(highest, Math.ceil(position));
+      : Math.max(highest, Math.floor(position));
   }, 0);
-  const minimum = Math.max(series.books.length, highestPosition);
+  const minimum = status === SeriesPublicationStatus.COMPLETED
+    ? series.books.length
+    : Math.max(series.books.length, highestPosition);
+
   if (total != null && (!Number.isInteger(total) || total < minimum)) {
     return {
       ok: false,
