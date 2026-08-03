@@ -12,6 +12,78 @@ const statusRank: Record<ReadingStatus, number> = {
   FINISHED: 5,
 };
 
+type CompletionForMerge = {
+  id: string;
+  userId: string;
+  bookId: string;
+  startedAt: Date | null;
+  finishedAt: Date;
+  isReread: boolean;
+  rating: number | null;
+  review: string | null;
+  readingFormat: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export function equivalentCompletionKey(
+  completion: Pick<CompletionForMerge, 'userId' | 'finishedAt' | 'isReread'>,
+) {
+  return `${completion.userId}:${completion.finishedAt.toISOString()}:${completion.isReread}`;
+}
+
+function completionScore(completion: CompletionForMerge) {
+  return Number(Boolean(completion.startedAt)) +
+    Number(completion.rating !== null) +
+    Number(Boolean(completion.review?.trim())) * 2 +
+    Number(Boolean(completion.readingFormat));
+}
+
+export function mostCompleteCompletion<T extends CompletionForMerge>(completions: T[]) {
+  if (completions.length === 0) throw new Error('EMPTY_COMPLETION_GROUP');
+  return [...completions].sort((left, right) =>
+    completionScore(right) - completionScore(left) ||
+    right.updatedAt.getTime() - left.updatedAt.getTime() ||
+    right.createdAt.getTime() - left.createdAt.getTime() ||
+    left.id.localeCompare(right.id)
+  )[0];
+}
+
+export async function consolidateEquivalentCompletions(
+  tx: Prisma.TransactionClient,
+  bookIds: string[],
+  canonicalBookId: string,
+) {
+  const completions = await tx.readingCompletion.findMany({
+    where: { bookId: { in: bookIds } },
+  });
+  const completionGroups = new Map<string, typeof completions>();
+  for (const completion of completions) {
+    const key = equivalentCompletionKey(completion);
+    completionGroups.set(key, [...(completionGroups.get(key) ?? []), completion]);
+  }
+  for (const group of completionGroups.values()) {
+    const keeper = mostCompleteCompletion(group);
+    const ordered = [keeper, ...group.filter(({ id }) => id !== keeper.id)];
+    const firstValue = <T>(valueFor: (item: typeof group[number]) => T | null | undefined) =>
+      ordered.map(valueFor).find((value) => value !== null && value !== undefined) ?? null;
+    await tx.readingCompletion.update({
+      where: { id: keeper.id },
+      data: {
+        bookId: canonicalBookId,
+        startedAt: firstValue(({ startedAt }) => startedAt),
+        rating: firstValue(({ rating }) => rating),
+        review: firstValue(({ review }) => review?.trim() || null),
+        readingFormat: firstValue(({ readingFormat }) => readingFormat),
+      },
+    });
+    const duplicateIds = group.filter(({ id }) => id !== keeper.id).map(({ id }) => id);
+    if (duplicateIds.length > 0) {
+      await tx.readingCompletion.deleteMany({ where: { id: { in: duplicateIds } } });
+    }
+  }
+}
+
 export async function mergeBooks(sourceIdValue: string, canonicalIdValue: string, reason?: string) {
   return prisma.$transaction(async (tx) => {
     const sourceId = await resolveCanonicalBookId(tx, sourceIdValue);
@@ -91,33 +163,7 @@ export async function mergeBooks(sourceIdValue: string, canonicalIdValue: string
       await tx.library.delete({ where: { id: sourceLibrary.id } });
     }
 
-    for (const sourceCompletion of source.readingCompletions) {
-      const duplicate = await tx.readingCompletion.findFirst({
-        where: {
-          bookId: canonicalId,
-          userId: sourceCompletion.userId,
-          finishedAt: sourceCompletion.finishedAt,
-          isReread: sourceCompletion.isReread,
-        },
-      });
-      if (!duplicate) {
-        await tx.readingCompletion.update({
-          where: { id: sourceCompletion.id },
-          data: { bookId: canonicalId },
-        });
-        continue;
-      }
-      await tx.readingCompletion.update({
-        where: { id: duplicate.id },
-        data: {
-          startedAt: duplicate.startedAt ?? sourceCompletion.startedAt,
-          rating: duplicate.rating ?? sourceCompletion.rating,
-          review: duplicate.review?.trim() || sourceCompletion.review?.trim() || null,
-          readingFormat: duplicate.readingFormat ?? sourceCompletion.readingFormat,
-        },
-      });
-      await tx.readingCompletion.delete({ where: { id: sourceCompletion.id } });
-    }
+    await consolidateEquivalentCompletions(tx, [sourceId, canonicalId], canonicalId);
 
     for (const sourceReview of source.reviews) {
       const targetReview = await tx.review.findUnique({
