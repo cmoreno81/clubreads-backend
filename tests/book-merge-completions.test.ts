@@ -26,6 +26,10 @@ function completion(overrides: Record<string, unknown> = {}) {
 test('solo considera equivalentes misma usuaria, fecha e indicador de relectura', () => {
   const original = completion();
   assert.equal(equivalentCompletionKey(original), equivalentCompletionKey(completion({ id: 'copy' })));
+  assert.equal(
+    equivalentCompletionKey(original),
+    equivalentCompletionKey(completion({ finishedAt: new Date('2026-01-10T23:30:00Z') })),
+  );
   assert.notEqual(
     equivalentCompletionKey(original),
     equivalentCompletionKey(completion({ finishedAt: new Date('2026-02-10T12:00:00Z') })),

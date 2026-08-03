@@ -29,7 +29,7 @@ type CompletionForMerge = {
 export function equivalentCompletionKey(
   completion: Pick<CompletionForMerge, 'userId' | 'finishedAt' | 'isReread'>,
 ) {
-  return `${completion.userId}:${completion.finishedAt.toISOString()}:${completion.isReread}`;
+  return `${completion.userId}:${completion.finishedAt.toISOString().slice(0, 10)}:${completion.isReread}`;
 }
 
 function completionScore(completion: CompletionForMerge) {
