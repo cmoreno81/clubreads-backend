@@ -44,6 +44,12 @@ test('solo considera equivalentes misma usuaria, fecha e indicador de relectura'
   );
 });
 
+test('una relectura legítima sobrevive aunque termine el mismo día que la lectura original', () => {
+  const original = completion({ id: 'original', isReread: false });
+  const reread = completion({ id: 'reread', isReread: true });
+  assert.notEqual(equivalentCompletionKey(original), equivalentCompletionKey(reread));
+});
+
 test('conserva la finalización con más información aunque esté en la copia origen', () => {
   const sparse = completion({ id: 'canonical', bookId: 'canonical' });
   const complete = completion({

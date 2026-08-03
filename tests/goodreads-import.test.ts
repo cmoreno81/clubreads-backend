@@ -257,7 +257,7 @@ test('reconoce el nombre de saga entre paréntesis aunque no incluya número', (
 
 test('la confirmación revalida bajo bloqueo y conserva los índices del CSV', () => {
   assert.match(service, /pg_advisory_xact_lock/);
-  assert.match(service, /buildPreview\(user\.id, batch, tx\)/);
+  assert.match(service, /buildImportPreview\(user\.id, batch, source, tx\)/);
   assert.match(service, /const rowsByIndex = new Map/);
   assert.match(service, /rowsByIndex\.get\(item\.index\)/);
 });

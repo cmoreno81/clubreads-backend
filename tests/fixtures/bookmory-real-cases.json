@@ -1,0 +1,50 @@
+{
+  "rows": {
+    "distraccionAmbiguous": {
+      "index": 17,
+      "sourceRowId": "bookmory-silvia-2026-08-02-17",
+      "title": "Distracción",
+      "author": "S.T. Abby,Gema Pereira Silvestre",
+      "isbn": "",
+      "isbn13": "",
+      "rating": 4,
+      "dateRead": "2026-01-08",
+      "dateAdded": "2026-01-03",
+      "exclusiveShelf": "read",
+      "review": ""
+    },
+    "hamnetInverted": {
+      "index": 18,
+      "sourceRowId": "bookmory-silvia-2026-08-02-18",
+      "title": "Hamnet",
+      "author": "O'Farrell, Maggie",
+      "isbn": "",
+      "isbn13": "",
+      "rating": 5,
+      "dateRead": "2026-02-01",
+      "dateAdded": "2026-01-25",
+      "exclusiveShelf": "read",
+      "review": ""
+    }
+  },
+  "catalog": [
+    {
+      "id": "cmrd84m3700fnin50mg9ls2oz",
+      "title": "Distracción",
+      "isbn": "9788410085268",
+      "coverUrl": "distraccion.jpg",
+      "authorId": "author-st-abby",
+      "author": { "name": "S.T. Abby" },
+      "library": []
+    },
+    {
+      "id": "cmrnrpfq7003i0pqmm9dks5nz",
+      "title": "Hamnet",
+      "isbn": "9788418187070",
+      "coverUrl": "hamnet.jpg",
+      "authorId": "author-maggie-ofarrell",
+      "author": { "name": "Maggie O'Farrell" },
+      "library": []
+    }
+  ]
+}

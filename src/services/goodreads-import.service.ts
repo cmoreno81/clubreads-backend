@@ -1,8 +1,10 @@
 import {
+  ImportSource,
   Priority,
   Prisma,
   ReadingStatus,
 } from '@prisma/client';
+import { createHash } from 'node:crypto';
 
 import { prisma } from '../prisma.js';
 import { canonicalBookTitle } from './catalog.service.js';
@@ -14,7 +16,7 @@ const IMPORT_TRANSACTION_MAX_WAIT_MS = 10_000;
 const IMPORT_BATCH_TIMEOUT_MS = 30_000;
 const IMPORT_BATCH_SIZE = 20;
 
-type GoodreadsRow = {
+export type GoodreadsRow = {
   index: number;
   title: string;
   author: string;
@@ -28,6 +30,17 @@ type GoodreadsRow = {
   dateAdded: Date | null;
   exclusiveShelf: string;
   review: string;
+  sourceRowId: string;
+};
+
+type ImportBookSnapshot = {
+  id: string;
+  title: string;
+  isbn: string | null;
+  coverUrl: string | null;
+  authorId: string | null;
+  author: { name: string } | null;
+  library: { id: string }[];
 };
 
 type ImportAction =
@@ -46,6 +59,18 @@ type ImportPreviewItem = {
   bookId?: string;
   candidatos?: ImportCandidate[];
 };
+
+export function parseImportSource(value: unknown): ImportSource {
+  const source = String(value ?? '').trim().toUpperCase();
+  if (source === ImportSource.GOODREADS || source === ImportSource.BOOKMORY) {
+    return source as ImportSource;
+  }
+  throw new GoodreadsImportError(
+    400,
+    'INVALID_IMPORT_SOURCE',
+    'La fuente debe ser GOODREADS o BOOKMORY.',
+  );
+}
 
 type ImportCandidate = {
   bookId: string;
@@ -114,6 +139,45 @@ export function importAuthorIdentity(value: string) {
     .trim();
 }
 
+export function isAmbiguousBookmoryAuthor(value: string) {
+  const author = value.trim();
+  if (!author) return true;
+  // Bookmory serializa varios autores con comas, pero una coma también puede
+  // significar "Apellido, Nombre". Sin estructura adicional no es seguro.
+  return author.includes(',') || /\bautores?\/?as?\b/i.test(author);
+}
+
+function authorTokens(value: string) {
+  return importAuthorIdentity(value).split(' ').filter(Boolean).sort();
+}
+
+export function compatibleAuthorScore(imported: string, catalog: string) {
+  const left = authorTokens(imported);
+  const right = authorTokens(catalog);
+  if (!left.length || !right.length) return 0;
+  if (left.join(' ') === right.join(' ')) return 3;
+  const common = left.filter((token) => right.includes(token)).length;
+  return common / Math.max(left.length, right.length);
+}
+
+export function importRowIdempotencyKey(
+  source: ImportSource,
+  row: Pick<GoodreadsRow, 'sourceRowId' | 'title' | 'author' | 'isbn' | 'isbn13' | 'rating' | 'dateRead' | 'dateAdded' | 'review'>,
+) {
+  const stableRow = row.sourceRowId.trim() || JSON.stringify({
+    title: normalize(row.title),
+    author: normalize(row.author),
+    isbn: row.isbn13 || row.isbn,
+    rating: row.rating,
+    dateRead: row.dateRead?.toISOString() ?? null,
+    dateAdded: row.dateAdded?.toISOString() ?? null,
+    review: row.review,
+  });
+  return createHash('sha256')
+    .update(`${source}:${stableRow}`)
+    .digest('hex');
+}
+
 function normalizedIsbn(value: unknown) {
   return String(value ?? '').replace(/[^0-9Xx]/g, '').toUpperCase();
 }
@@ -145,7 +209,7 @@ export function normalizeGoodreadsReview(value: unknown) {
     .slice(0, 20_000);
 }
 
-function parseRows(value: unknown): GoodreadsRow[] {
+export function parseImportRows(value: unknown): GoodreadsRow[] {
   if (!Array.isArray(value)) {
     throw new GoodreadsImportError(
       400,
@@ -188,6 +252,7 @@ function parseRows(value: unknown): GoodreadsRow[] {
       dateAdded: optionalDate(row.dateAdded),
       exclusiveShelf: normalize(String(row.exclusiveShelf ?? 'to-read')),
       review: normalizeGoodreadsReview(row.review),
+      sourceRowId: String(row.sourceRowId ?? row.rowId ?? row.id ?? '').trim().slice(0, 500),
     };
   });
   if (new Set(parsed.map((row) => row.index)).size !== parsed.length) {
@@ -279,9 +344,10 @@ async function userForImport(userName: string) {
   return user;
 }
 
-async function buildPreview(
+export async function buildImportPreview(
   userId: string,
   rows: GoodreadsRow[],
+  source: ImportSource,
   database: Prisma.TransactionClient | typeof prisma = prisma,
 ) {
   const books = await database.book.findMany({
@@ -379,18 +445,55 @@ async function buildPreview(
             importAuthorIdentity(book.author?.name ?? ''),
           )
         );
-    const candidates = [
-      ...new Map(
-        (
-          isbnMatches.length > 0
-            ? isbnMatches
-            : titleMatches.length > 0
-              ? titleMatches
-              : fallbackTitleMatches
-        )
-          .map((book) => [book.id, book]),
-      ).values(),
-    ];
+    const exactAuthorMatches = uniqueTitleMatches.filter((book) =>
+      rowAuthors(row).includes(importAuthorIdentity(book.author?.name ?? ''))
+    );
+    const ambiguousBookmoryAuthor = source === ImportSource.BOOKMORY &&
+      isAmbiguousBookmoryAuthor(row.author);
+    const rowIsbn = row.isbn13 || row.isbn;
+    const isbnConflicts = (book: typeof books[number]) => Boolean(
+      rowIsbn && normalizedIsbn(book.isbn) && normalizedIsbn(book.isbn) !== rowIsbn,
+    );
+    const allReasonableTitleMatches = [...uniqueTitleMatches].sort((left, right) => {
+      const leftIsbn = isbnMatches.some(({ id }) => id === left.id) ? 1 : 0;
+      const rightIsbn = isbnMatches.some(({ id }) => id === right.id) ? 1 : 0;
+      return rightIsbn - leftIsbn ||
+        compatibleAuthorScore(row.author, right.author?.name ?? '') -
+          compatibleAuthorScore(row.author, left.author?.name ?? '') ||
+        left.title.localeCompare(right.title, 'es');
+    });
+    const safeIsbnMatch = isbnMatches.length === 1 ? isbnMatches[0] : null;
+    const safeAuthorMatch = !ambiguousBookmoryAuthor && exactAuthorMatches.length === 1 &&
+      !isbnConflicts(exactAuthorMatches[0])
+      ? exactAuthorMatches[0]
+      : null;
+    const safeMatch = safeIsbnMatch ?? safeAuthorMatch;
+    const conflictingTitle = uniqueTitleMatches.length > 0 && !safeMatch;
+    const candidates = allReasonableTitleMatches;
+
+    if (ambiguousBookmoryAuthor) {
+      return {
+        index: row.index,
+        titulo: row.title,
+        autor: row.author,
+        accion: 'REVISAR',
+        mensaje: uniqueTitleMatches.length > 0
+          ? 'Bookmory contiene una autoría ambigua; elige manualmente entre las coincidencias por título.'
+          : 'Bookmory contiene una autoría ambigua y no puede crear el autor automáticamente.',
+        candidatos: candidates.map(candidateFromBook),
+      };
+    }
+
+    if (conflictingTitle) {
+      return {
+        index: row.index,
+        titulo: row.title,
+        autor: row.author,
+        accion: 'REVISAR',
+        mensaje: 'El título ya existe, pero autor o ISBN no coinciden con seguridad; revísalo antes de importar.',
+        candidatos: candidates.map(candidateFromBook),
+      };
+    }
 
     if (candidates.length > 1) {
       return {
@@ -402,7 +505,7 @@ async function buildPreview(
         candidatos: candidates.map(candidateFromBook),
       };
     }
-    const match = candidates[0];
+    const match = safeMatch ?? candidates[0];
     if (!match) {
       if (
         soleTitleMatch &&
@@ -435,6 +538,7 @@ async function buildPreview(
         accion: 'PROTEGIDO',
         mensaje: 'Ya está en ClubReads; se conservarán tus datos.',
         bookId: match.id,
+        candidatos: candidates.map(candidateFromBook),
       };
     }
     return {
@@ -444,6 +548,7 @@ async function buildPreview(
       accion: 'ANADIR',
       mensaje: 'Ya existe en ClubReads y se añadirá a tu biblioteca.',
       bookId: match.id,
+      candidatos: candidates.map(candidateFromBook),
     };
   });
 }
@@ -464,13 +569,16 @@ function previewSummary(items: ImportPreviewItem[], excluded = 0) {
 export async function previewGoodreadsImport(
   userName: string,
   rawRows: unknown,
+  rawSource: unknown,
 ) {
+  const source = parseImportSource(rawSource);
   const user = await userForImport(userName);
-  const rows = parseRows(rawRows);
+  const rows = parseImportRows(rawRows);
   const eligibleRows = rows.filter(isRatedFinishedGoodreadsRow);
-  const items = await buildPreview(user.id, eligibleRows);
+  const items = await buildImportPreview(user.id, eligibleRows, source);
   return {
     ok: true,
+    source,
     resumen: previewSummary(items, rows.length - eligibleRows.length),
     libros: items,
   };
@@ -640,14 +748,16 @@ export async function confirmGoodreadsImport(
   userName: string,
   rawRows: unknown,
   rawResolutions?: unknown,
+  rawSource?: unknown,
 ) {
+  const source = parseImportSource(rawSource);
   const user = await userForImport(userName);
-  const parsedRows = parseRows(rawRows);
+  const parsedRows = parseImportRows(rawRows);
   const rows = parsedRows.filter(isRatedFinishedGoodreadsRow);
   const resolutions = parseImportResolutions(rawResolutions);
   const validatedResolutions = new Map<number, string>();
   if (resolutions.size > 0) {
-    const offered = await buildPreview(user.id, rows);
+    const offered = await buildImportPreview(user.id, rows, source);
     for (const [index, bookId] of resolutions) {
       const item = offered.find((candidate) => candidate.index === index);
       if (
@@ -680,10 +790,10 @@ export async function confirmGoodreadsImport(
       const batchResult = await prisma.$transaction(async (tx) => {
         await tx.$queryRaw`
           SELECT pg_advisory_xact_lock(
-            hashtextextended(${`clubreads:goodreads-import:${user.id}`}, 0)
+            hashtextextended(${`clubreads:${source.toLowerCase()}-import:${user.id}`}, 0)
           )::text
         `;
-        const preview = await buildPreview(user.id, batch, tx);
+        const preview = await buildImportPreview(user.id, batch, source, tx);
         const rowsByIndex = new Map(batch.map((row) => [row.index, row]));
         const resolvedPreview = preview.map((item) => {
           const selectedBookId = validatedResolutions.get(item.index);
@@ -707,6 +817,20 @@ export async function confirmGoodreadsImport(
           const row = rowsByIndex.get(item.index);
           if (!row) continue;
           context.activeRow = row;
+          const idempotencyKey = importRowIdempotencyKey(source, row);
+          const importedBefore = await tx.importRowReceipt.findUnique({
+            where: {
+              userId_source_idempotencyKey: {
+                userId: user.id,
+                source,
+                idempotencyKey,
+              },
+            },
+          });
+          if (importedBefore) {
+            totals.protectedCount += 1;
+            continue;
+          }
           let book = item.bookId
             ? await tx.book.findFirst({ where: { id: item.bookId, deletedAt: null } })
             : null;
@@ -763,6 +887,15 @@ export async function confirmGoodreadsImport(
             else totals.created += 1;
             await addPersonalData(tx, user.id, book.id, row);
           }
+          await tx.importRowReceipt.create({
+            data: {
+              userId: user.id,
+              source,
+              idempotencyKey,
+              sourceRowId: row.sourceRowId || null,
+              bookId: book.id,
+            },
+          });
           if (!book.coverUrl?.trim()) {
             totals.coverTasks.push({
               bookId: book.id,
@@ -813,6 +946,7 @@ export async function confirmGoodreadsImport(
 
   return {
     ok: true,
+    source,
     resumen: {
       nuevos: result.created,
       anadidos: result.added,

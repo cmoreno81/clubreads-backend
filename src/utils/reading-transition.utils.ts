@@ -8,12 +8,18 @@ function parseDate(value: unknown, label: 'inicio' | 'finalización', now: Date)
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
   if (!match) return { ok: false as const, mensaje: `La fecha de ${label} no es válida` };
   const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
+  const todayInMadrid = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
   if (
     Number.isNaN(date.getTime()) ||
     date.getUTCFullYear() !== Number(match[1]) ||
     date.getUTCMonth() !== Number(match[2]) - 1 ||
     date.getUTCDate() !== Number(match[3]) ||
-    date > now
+    text > todayInMadrid
   ) {
     return { ok: false as const, mensaje: `La fecha de ${label} no es válida` };
   }

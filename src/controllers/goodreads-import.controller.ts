@@ -11,7 +11,11 @@ export async function handlePreviewGoodreadsImport(
   res: Response,
 ) {
   return res.json(
-    await previewGoodreadsImport(requestUserName(req), req.body?.libros),
+    await previewGoodreadsImport(
+      requestUserName(req),
+      req.body?.libros,
+      req.body?.source,
+    ),
   );
 }
 
@@ -24,6 +28,7 @@ export async function handleConfirmGoodreadsImport(
       requestUserName(req),
       req.body?.libros,
       req.body?.resoluciones,
+      req.body?.source,
     ),
   );
 }

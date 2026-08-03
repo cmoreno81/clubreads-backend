@@ -49,6 +49,17 @@ test('FINISHED exige valoración y fechas válidas y crea ReadingCompletion', ()
   assert.match(catalog, /tx\.review\.upsert/);
 });
 
+test('permite finalizar hoy durante la mañana de Madrid', () => {
+  const result = validateReadingTransitionInput({
+    status: ReadingStatus.FINISHED,
+    valoracion: '4',
+    fechaInicio: '2026-08-01',
+    fechaFin: '2026-08-03',
+    now: new Date('2026-08-03T08:00:00.000Z'),
+  });
+  assert.equal(result.ok, true);
+});
+
 test('vincular el volumen elimina una marca externa de esa posición', () => {
   assert.match(
     catalog,

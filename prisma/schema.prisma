@@ -288,6 +288,7 @@ model User {
   clubMemberships ClubMember[]
   notifications   Notification[]
   seriesOverrides SeriesBookOverride[]
+  importRowReceipts ImportRowReceipt[]
 
   activeClubId String?
 
@@ -302,6 +303,25 @@ model User {
   authSessions    AuthSession[]
 
   @@index([activeClubId])
+}
+
+enum ImportSource {
+  GOODREADS
+  BOOKMORY
+}
+
+model ImportRowReceipt {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source         ImportSource
+  idempotencyKey String
+  sourceRowId    String?
+  bookId         String
+  createdAt      DateTime     @default(now())
+
+  @@unique([userId, source, idempotencyKey])
+  @@index([bookId])
 }
 
 model AuthCode {
