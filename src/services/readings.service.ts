@@ -388,6 +388,7 @@ export async function crearLectura(data: {
   if (!book) return { ok: false, mensaje: 'Libro no encontrado' };
 
   let created = false;
+  let notificationReadingId: string | undefined;
   try {
     const outcome = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`
@@ -499,12 +500,13 @@ export async function crearLectura(data: {
       });
 
       await tx.conversation.createMany({ data: conversations });
-      return { alreadyExists: false, created: true };
+      return { alreadyExists: false, created: true, readingId: reading.id };
     });
     if (outcome.alreadyExists) {
       return { ok: false, mensaje: 'La lectura ya existe' };
     }
     created = outcome.created;
+    notificationReadingId = outcome.readingId;
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -522,6 +524,7 @@ export async function crearLectura(data: {
       creadoraUserId: user.id,
       bookTitle: book.title,
       bookId: book.id,
+      readingId: notificationReadingId,
     }).catch(console.error);
   }
 
@@ -817,7 +820,7 @@ export async function enviarComentarioLectura(data: {
         },
       },
     },
-    include: { reading: { select: { bookId: true } } },
+    include: { reading: { select: { id: true, bookId: true } } },
   });
 
   if (!conversation) return { ok: false, mensaje: 'Capítulo no encontrado' };
@@ -844,6 +847,7 @@ export async function enviarComentarioLectura(data: {
     autorUserId: user.id,
     bookTitle: libro,
     bookId: conversation.reading?.bookId ?? '',
+    readingId: conversation.reading?.id,
     participantes: participantes.map((p) => p.userId),
   }).catch(console.error);
 

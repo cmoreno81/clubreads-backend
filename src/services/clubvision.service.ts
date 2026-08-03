@@ -394,6 +394,7 @@ export async function synchronizeCurrentClubvision(
         clubvision.clubId,
         result.winnerTitle,
         result.winnerBookId,
+        transition.officialReadingId,
       ).catch(console.error);
     }
   }

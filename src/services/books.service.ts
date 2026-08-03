@@ -1193,7 +1193,7 @@ export async function crearLibro(data: any) {
         clubId: m.clubId,
         autoraNombre: user.name,
         autoraUserId: user.id,
-        libros: [existingBook.title],
+        libros: [{ id: existingBook.id, title: existingBook.title }],
       }).catch(console.error);
     }
 

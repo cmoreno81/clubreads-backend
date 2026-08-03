@@ -101,7 +101,7 @@ import {
   handlePreviewGoodreadsImport,
 } from '../controllers/goodreads-import.controller.js';
 import { GoodreadsImportError } from '../services/goodreads-import.service.js';
-import { handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas } from '../controllers/notifications.controller.js';
+import { handleEliminarNotificacion, handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas } from '../controllers/notifications.controller.js';
 import { handleGetSeriesOverrides, handleRemoveSeriesOverride, handleSetSeriesOverride } from '../controllers/series-override.controller.js';
 import { handleGetHiddenSeries, handleHideSeries, handleShowSeries } from '../controllers/hidden-user-series.controller.js';
 import { HiddenUserSeriesError } from '../services/hidden-user-series.service.js';
@@ -134,6 +134,7 @@ const POST_ONLY_ACTIONS = new Set([
   'removeSeriesOverride',
   'ocultarSaga',
   'mostrarSaga',
+  'eliminarNotificacion',
   'previsualizarImportacionGoodreads',
   'confirmarImportacionGoodreads',
 ]);
@@ -268,6 +269,10 @@ async function handleApi(req: Request, res: Response) {
       case 'marcarTodasLeidas':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleMarcarTodasLeidas(req, res);
+
+      case 'eliminarNotificacion':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleEliminarNotificacion(req, res);
 
       case 'librosPorAutor':
         if (!req.auth) {

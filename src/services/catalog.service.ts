@@ -46,7 +46,7 @@ const bookInclude = {
 
 async function notifyLibraryAddition(
   user: { id: string; name: string },
-  bookTitle: string,
+  book: { id: string; title: string },
 ) {
   const memberships = await prisma.clubMember.findMany({
     where: { userId: user.id },
@@ -57,7 +57,7 @@ async function notifyLibraryAddition(
       clubId: membership.clubId,
       autoraNombre: user.name,
       autoraUserId: user.id,
-      libros: [bookTitle],
+      libros: [book],
     });
   }
 }
@@ -363,7 +363,7 @@ export async function importCatalogBook(
       readingFormat: formatFromFlutter(data.formato),
     },
   });
-  void notifyLibraryAddition(user, book.title).catch(console.error);
+  void notifyLibraryAddition(user, book).catch(console.error);
   return {
     ok: true,
     codigo: 'LIBRO_CATALOGO_ANADIDO',
@@ -581,7 +581,7 @@ export async function addSeriesCatalogVolume(
   const book = transactionResult.book!;
   const existingLibrary = transactionResult.existingLibrary;
   if (!existingLibrary) {
-    void notifyLibraryAddition(user, book.title).catch(console.error);
+    void notifyLibraryAddition(user, book).catch(console.error);
   }
   return {
     ok: true,

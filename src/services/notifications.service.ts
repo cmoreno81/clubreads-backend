@@ -107,7 +107,12 @@ export async function notifyClubvisionResultados(clubId: string, ganador: string
   });
 }
 
-export async function notifyLecturaNueva(clubId: string, bookTitle: string, bookId: string) {
+export async function notifyLecturaNueva(
+  clubId: string,
+  bookTitle: string,
+  bookId: string,
+  readingId?: string | null,
+) {
   const club = await prisma.club.findUnique({
     where: { id: clubId },
     select: { name: true },
@@ -119,6 +124,7 @@ export async function notifyLecturaNueva(clubId: string, bookTitle: string, book
     titulo: '📖 Nueva lectura oficial',
     mensaje: `${club.name} empieza "${bookTitle}". ¡Prepárate para leer!`,
     bookId,
+    extra: { bookTitle, ...(readingId ? { readingId } : {}) },
   });
 }
 
@@ -127,11 +133,13 @@ export async function notifyLecturaCompartida({
   creadoraUserId,
   bookTitle,
   bookId,
+  readingId,
 }: {
   clubId: string;
   creadoraUserId: string;
   bookTitle: string;
   bookId: string;
+  readingId?: string;
 }) {
   await notifyClubMembers({
     clubId,
@@ -140,6 +148,7 @@ export async function notifyLecturaCompartida({
     titulo: '📖 Nueva lectura compartida',
     mensaje: `Se ha abierto "${bookTitle}" en Lecturas compartidas.`,
     bookId,
+    extra: { bookTitle, ...(readingId ? { readingId } : {}) },
   });
 }
 
@@ -150,6 +159,7 @@ export async function notifyComentarioLectura({
   bookTitle,
   bookId,
   participantes,
+  readingId,
 }: {
   clubId: string;
   autorNombre: string;
@@ -157,6 +167,7 @@ export async function notifyComentarioLectura({
   bookTitle: string;
   bookId: string;
   participantes: string[]; // userIds que han comentado en ese hilo
+  readingId?: string;
 }) {
   // Solo notificar a participantes del hilo, no a todos
   const destinatarios = participantes.filter((id) => id !== autorUserId);
@@ -170,6 +181,10 @@ export async function notifyComentarioLectura({
       mensaje: `${autorNombre} ha comentado en "${bookTitle}"`,
       clubId,
       bookId,
+      extra: JSON.stringify({
+        bookTitle,
+        ...(readingId ? { readingId } : {}),
+      }),
     })),
   });
 }
@@ -194,6 +209,7 @@ export async function notifyLibroTerminado({
     titulo: '✅ Libro terminado',
     mensaje: `${lectoraNombre} ha terminado "${bookTitle}"`,
     bookId,
+    extra: { bookTitle },
   });
 }
 
@@ -217,6 +233,7 @@ export async function notifyLibroEmpezado({
     titulo: '📖 Nueva lectura personal',
     mensaje: `${lectoraNombre} ha empezado a leer "${bookTitle}"`,
     bookId,
+    extra: { bookTitle },
   });
 }
 
@@ -224,19 +241,19 @@ export async function notifyLibroNuevoBiblioteca({
   clubId,
   autoraNombre,
   autoraUserId,
-  libros, // títulos
+  libros,
 }: {
   clubId: string;
   autoraNombre: string;
   autoraUserId: string;
-  libros: string[];
+  libros: Array<{ id: string; title: string }>;
 }) {
   const titulo = libros.length === 1
     ? '✨ Libro nuevo en la biblioteca'
     : `✨ ${libros.length} libros nuevos en la biblioteca`;
   const mensaje = libros.length === 1
-    ? `${autoraNombre} ha añadido "${libros[0]}"`
-    : `${autoraNombre} ha añadido ${libros.length} libros: ${libros.slice(0, 2).join(', ')}${libros.length > 2 ? ` y ${libros.length - 2} más` : ''}`;
+    ? `${autoraNombre} ha añadido "${libros[0]?.title}"`
+    : `${autoraNombre} ha añadido ${libros.length} libros: ${libros.slice(0, 2).map(({ title }) => title).join(', ')}${libros.length > 2 ? ` y ${libros.length - 2} más` : ''}`;
 
   await notifyClubMembers({
     clubId,
@@ -244,6 +261,14 @@ export async function notifyLibroNuevoBiblioteca({
     tipo: NotificationType.LIBRO_NUEVO_BIBLIOTECA,
     titulo,
     mensaje,
+    bookId: libros.length === 1 ? libros[0]?.id : undefined,
+    extra: libros.length === 1
+      ? { bookTitle: libros[0]?.title }
+      : {
+          destination: 'BIBLIOTECA',
+          bookIds: libros.map(({ id }) => id),
+          bookTitles: libros.map(({ title }) => title),
+        },
   });
 }
 
@@ -267,6 +292,7 @@ export async function notifyNuevaMiembro({
     tipo: NotificationType.NUEVA_MIEMBRO,
     titulo: '👋 Nueva lectora',
     mensaje: `${nuevaMiembroNombre} se ha unido a ${club.name}`,
+    extra: { userId: nuevaMiembroUserId },
   });
 }
 
@@ -311,6 +337,32 @@ export async function marcarTodasLeidas(userId: string) {
   await prisma.notification.updateMany({
     where: { userId, leida: false },
     data: { leida: true },
+  });
+  return { ok: true };
+}
+
+export async function eliminarNotificacion(
+  userId: string,
+  notificacionId: string,
+) {
+  return deleteNotificationForUser(prisma, userId, notificacionId);
+}
+
+type NotificationDeleteClient = {
+  notification: {
+    deleteMany(args: {
+      where: { id: string; userId: string };
+    }): Promise<{ count: number }>;
+  };
+};
+
+export async function deleteNotificationForUser(
+  client: NotificationDeleteClient,
+  userId: string,
+  notificacionId: string,
+) {
+  await client.notification.deleteMany({
+    where: { id: notificacionId, userId },
   });
   return { ok: true };
 }
