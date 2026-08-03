@@ -76,6 +76,9 @@ test('la fusión conserva relaciones, auditoría y redirección', () => {
   assert.match(mergeService, /bookRedirect\.upsert/);
   assert.match(mergeService, /deletedAt: new Date\(\)/);
   assert.match(mergeService, /TransactionIsolationLevel\.Serializable/);
+  assert.match(mergeService, /finishedAt: sourceCompletion\.finishedAt/);
+  assert.match(mergeService, /isReread: sourceCompletion\.isReread/);
+  assert.match(mergeService, /readingCompletion\.delete/);
 });
 
 test('una redirección puede resolverse en cadena y detecta ciclos', async () => {

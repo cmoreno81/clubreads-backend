@@ -1,6 +1,7 @@
 import { ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
+import { normalizeBookIdentityText } from './book-identity.service.js';
 import { getClubvisionNoticeMomentFor } from '../utils/clubvision-calendar.js';
 import { canonicalBookTitle } from './catalog.service.js';
 
@@ -270,7 +271,6 @@ export async function getGeneralDashboard(userId: string) {
       prisma.book.findMany({
         where: { deletedAt: null },
         orderBy: { createdAt: 'desc' },
-        take: 10,
         include: {
           author: true,
           genre: true,
@@ -630,7 +630,7 @@ export async function getGeneralDashboard(userId: string) {
               ? 'BAJA'
               : 'MEDIA',
       })),
-    ultimasIncorporaciones: latestBooks.map((book) => ({
+    ultimasIncorporaciones: deduplicateLatestBooks(latestBooks, 10).map((book) => ({
       id: book.id,
       titulo: book.title,
       autor: book.author?.name ?? '',
@@ -705,4 +705,30 @@ export async function getGeneralDashboard(userId: string) {
       },
     },
   };
+}
+
+type LatestBookCandidate = {
+  title: string;
+  coverUrl: string | null;
+  author?: { name: string } | null;
+};
+
+export function deduplicateLatestBooks<T extends LatestBookCandidate>(books: T[], limit = 10) {
+  const grouped: Array<{ title: string; authorTokens: Set<string>; book: T }> = [];
+  for (const book of books) {
+    const title = normalizeBookIdentityText(book.title);
+    const authorTokens = new Set(normalizeBookIdentityText(book.author?.name).split(' ').filter(Boolean));
+    const current = grouped.find((item) => {
+      if (item.title !== title || item.authorTokens.size === 0 || authorTokens.size === 0) return false;
+      const smaller = item.authorTokens.size <= authorTokens.size ? item.authorTokens : authorTokens;
+      const larger = smaller === item.authorTokens ? authorTokens : item.authorTokens;
+      return [...smaller].every((token) => larger.has(token));
+    });
+    if (!current) {
+      grouped.push({ title, authorTokens, book });
+    } else if (!current.book.coverUrl?.trim() && book.coverUrl?.trim()) {
+      current.book = book;
+    }
+  }
+  return grouped.map(({ book }) => book).slice(0, limit);
 }

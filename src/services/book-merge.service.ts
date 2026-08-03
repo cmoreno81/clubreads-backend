@@ -91,7 +91,33 @@ export async function mergeBooks(sourceIdValue: string, canonicalIdValue: string
       await tx.library.delete({ where: { id: sourceLibrary.id } });
     }
 
-    await tx.readingCompletion.updateMany({ where: { bookId: sourceId }, data: { bookId: canonicalId } });
+    for (const sourceCompletion of source.readingCompletions) {
+      const duplicate = await tx.readingCompletion.findFirst({
+        where: {
+          bookId: canonicalId,
+          userId: sourceCompletion.userId,
+          finishedAt: sourceCompletion.finishedAt,
+          isReread: sourceCompletion.isReread,
+        },
+      });
+      if (!duplicate) {
+        await tx.readingCompletion.update({
+          where: { id: sourceCompletion.id },
+          data: { bookId: canonicalId },
+        });
+        continue;
+      }
+      await tx.readingCompletion.update({
+        where: { id: duplicate.id },
+        data: {
+          startedAt: duplicate.startedAt ?? sourceCompletion.startedAt,
+          rating: duplicate.rating ?? sourceCompletion.rating,
+          review: duplicate.review?.trim() || sourceCompletion.review?.trim() || null,
+          readingFormat: duplicate.readingFormat ?? sourceCompletion.readingFormat,
+        },
+      });
+      await tx.readingCompletion.delete({ where: { id: sourceCompletion.id } });
+    }
 
     for (const sourceReview of source.reviews) {
       const targetReview = await tx.review.findUnique({
