@@ -321,6 +321,13 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
     biblioteca.map((item) => [item.bookId, item]),
   );
 
+  const hiddenSeriesIds = new Set(
+    (await prisma.hiddenUserSeries.findMany({
+      where: { userId: user.id },
+      select: { seriesId: true },
+    })).map(({ seriesId }) => seriesId),
+  );
+
   // Overrides de tomos (LEIDO_EXTERNO / OMITIDO)
   const overridesRaw = await prisma.seriesBookOverride.findMany({
     where: { userId: user?.id ?? '' },
@@ -340,7 +347,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
   const seriesPersonales = new Map<string, SeriePersonal>();
 
   for (const item of biblioteca) {
-    if (item.book.series) {
+    if (item.book.series && !hiddenSeriesIds.has(item.book.series.id)) {
       const key = canonicalBookTitle(item.book.series.name);
       const current = seriesPersonales.get(key);
       if (!current) {

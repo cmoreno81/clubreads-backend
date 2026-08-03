@@ -138,6 +138,7 @@ export async function getGeneralDashboard(userId: string) {
     seriesLibrary,
     communityFormats,
     latestBooks,
+    hiddenSeries,
   ] =
     await Promise.all([
       prisma.user.findUnique({
@@ -276,6 +277,10 @@ export async function getGeneralDashboard(userId: string) {
           genre: true,
         },
       }),
+      prisma.hiddenUserSeries.findMany({
+        where: { userId },
+        select: { seriesId: true },
+      }),
     ]);
 
   if (!user) return null;
@@ -394,8 +399,9 @@ export async function getGeneralDashboard(userId: string) {
     (typeof seriesLibrary)[number]['book']['series']
   >;
   const personalSeries = new Map<string, PersonalSeries>();
+  const hiddenSeriesIds = new Set(hiddenSeries.map(({ seriesId }) => seriesId));
   for (const item of seriesLibrary) {
-    if (item.book.series) {
+    if (item.book.series && !hiddenSeriesIds.has(item.book.series.id)) {
       const key = canonicalBookTitle(item.book.series.name);
       const current = personalSeries.get(key);
       if (!current) {

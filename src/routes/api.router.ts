@@ -103,6 +103,8 @@ import {
 import { GoodreadsImportError } from '../services/goodreads-import.service.js';
 import { handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas } from '../controllers/notifications.controller.js';
 import { handleGetSeriesOverrides, handleRemoveSeriesOverride, handleSetSeriesOverride } from '../controllers/series-override.controller.js';
+import { handleHideSeries, handleShowSeries } from '../controllers/hidden-user-series.controller.js';
+import { HiddenUserSeriesError } from '../services/hidden-user-series.service.js';
 
 export const apiRouter = Router();
 
@@ -130,6 +132,8 @@ const POST_ONLY_ACTIONS = new Set([
   'actualizarEstadoEditorialSaga',
   'setSeriesOverride',
   'removeSeriesOverride',
+  'ocultarSaga',
+  'mostrarSaga',
   'previsualizarImportacionGoodreads',
   'confirmarImportacionGoodreads',
 ]);
@@ -240,6 +244,14 @@ async function handleApi(req: Request, res: Response) {
       case 'removeSeriesOverride':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleRemoveSeriesOverride(req, res);
+
+      case 'ocultarSaga':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleHideSeries(req, res);
+
+      case 'mostrarSaga':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleShowSeries(req, res);
 
       case 'notificaciones':
         if (!req.auth) return requireAuthentication(req, res, () => {});
@@ -482,7 +494,8 @@ async function handleApi(req: Request, res: Response) {
     if (
       error instanceof ClubContextError ||
       error instanceof AuthError ||
-      error instanceof GoodreadsImportError
+      error instanceof GoodreadsImportError ||
+      error instanceof HiddenUserSeriesError
     ) {
       return res.status(error.statusCode).json({
         ok: false,

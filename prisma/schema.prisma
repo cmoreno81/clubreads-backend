@@ -160,6 +160,7 @@ model Series {
 
   books     Book[]
   overrides SeriesBookOverride[]
+  hiddenBy  HiddenUserSeries[]
 }
 
 enum SeriesPublicationStatus {
@@ -288,6 +289,7 @@ model User {
   clubMemberships ClubMember[]
   notifications   Notification[]
   seriesOverrides SeriesBookOverride[]
+  hiddenSeries    HiddenUserSeries[]
   importRowReceipts ImportRowReceipt[]
 
   activeClubId String?
@@ -303,6 +305,22 @@ model User {
   authSessions    AuthSession[]
 
   @@index([activeClubId])
+}
+
+model HiddenUserSeries {
+  id String @id @default(cuid())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  seriesId String
+  series   Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, seriesId])
+  @@index([userId])
+  @@index([seriesId])
 }
 
 enum ImportSource {
