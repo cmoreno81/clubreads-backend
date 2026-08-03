@@ -72,24 +72,25 @@ async function getClubvisionNotice(clubs: DashboardClub[], now: Date) {
   const moment = getClubvisionNoticeMomentFor(now);
   if (!moment || clubs.length === 0) return null;
 
+  const existingEditions = await prisma.clubvision.findMany({
+    where: {
+      clubId: { in: clubs.map(({ id }) => id) },
+      edition: moment.edition,
+    },
+    select: {
+      clubId: true,
+      _count: { select: { candidates: true } },
+    },
+  });
+  const candidatesByClub = new Map(
+    existingEditions.map(({ clubId, _count }) => [clubId, _count.candidates]),
+  );
+
   const readyClubs = (
     await Promise.all(
       clubs.map(async (club) => {
-        const existing = await prisma.clubvision.findUnique({
-          where: {
-            clubId_edition: {
-              clubId: club.id,
-              edition: moment.edition,
-            },
-          },
-          select: {
-            _count: {
-              select: { candidates: true },
-            },
-          },
-        });
         const candidates =
-          existing?._count.candidates ??
+          candidatesByClub.get(club.id) ??
           (moment.type === 'GALA'
             ? 0
             : await eligibleClubvisionCandidates(club.id));
@@ -272,6 +273,7 @@ export async function getGeneralDashboard(userId: string) {
       prisma.book.findMany({
         where: { deletedAt: null },
         orderBy: { createdAt: 'desc' },
+        take: 100,
         include: {
           author: true,
           genre: true,
@@ -500,11 +502,15 @@ export async function getGeneralDashboard(userId: string) {
           ?.coverUrl?.trim() ||
         books.find((book) => Boolean(book.coverUrl?.trim()))?.coverUrl?.trim() ||
         '';
+      const estado = (read > 0 || hasActiveReading
+        ? 'EN_CURSO'
+        : 'PENDIENTE') as 'EN_CURSO' | 'PENDIENTE';
       return {
         id: series.id,
         nombre: series.name,
         leidos: read,
         total,
+        estado,
         estadoEditorial: series.publicationStatus,
         iniciada: read > 0 || hasActiveReading,
         coverUrl: representativeCover,
@@ -512,7 +518,7 @@ export async function getGeneralDashboard(userId: string) {
           ? {
               id: next.id,
               titulo: next.title,
-              coverUrl: next.coverUrl ?? '',
+              coverUrl: next.coverUrl?.trim() || representativeCover,
               enMiBiblioteca: libraryByBookId.has(next.id),
             }
           : null,
@@ -520,11 +526,16 @@ export async function getGeneralDashboard(userId: string) {
     })
     .filter(
       (series) =>
-        series.iniciada &&
         series.estadoEditorial !== 'COMPLETED' &&
         series.leidos < series.total,
     )
-    .sort((left, right) => right.leidos - left.leidos)
+    .sort((left, right) => {
+      const priority = { EN_CURSO: 0, PENDIENTE: 1 } as const;
+      const byStatus = priority[left.estado] - priority[right.estado];
+      return byStatus !== 0
+        ? byStatus
+        : left.nombre.localeCompare(right.nombre, 'es');
+    })
     .slice(0, 6);
   let streak = 0;
   const cursor = new Date(

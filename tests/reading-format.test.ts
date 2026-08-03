@@ -94,6 +94,7 @@ test('leer el primer volumen convierte la saga en empezada y en curso', () => {
   );
   assert.match(
     dashboardService,
-    /series\.iniciada[\s\S]*series\.estadoEditorial !== 'COMPLETED'[\s\S]*series\.leidos < series\.total/,
+    /const estado = \(read > 0 \|\| hasActiveReading[\s\S]*'EN_CURSO'[\s\S]*'PENDIENTE'/,
   );
+  assert.match(dashboardService, /priority = \{ EN_CURSO: 0, PENDIENTE: 1 \}/);
 });

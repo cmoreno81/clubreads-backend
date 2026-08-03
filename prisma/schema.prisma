@@ -512,6 +512,7 @@ model Library {
   @@index([status])
   @@index([userId, status])
   @@index([userId, bookId])
+  @@index([bookId, status])
 }
 
 model ProgressReaction {
@@ -587,6 +588,7 @@ model Reading {
 
   @@index([clubId, status])
   @@index([clubId, bookId, status])
+  @@index([clubId, type, status])
 }
 
 model Conversation {

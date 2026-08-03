@@ -21,6 +21,7 @@ const MAX_CODES_PER_HOUR = 5;
 const MAX_CODE_ATTEMPTS = 5;
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const CONCURRENT_REFRESH_WINDOW_MS = 10_000;
 const GENERIC_CODE_RESPONSE = {
   ok: true,
   mensaje:
@@ -484,16 +485,38 @@ export async function login(emailValue: string, password: string) {
 }
 
 export async function refreshSession(refreshToken: string) {
-  const tokenHash = hashRefreshToken(refreshToken.trim());
+  const normalizedToken = refreshToken.trim();
+  const tokenHash = hashRefreshToken(normalizedToken);
   const session = await prisma.authSession.findUnique({
     where: { refreshTokenHash: tokenHash },
   });
 
-  if (
-    !session ||
-    session.revokedAt ||
-    session.expiresAt <= new Date()
-  ) {
+  if (!session) {
+    const sessionId = normalizedToken.split('.', 1)[0];
+    const rotatedSession = sessionId
+      ? await prisma.authSession.findUnique({ where: { id: sessionId } })
+      : null;
+    if (
+      rotatedSession &&
+      !rotatedSession.revokedAt &&
+      rotatedSession.expiresAt > new Date() &&
+      Date.now() - rotatedSession.lastUsedAt.getTime() <=
+        CONCURRENT_REFRESH_WINDOW_MS
+    ) {
+      throw new AuthError(
+        'El token ya ha sido renovado por otra petición',
+        409,
+        'REFRESH_ALREADY_ROTATED',
+      );
+    }
+    throw new AuthError(
+      'La sesión ha caducado',
+      401,
+      'INVALID_REFRESH_TOKEN',
+    );
+  }
+
+  if (session.revokedAt || session.expiresAt <= new Date()) {
     throw new AuthError(
       'La sesión ha caducado',
       401,
@@ -516,9 +539,9 @@ export async function refreshSession(refreshToken: string) {
   });
   if (rotated.count !== 1) {
     throw new AuthError(
-      'La sesión ha caducado',
-      401,
-      'INVALID_REFRESH_TOKEN',
+      'El token ya ha sido renovado por otra petición',
+      409,
+      'REFRESH_ALREADY_ROTATED',
     );
   }
 

@@ -137,17 +137,25 @@ async function getOrCreateCurrentClubvision(
     });
 
     return clubvision;
-  });
+  }, { maxWait: 5_000, timeout: 15_000 });
 }
 
 export async function openScheduledClubvision() {
-  const clubs = await prisma.club.findMany();
+  const clubs = await prisma.club.findMany({ select: { id: true, name: true } });
   const synchronized = [];
 
   for (const club of clubs) {
-    synchronized.push(
-      await synchronizeCurrentClubvision('', club),
-    );
+    try {
+      synchronized.push(await synchronizeCurrentClubvision('', club as Club));
+    } catch (error) {
+      const calendar = getClubvisionCalendar();
+      console.error('clubvision_cron_failed', {
+        clubId: club.id,
+        edition: calendar.edition,
+        phase: getClubvisionStage(calendar.day, false),
+        error,
+      });
+    }
   }
 
   return synchronized;
@@ -255,7 +263,7 @@ async function calculateClubvisionResult(clubvision: {
     ).catch(console.error);
 
     return result;
-  });
+  }, { maxWait: 5_000, timeout: 15_000 });
 }
 
 export async function transitionClubvisionToReading(
@@ -362,14 +370,20 @@ export async function synchronizeCurrentClubvision(
   }
 
   if (stage === 'LECTURA' && result) {
-    const transition = await prisma.$transaction((tx) =>
-      transitionClubvisionToReading(tx, {
-        clubvisionId: clubvision.id,
-        clubId: clubvision.clubId,
-        edition: clubvision.edition,
-        winnerBookId: result?.winnerBookId ?? null,
-      }),
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    const transition = await prisma.$transaction(
+      (tx) =>
+        transitionClubvisionToReading(tx, {
+          clubvisionId: clubvision.id,
+          clubId: clubvision.clubId,
+          edition: clubvision.edition,
+          winnerBookId: result?.winnerBookId ?? null,
+        }),
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 15_000,
+      },
+    );
     // Solo la primera transición real RESULTADOS -> LECTURA notifica.
     if (
       transition.transitioned &&
@@ -692,7 +706,7 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
         },
       });
     }
-  });
+  }, { maxWait: 5_000, timeout: 15_000 });
 
   await synchronizeCurrentClubvision(usuario);
 
