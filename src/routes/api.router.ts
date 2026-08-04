@@ -45,6 +45,10 @@ import {
 } from '../controllers/readings.controller.js';
 
 import { handleRanking } from '../controllers/ranking.controller.js';
+import {
+  handleGetAchievements,
+  handleGetRecentClubAchievements,
+} from '../controllers/achievements.controller.js';
 
 import {
   handlePerfilUsuario,
@@ -473,6 +477,12 @@ async function handleApi(req: Request, res: Response) {
       case 'perfilUsuario':
         return handlePerfilUsuario(req, res);  
 
+      case 'achievements':
+        return handleGetAchievements(req, res);
+
+      case 'clubAchievementsRecent':
+        return handleGetRecentClubAchievements(req, res);
+
       case 'actualizarFechasLectura':
         return handleActualizarFechasLectura(req, res);
 
@@ -520,5 +530,7 @@ async function handleApi(req: Request, res: Response) {
 }
 
 apiRouter.use(authenticateOptional);
+apiRouter.get('/achievements', handleGetAchievements);
+apiRouter.get('/club/achievements/recent', handleGetRecentClubAchievements);
 apiRouter.get('/', handleApi);
 apiRouter.post('/', handleApi);
