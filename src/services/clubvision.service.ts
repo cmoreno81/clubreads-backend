@@ -1,10 +1,5 @@
 import type { Club } from '@prisma/client';
-import {
-  Prisma,
-  ReadingSessionStatus,
-  ReadingStatus,
-  ReadingType,
-} from '@prisma/client';
+import { ReadingStatus } from '@prisma/client';
 import {
   notifyClubvisionAbierta,
   notifyClubvisionResultados,
@@ -128,6 +123,12 @@ async function getOrCreateCurrentClubvision(
       },
     });
 
+    // Si no hay candidatas elegibles, no tiene sentido abrir la votación
+    if (eligibleCandidates.length === 0) {
+      // Cancelar la transacción devolviendo null — no se crea la edición
+      return null;
+    }
+
     await tx.clubvisionCandidate.createMany({
       data: eligibleCandidates.map((candidate) => ({
         clubvisionId: clubvision.id,
@@ -137,25 +138,17 @@ async function getOrCreateCurrentClubvision(
     });
 
     return clubvision;
-  }, { maxWait: 5_000, timeout: 15_000 });
+  });
 }
 
 export async function openScheduledClubvision() {
-  const clubs = await prisma.club.findMany({ select: { id: true, name: true } });
+  const clubs = await prisma.club.findMany();
   const synchronized = [];
 
   for (const club of clubs) {
-    try {
-      synchronized.push(await synchronizeCurrentClubvision('', club as Club));
-    } catch (error) {
-      const calendar = getClubvisionCalendar();
-      console.error('clubvision_cron_failed', {
-        clubId: club.id,
-        edition: calendar.edition,
-        phase: getClubvisionStage(calendar.day, false),
-        error,
-      });
-    }
+    synchronized.push(
+      await synchronizeCurrentClubvision('', club),
+    );
   }
 
   return synchronized;
@@ -263,74 +256,7 @@ async function calculateClubvisionResult(clubvision: {
     ).catch(console.error);
 
     return result;
-  }, { maxWait: 5_000, timeout: 15_000 });
-}
-
-export async function transitionClubvisionToReading(
-  tx: Prisma.TransactionClient,
-  params: {
-    clubvisionId: string;
-    clubId: string;
-    edition: string;
-    winnerBookId: string | null;
-  },
-) {
-  await tx.$queryRaw`
-    SELECT pg_advisory_xact_lock(
-      hashtextextended(${`clubvision:reading:${params.clubId}:${params.edition}`}, 0)
-    )::text
-  `;
-  await tx.$queryRaw`
-    SELECT "id" FROM "Clubvision"
-    WHERE "id" = ${params.clubvisionId}
-    FOR UPDATE
-  `;
-  const current = await tx.clubvision.findUnique({
-    where: { id: params.clubvisionId },
-    select: { status: true },
   });
-  if (current?.status !== 'RESULTADOS') {
-    return { transitioned: false, officialReadingId: null };
-  }
-
-  const winnerReading = params.winnerBookId
-    ? await tx.reading.findFirst({
-        where: {
-          clubId: params.clubId,
-          bookId: params.winnerBookId,
-          status: ReadingSessionStatus.ACTIVE,
-        },
-        orderBy: [{ startedAt: 'asc' }, { id: 'asc' }],
-        select: { id: true, type: true },
-      })
-    : null;
-
-  await tx.reading.updateMany({
-    where: {
-      clubId: params.clubId,
-      status: ReadingSessionStatus.ACTIVE,
-      type: ReadingType.CLUBVISION,
-      ...(winnerReading ? { id: { not: winnerReading.id } } : {}),
-    },
-    data: { type: ReadingType.FREE },
-  });
-  if (winnerReading?.type === ReadingType.FREE) {
-    await tx.reading.update({
-      where: { id: winnerReading.id },
-      data: { type: ReadingType.CLUBVISION },
-    });
-  }
-  await tx.clubvision.update({
-    where: { id: params.clubvisionId },
-    data: {
-      status: 'LECTURA',
-      winnerBookId: params.winnerBookId,
-    },
-  });
-  return {
-    transitioned: true,
-    officialReadingId: winnerReading?.id ?? null,
-  };
 }
 
 export async function synchronizeCurrentClubvision(
@@ -370,31 +296,19 @@ export async function synchronizeCurrentClubvision(
   }
 
   if (stage === 'LECTURA' && result) {
-    const transition = await prisma.$transaction(
-      (tx) =>
-        transitionClubvisionToReading(tx, {
-          clubvisionId: clubvision.id,
-          clubId: clubvision.clubId,
-          edition: clubvision.edition,
-          winnerBookId: result?.winnerBookId ?? null,
-        }),
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        maxWait: 5_000,
-        timeout: 15_000,
+    await prisma.clubvision.update({
+      where: { id: clubvision.id },
+      data: {
+        status: 'LECTURA',
+        winnerBookId: result.winnerBookId,
       },
-    );
-    // Solo la primera transición real RESULTADOS -> LECTURA notifica.
-    if (
-      transition.transitioned &&
-      result.winnerBookId &&
-      result.winnerTitle
-    ) {
+    });
+    // Notificar inicio de lectura
+    if (result.winnerBookId && result.winnerTitle) {
       notifyLecturaNueva(
         clubvision.clubId,
         result.winnerTitle,
         result.winnerBookId,
-        transition.officialReadingId,
       ).catch(console.error);
     }
   }
@@ -435,9 +349,22 @@ export async function getClubvision(usuario: string) {
   });
 
   if (!clubvision) {
+    // Comprobar si es porque no hay candidatas (ningún libro con ≥2 interesadas)
+    const totalPendientes = await prisma.library.groupBy({
+      by: ['bookId'],
+      where: {
+        status: ReadingStatus.PENDING,
+        user: { clubMemberships: { some: { clubId: club.id } } },
+      },
+      _count: { userId: true },
+      having: { userId: { _count: { gte: 2 } } },
+    });
+
+    const sinCandidatas = totalPendientes.length === 0;
+
     return {
       abierta: false,
-      estado: 'SIN_DATOS',
+      estado: sinCandidatas ? 'SIN_CANDIDATAS' : 'SIN_DATOS',
       idVotacion,
       haVotado: false,
       candidatas: [],
@@ -445,11 +372,16 @@ export async function getClubvision(usuario: string) {
       totalUsuarios,
       votosPendientes: totalUsuarios,
       porcentaje: 0,
-      titulo: 'Clubvisión',
-      mensaje: 'Sin información',
+      titulo: sinCandidatas ? '📚 Sin candidatas' : 'Clubvisión',
+      mensaje: sinCandidatas
+        ? 'Aún no hay libros con suficiente interés para votar'
+        : 'Sin información',
       ganador: '',
+      ganadorCoverUrl: '',
+      lecturaConfigurada: false,
       lectoras: [],
       totalCandidatas: 0,
+      portadasCandidatas: [],
       comentarios: 0,
       likes: 0,
       ultimaActividad: '',
@@ -707,7 +639,7 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
         },
       });
     }
-  }, { maxWait: 5_000, timeout: 15_000 });
+  });
 
   await synchronizeCurrentClubvision(usuario);
 

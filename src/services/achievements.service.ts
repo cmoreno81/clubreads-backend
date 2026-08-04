@@ -1,5 +1,4 @@
 import { ReadingStatus } from '@prisma/client';
-
 import { prisma } from '../prisma.js';
 
 export interface AchievementDefinition {
@@ -8,7 +7,7 @@ export interface AchievementDefinition {
   title: string;
   description: string;
   icon: string;
-  rarity: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
   target: number;
   category: string;
 }
@@ -19,384 +18,296 @@ export interface AchievementState extends AchievementDefinition {
   unlockedAt: Date | null;
 }
 
-interface CompletedBookStats {
-  id: string;
-  bookId: string;
-  finishedAt: Date | null;
-  genreName?: string | null;
-}
-
-interface CompletedSeriesStats {
-  id: string;
-  completedAt: Date | null;
-}
-
-interface ReviewStats {
-  createdAt: Date | null;
-}
-
 interface AchievementData {
-  completedBooks: CompletedBookStats[];
-  completedSeries: CompletedSeriesStats[];
-  reviews: ReviewStats[];
+  completedBooks: Array<{ bookId: string; finishedAt: Date | null; genreName?: string | null; pages?: number | null }>;
+  completedSeries: Array<{ id: string; completedAt: Date | null }>;
+  reviews: Array<{ createdAt: Date | null }>;
+  comments: number;
+  clubvisionVotes: number;
+  totalPages: number;
+  genreCounts: Map<string, number>;
+  booksThisMonth: number;
+  booksThisYear: number;
+  abandonedBooks: number;
 }
 
 export function buildAchievementDefinitions(): AchievementDefinition[] {
   return [
-    {
-      id: 'primer-libro',
-      key: 'primer-libro',
-      title: 'Primer libro',
-      description: 'Completa tu primera lectura.',
-      icon: '📚',
-      rarity: 'common',
-      target: 1,
-      category: 'books',
-    },
-    {
-      id: 'diez-libros',
-      key: 'diez-libros',
-      title: '10 libros leídos',
-      description: 'Alcanza diez libros finalizados.',
-      icon: '📖',
-      rarity: 'rare',
-      target: 10,
-      category: 'books',
-    },
-    {
-      id: 'maestra-de-sagas',
-      key: 'maestra-de-sagas',
-      title: 'Maestra de sagas',
-      description: 'Completa una saga entera.',
-      icon: '🌀',
-      rarity: 'epic',
-      target: 1,
-      category: 'series',
-    },
-    {
-      id: 'romance-addict',
-      key: 'romance-addict',
-      title: 'Romance addict',
-      description: 'Completa tres libros de romance.',
-      icon: '💘',
-      rarity: 'rare',
-      target: 3,
-      category: 'genres',
-    },
-    {
-      id: 'primera-resena',
-      key: 'primera-resena',
-      title: 'Primera reseña',
-      description: 'Escribe tu primera reseña.',
-      icon: '✍️',
-      rarity: 'common',
-      target: 1,
-      category: 'reviews',
-    },
+    // ── 📚 LECTORA ──
+    { id: 'primer-libro', key: 'primer-libro', title: 'Primer libro', description: 'Completa tu primera lectura.', icon: '📖', rarity: 'common', target: 1, category: 'lectora' },
+    { id: 'cinco-libros', key: 'cinco-libros', title: 'Lectora en marcha', description: 'Llega a 5 libros terminados.', icon: '📚', rarity: 'common', target: 5, category: 'lectora' },
+    { id: 'diez-libros', key: 'diez-libros', title: 'Lectora habitual', description: 'Alcanza 10 libros finalizados.', icon: '🔟', rarity: 'common', target: 10, category: 'lectora' },
+    { id: 'veinticinco-libros', key: 'veinticinco-libros', title: 'Voraz lectora', description: '25 libros en tu historial.', icon: '🌟', rarity: 'rare', target: 25, category: 'lectora' },
+    { id: 'cincuenta-libros', key: 'cincuenta-libros', title: 'Biblióvora', description: '50 libros completados.', icon: '🏆', rarity: 'epic', target: 50, category: 'lectora' },
+    { id: 'cien-libros', key: 'cien-libros', title: 'Centenaria lectora', description: '100 libros. Una hazaña.', icon: '💯', rarity: 'legendary', target: 100, category: 'lectora' },
+
+    // ── 📄 PÁGINAS ──
+    { id: 'mil-paginas', key: 'mil-paginas', title: 'Mil páginas', description: 'Supera las 1.000 páginas leídas.', icon: '📄', rarity: 'common', target: 1000, category: 'paginas' },
+    { id: 'cinco-mil-paginas', key: 'cinco-mil-paginas', title: 'Lectora resistente', description: '5.000 páginas en tu contador.', icon: '📃', rarity: 'rare', target: 5000, category: 'paginas' },
+    { id: 'diez-mil-paginas', key: 'diez-mil-paginas', title: 'Maratoniana de páginas', description: 'Has leído 10.000 páginas.', icon: '📜', rarity: 'epic', target: 10000, category: 'paginas' },
+    { id: 'cincuenta-mil-paginas', key: 'cincuenta-mil-paginas', title: 'Leyenda de las páginas', description: '50.000 páginas. Épico.', icon: '🗺️', rarity: 'legendary', target: 50000, category: 'paginas' },
+
+    // ── 🌀 SAGAS ──
+    { id: 'primera-saga', key: 'primera-saga', title: 'Saga completada', description: 'Termina tu primera saga.', icon: '🌀', rarity: 'rare', target: 1, category: 'sagas' },
+    { id: 'tres-sagas', key: 'tres-sagas', title: 'Maestra de sagas', description: 'Completa 3 sagas.', icon: '💫', rarity: 'epic', target: 3, category: 'sagas' },
+    { id: 'cinco-sagas', key: 'cinco-sagas', title: 'Coleccionista de sagas', description: '5 sagas completas en tu haber.', icon: '🌌', rarity: 'legendary', target: 5, category: 'sagas' },
+
+    // ── 🎭 GÉNEROS ──
+    { id: 'romance-addict', key: 'romance-addict', title: 'Romance addict', description: '10 libros de Romance.', icon: '💗', rarity: 'rare', target: 10, category: 'generos' },
+    { id: 'fantasia-forever', key: 'fantasia-forever', title: 'Guardiana de mundos', description: '10 libros de Fantasía.', icon: '🧙', rarity: 'rare', target: 10, category: 'generos' },
+    { id: 'thriller-queen', key: 'thriller-queen', title: 'Thriller queen', description: '5 libros de Thriller.', icon: '🔪', rarity: 'rare', target: 5, category: 'generos' },
+    { id: 'dark-romance', key: 'dark-romance', title: 'Dark side', description: '5 libros de Dark Romance.', icon: '🖤', rarity: 'rare', target: 5, category: 'generos' },
+    { id: 'exploradora-generos', key: 'exploradora-generos', title: 'Exploradora', description: 'Lee libros de 5 géneros distintos.', icon: '🗺️', rarity: 'epic', target: 5, category: 'generos' },
+
+    // ── ✍️ RESEÑAS ──
+    { id: 'primera-resena', key: 'primera-resena', title: 'Primera reseña', description: 'Escribe tu primera reseña.', icon: '✍️', rarity: 'common', target: 1, category: 'resenas' },
+    { id: 'diez-resenas', key: 'diez-resenas', title: 'Crítica literaria', description: '10 reseñas escritas.', icon: '📝', rarity: 'rare', target: 10, category: 'resenas' },
+    { id: 'veinticinco-resenas', key: 'veinticinco-resenas', title: 'Pluma incansable', description: '25 reseñas en tu historial.', icon: '🖊️', rarity: 'epic', target: 25, category: 'resenas' },
+
+    // ── 💬 CLUB ──
+    { id: 'primer-comentario', key: 'primer-comentario', title: 'Primera voz', description: 'Comenta por primera vez en una lectura.', icon: '💬', rarity: 'common', target: 1, category: 'club' },
+    { id: 'diez-comentarios', key: 'diez-comentarios', title: 'Voz del club', description: '10 comentarios en lecturas.', icon: '🗣️', rarity: 'rare', target: 10, category: 'club' },
+    { id: 'cincuenta-comentarios', key: 'cincuenta-comentarios', title: 'Alma del club', description: '50 comentarios. La más activa.', icon: '🎤', rarity: 'epic', target: 50, category: 'club' },
+
+    // ── 🗳️ CLUBVISIÓN ──
+    { id: 'primer-voto', key: 'primer-voto', title: 'Primera votante', description: 'Participa en tu primera Clubvisión.', icon: '🗳️', rarity: 'common', target: 1, category: 'clubvision' },
+    { id: 'cinco-votos', key: 'cinco-votos', title: 'Votante fiel', description: '5 participaciones en Clubvisión.', icon: '🏛️', rarity: 'rare', target: 5, category: 'clubvision' },
+    { id: 'diez-votos', key: 'diez-votos', title: 'Electora veterana', description: '10 votaciones en Clubvisión.', icon: '👑', rarity: 'epic', target: 10, category: 'clubvision' },
+
+    // ── 🔥 CONSTANCIA ──
+    { id: 'tres-en-mes', key: 'tres-en-mes', title: 'Mes intenso', description: '3 libros en un mismo mes.', icon: '🔥', rarity: 'rare', target: 3, category: 'constancia' },
+    { id: 'cinco-en-mes', key: 'cinco-en-mes', title: 'Maratoniana', description: '5 libros en un mes.', icon: '⚡', rarity: 'epic', target: 5, category: 'constancia' },
+    { id: 'diez-en-anio', key: 'diez-en-anio', title: 'Gran año lector', description: '10 libros en un año.', icon: '🗓️', rarity: 'rare', target: 10, category: 'constancia' },
+    { id: 'veinte-en-anio', key: 'veinte-en-anio', title: 'Año legendario', description: '20 libros en un solo año.', icon: '🏅', rarity: 'legendary', target: 20, category: 'constancia' },
   ];
 }
 
 function getUnlockDate(dates: Array<Date | null>, target: number) {
   const validDates = dates
     .filter((date): date is Date => Boolean(date))
-    .sort((left, right) => left.getTime() - right.getTime());
-
-  if (validDates.length < target) {
-    return null;
-  }
-
-  return validDates[target - 1] ?? null;
+    .sort((l, r) => l.getTime() - r.getTime());
+  return validDates.length >= target ? (validDates[target - 1] ?? null) : null;
 }
 
 export function buildAchievementState(
   definitions: AchievementDefinition[],
   data: AchievementData,
 ): AchievementState[] {
-  return definitions.map((definition) => {
+  return definitions.map((def) => {
     let progress = 0;
     let unlockedAt: Date | null = null;
 
-    switch (definition.key) {
-      case 'primer-libro': {
-        const finishedDates = data.completedBooks.map((book) => book.finishedAt);
+    switch (def.key) {
+      case 'primer-libro':
+      case 'cinco-libros':
+      case 'diez-libros':
+      case 'veinticinco-libros':
+      case 'cincuenta-libros':
+      case 'cien-libros':
         progress = data.completedBooks.length;
-        unlockedAt = getUnlockDate(finishedDates, 1);
+        unlockedAt = getUnlockDate(data.completedBooks.map(b => b.finishedAt), def.target);
         break;
-      }
-      case 'diez-libros': {
-        const finishedDates = data.completedBooks.map((book) => book.finishedAt);
-        progress = data.completedBooks.length;
-        unlockedAt = getUnlockDate(finishedDates, 10);
+
+      case 'mil-paginas':
+      case 'cinco-mil-paginas':
+      case 'diez-mil-paginas':
+      case 'cincuenta-mil-paginas':
+        progress = data.totalPages;
         break;
-      }
-      case 'maestra-de-sagas': {
+
+      case 'primera-saga':
+      case 'tres-sagas':
+      case 'cinco-sagas':
         progress = data.completedSeries.length;
-        unlockedAt = getUnlockDate(
-          data.completedSeries.map((series) => series.completedAt),
-          1,
-        );
+        unlockedAt = getUnlockDate(data.completedSeries.map(s => s.completedAt), def.target);
         break;
-      }
-      case 'romance-addict': {
-        progress = data.completedBooks.filter(
-          (book) => book.genreName?.toLowerCase() === 'romance',
-        ).length;
-        unlockedAt = getUnlockDate(
-          data.completedBooks
-            .filter(
-              (book) => book.genreName?.toLowerCase() === 'romance',
-            )
-            .map((book) => book.finishedAt),
-          3,
-        );
+
+      case 'romance-addict':
+        progress = data.genreCounts.get('romance') ?? 0;
         break;
-      }
-      case 'primera-resena': {
+      case 'fantasia-forever':
+        progress = data.genreCounts.get('fantasía') ?? data.genreCounts.get('fantasia') ?? 0;
+        break;
+      case 'thriller-queen':
+        progress = data.genreCounts.get('thriller') ?? 0;
+        break;
+      case 'dark-romance':
+        progress = data.genreCounts.get('dark romance') ?? 0;
+        break;
+      case 'exploradora-generos':
+        progress = data.genreCounts.size;
+        break;
+
+      case 'primera-resena':
+      case 'diez-resenas':
+      case 'veinticinco-resenas':
         progress = data.reviews.length;
-        unlockedAt = getUnlockDate(
-          data.reviews.map((review) => review.createdAt),
-          1,
-        );
+        unlockedAt = getUnlockDate(data.reviews.map(r => r.createdAt), def.target);
         break;
-      }
-      default:
+
+      case 'primer-comentario':
+      case 'diez-comentarios':
+      case 'cincuenta-comentarios':
+        progress = data.comments;
+        break;
+
+      case 'primer-voto':
+      case 'cinco-votos':
+      case 'diez-votos':
+        progress = data.clubvisionVotes;
+        break;
+
+      case 'tres-en-mes':
+        progress = data.booksThisMonth;
+        break;
+      case 'cinco-en-mes':
+        progress = data.booksThisMonth;
+        break;
+      case 'diez-en-anio':
+      case 'veinte-en-anio':
+        progress = data.booksThisYear;
         break;
     }
 
-    const unlocked = progress >= definition.target;
-
-    return {
-      ...definition,
-      progress,
-      unlocked,
-      unlockedAt: unlocked ? unlockedAt : null,
-    };
+    const unlocked = progress >= def.target;
+    return { ...def, progress, unlocked, unlockedAt: unlocked ? unlockedAt : null };
   });
 }
+
+// ─── Data fetching ───────────────────────────────────────────────
 
 async function getCompletedBooksForUser(userId: string) {
   const completions = await prisma.readingCompletion.findMany({
     where: { userId },
     select: {
-      id: true,
-      bookId: true,
-      finishedAt: true,
-      book: {
-        select: {
-          genre: {
-            select: { name: true },
-          },
-        },
-      },
+      id: true, bookId: true, finishedAt: true,
+      book: { select: { genre: { select: { name: true } }, pages: true } },
     },
     orderBy: { finishedAt: 'asc' },
   });
 
-  const completionMap = new Map(completions.map((item) => [item.bookId, item]));
+  const books = new Map<string, { bookId: string; finishedAt: Date | null; genreName?: string | null; pages?: number | null }>();
+
+  for (const c of completions) {
+    books.set(c.bookId, {
+      bookId: c.bookId, finishedAt: c.finishedAt,
+      genreName: c.book.genre?.name, pages: c.book.pages,
+    });
+  }
 
   const libraries = await prisma.library.findMany({
-    where: {
-      userId,
-      status: ReadingStatus.FINISHED,
-    },
+    where: { userId, status: ReadingStatus.FINISHED },
     select: {
-      bookId: true,
-      finishedAt: true,
-      updatedAt: true,
-      book: {
-        select: {
-          genre: {
-            select: { name: true },
-          },
-        },
-      },
+      bookId: true, finishedAt: true, updatedAt: true,
+      book: { select: { genre: { select: { name: true } }, pages: true } },
     },
-    orderBy: { finishedAt: 'asc' },
   });
-
-  const books = new Map<string, CompletedBookStats>();
-
-  for (const completion of completions) {
-    books.set(completion.bookId, {
-      id: completion.id,
-      bookId: completion.bookId,
-      finishedAt: completion.finishedAt,
-      genreName: completion.book.genre.name,
-    });
-  }
 
   for (const item of libraries) {
-    if (books.has(item.bookId)) {
-      continue;
-    }
-
-    books.set(item.bookId, {
-      id: item.bookId,
-      bookId: item.bookId,
-      finishedAt: item.finishedAt ?? item.updatedAt,
-      genreName: item.book.genre.name,
-    });
-  }
-
-  return Array.from(books.values()).sort(
-    (left, right) => {
-      const leftTime = left.finishedAt?.getTime() ?? Number.POSITIVE_INFINITY;
-      const rightTime = right.finishedAt?.getTime() ?? Number.POSITIVE_INFINITY;
-      return leftTime - rightTime;
-    },
-  );
-}
-
-async function getCompletedSeriesForUser(userId: string, completedBooks: CompletedBookStats[]) {
-  const completedBookIds = new Set(completedBooks.map((book) => book.bookId));
-
-  const series = await prisma.series.findMany({
-    where: { publicationStatus: 'COMPLETED' },
-    select: {
-      id: true,
-      books: {
-        select: {
-          id: true,
-        },
-      },
-    },
-  });
-
-  const completedSeries: CompletedSeriesStats[] = [];
-
-  for (const seriesItem of series) {
-    if (!seriesItem.books.length) {
-      continue;
-    }
-
-    const hasAllBooks = seriesItem.books.every((book) => completedBookIds.has(book.id));
-
-    if (!hasAllBooks) {
-      continue;
-    }
-
-    const relevantDates = completedBooks
-      .filter((book) => seriesItem.books.some((seriesBook) => seriesBook.id === book.bookId))
-      .map((book) => book.finishedAt)
-      .filter((date): date is Date => Boolean(date));
-
-    completedSeries.push({
-      id: seriesItem.id,
-      completedAt: relevantDates.length
-        ? relevantDates.sort((left, right) => left.getTime() - right.getTime()).at(-1) ?? null
-        : null,
-    });
-  }
-
-  return completedSeries.sort((left, right) => {
-    const leftTime = left.completedAt?.getTime() ?? Number.POSITIVE_INFINITY;
-    const rightTime = right.completedAt?.getTime() ?? Number.POSITIVE_INFINITY;
-    return leftTime - rightTime;
-  });
-}
-
-async function getReviewsForUser(userId: string) {
-  const reviews = await prisma.review.findMany({
-    where: {
-      userId,
-      deletedAt: null,
-    },
-    select: {
-      createdAt: true,
-    },
-    orderBy: { createdAt: 'asc' },
-  });
-
-  return reviews as ReviewStats[];
-}
-
-export async function getAchievementsForUser(userName: string) {
-  const normalizedUserName = userName.trim();
-
-  if (!normalizedUserName) {
-    return {
-      ok: false,
-      mensaje: 'Falta el nombre de la usuaria',
-    };
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { name: normalizedUserName },
-    select: { id: true, name: true },
-  });
-
-  if (!user) {
-    return {
-      ok: false,
-      mensaje: 'Usuaria no encontrada',
-    };
-  }
-
-  const completedBooks = await getCompletedBooksForUser(user.id);
-  const completedSeries = await getCompletedSeriesForUser(user.id, completedBooks);
-  const reviews = await getReviewsForUser(user.id);
-
-  const definitions = buildAchievementDefinitions();
-  const achievements = buildAchievementState(definitions, {
-    completedBooks,
-    completedSeries,
-    reviews,
-  });
-
-  return {
-    ok: true,
-    user: user.name,
-    achievements,
-  };
-}
-
-export async function getRecentClubAchievements(userName?: string) {
-  const { club } = await import('./club-context.service.js').then((module) => module.getCurrentClubContext(userName));
-
-  const members = await prisma.clubMember.findMany({
-    where: { clubId: club.id },
-    select: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
-    orderBy: { joinedAt: 'asc' },
-  });
-
-  const unlocks: Array<{
-    userId: string;
-    user: string;
-    unlockedAt: Date;
-  } & AchievementState> = [];
-
-  for (const member of members) {
-    const data = await getAchievementsForUser(member.user.name);
-    if (!data.ok || !Array.isArray(data.achievements)) {
-      continue;
-    }
-
-    for (const achievement of data.achievements) {
-      if (!achievement.unlocked || !achievement.unlockedAt) {
-        continue;
-      }
-
-      unlocks.push({
-        ...achievement,
-        userId: member.user.id,
-        user: member.user.name,
-        unlockedAt: achievement.unlockedAt,
+    if (!books.has(item.bookId)) {
+      books.set(item.bookId, {
+        bookId: item.bookId, finishedAt: item.finishedAt ?? item.updatedAt,
+        genreName: item.book.genre?.name, pages: item.book.pages,
       });
     }
   }
 
-  unlocks.sort((left, right) => right.unlockedAt.getTime() - left.unlockedAt.getTime());
+  return [...books.values()].sort((a, b) =>
+    (a.finishedAt?.getTime() ?? Infinity) - (b.finishedAt?.getTime() ?? Infinity));
+}
 
-  return {
-    ok: true,
-    club: club.name,
-    achievements: unlocks.slice(0, 20),
-  };
+async function getCompletedSeriesForUser(userId: string, completedBooks: Array<{ bookId: string; finishedAt: Date | null }>) {
+  const completedBookIds = new Set(completedBooks.map(b => b.bookId));
+  const series = await prisma.series.findMany({
+    where: { publicationStatus: 'COMPLETED' },
+    select: { id: true, books: { select: { id: true } } },
+  });
+
+  const result: Array<{ id: string; completedAt: Date | null }> = [];
+  for (const s of series) {
+    if (!s.books.length) continue;
+    if (!s.books.every(b => completedBookIds.has(b.id))) continue;
+    const dates = completedBooks
+      .filter(b => s.books.some(sb => sb.id === b.bookId))
+      .map(b => b.finishedAt)
+      .filter((d): d is Date => Boolean(d))
+      .sort((a, b) => a.getTime() - b.getTime());
+    result.push({ id: s.id, completedAt: dates.at(-1) ?? null });
+  }
+  return result;
+}
+
+export async function getAchievementsForUser(userName: string) {
+  const user = await prisma.user.findUnique({
+    where: { name: userName.trim() }, select: { id: true, name: true },
+  });
+  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+
+  const completedBooks = await getCompletedBooksForUser(user.id);
+  const completedSeries = await getCompletedSeriesForUser(user.id, completedBooks);
+
+  const reviews = await prisma.review.findMany({
+    where: { userId: user.id, deletedAt: null },
+    select: { createdAt: true }, orderBy: { createdAt: 'asc' },
+  });
+
+  const comments = await prisma.comment.count({ where: { userId: user.id } });
+
+  const clubvisionVotes = await prisma.clubvisionVote.count({ where: { userId: user.id } });
+
+  const totalPages = completedBooks.reduce((sum, b) => sum + (b.pages ?? 0), 0);
+
+  const genreCounts = new Map<string, number>();
+  for (const b of completedBooks) {
+    if (!b.genreName) continue;
+    const key = b.genreName.toLowerCase().trim();
+    genreCounts.set(key, (genreCounts.get(key) ?? 0) + 1);
+  }
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const yearStart = new Date(now.getFullYear(), 0, 1);
+  const booksThisMonth = completedBooks.filter(b => b.finishedAt && b.finishedAt >= monthStart).length;
+  const booksThisYear = completedBooks.filter(b => b.finishedAt && b.finishedAt >= yearStart).length;
+
+  const definitions = buildAchievementDefinitions();
+  const achievements = buildAchievementState(definitions, {
+    completedBooks, completedSeries, reviews,
+    comments, clubvisionVotes, totalPages,
+    genreCounts, booksThisMonth, booksThisYear,
+    abandonedBooks: 0,
+  });
+
+  return { ok: true, user: user.name, achievements };
+}
+
+export async function getRecentClubAchievements(userName?: string) {
+  const { club } = await import('./club-context.service.js')
+    .then(m => m.getCurrentClubContext(userName));
+
+  const members = await prisma.clubMember.findMany({
+    where: { clubId: club.id },
+    select: { user: { select: { id: true, name: true, avatarUrl: true } } },
+  });
+
+  const unlocks: Array<AchievementState & { userId: string; user: string; avatarUrl: string; unlockedAt: Date }> = [];
+
+  for (const member of members) {
+    const data = await getAchievementsForUser(member.user.name);
+    if (!data.ok || !Array.isArray(data.achievements)) continue;
+
+    for (const ach of data.achievements) {
+      if (!ach.unlocked || !ach.unlockedAt) continue;
+      unlocks.push({
+        ...ach,
+        userId: member.user.id,
+        user: member.user.name,
+        avatarUrl: member.user.avatarUrl ?? '',
+        unlockedAt: ach.unlockedAt as Date,
+      });
+    }
+  }
+
+  unlocks.sort((a, b) => b.unlockedAt.getTime() - a.unlockedAt.getTime());
+  return { ok: true, club: club.name, achievements: unlocks.slice(0, 30) };
 }
