@@ -207,7 +207,6 @@ export function buildAchievementState(
       case 'diez-comentarios':
       case 'cincuenta-comentarios':
         progress = data.comments;
-        // comentarios no tienen fechas individuales en AchievementData — se marca hoy si supera target
         unlockedAt = progress >= def.target ? new Date() : null;
         break;
 
@@ -265,7 +264,8 @@ async function getCompletedBooksForUser(userId: string) {
     where: { userId },
     select: {
       id: true, bookId: true, finishedAt: true,
-book: { select: { genre: { select: { name: true } }, totalPages: true } },    },
+      book: { select: { genre: { select: { name: true } }, totalPages: true } },
+    },
     orderBy: { finishedAt: 'asc' },
   });
 
@@ -329,16 +329,30 @@ export async function getAchievementsForUser(userName: string) {
   });
   if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
 
-  const completedBooks = await getCompletedBooksForUser(user.id);
-  const completedSeries = await getCompletedSeriesForUser(user.id, completedBooks);
+  // ── Todo se mide en el año en curso ──
+  const now = new Date();
+  const yearStart = new Date(now.getFullYear(), 0, 1);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const allCompletedBooks = await getCompletedBooksForUser(user.id);
+  const completedBooks = allCompletedBooks.filter(
+    b => b.finishedAt && b.finishedAt >= yearStart,
+  );
+
+const completedSeries = await getCompletedSeriesForUser(user.id, allCompletedBooks);
 
   const reviews = await prisma.review.findMany({
-    where: { userId: user.id, deletedAt: null },
+    where: { userId: user.id, deletedAt: null, createdAt: { gte: yearStart } },
     select: { createdAt: true }, orderBy: { createdAt: 'asc' },
   });
 
-  const comments = await prisma.comment.count({ where: { userId: user.id } });
-  const clubvisionVotes = await prisma.clubvisionVote.count({ where: { userId: user.id } });
+  const comments = await prisma.comment.count({
+    where: { userId: user.id, createdAt: { gte: yearStart } },
+  });
+
+  const clubvisionVotes = await prisma.clubvisionVote.count({
+    where: { userId: user.id, createdAt: { gte: yearStart } },
+  });
 
   const totalPages = completedBooks.reduce((sum, b) => sum + (b.pages ?? 0), 0);
 
@@ -349,11 +363,10 @@ export async function getAchievementsForUser(userName: string) {
     genreCounts.set(key, (genreCounts.get(key) ?? 0) + 1);
   }
 
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const yearStart = new Date(now.getFullYear(), 0, 1);
-  const booksThisMonth = completedBooks.filter(b => b.finishedAt && b.finishedAt >= monthStart).length;
-  const booksThisYear = completedBooks.filter(b => b.finishedAt && b.finishedAt >= yearStart).length;
+  const booksThisMonth = completedBooks.filter(
+    b => b.finishedAt && b.finishedAt >= monthStart,
+  ).length;
+  const booksThisYear = completedBooks.length;
 
   const definitions = buildAchievementDefinitions();
   const achievements = buildAchievementState(definitions, {
