@@ -295,23 +295,26 @@ export async function synchronizeCurrentClubvision(
     result = await calculateClubvisionResult(clubvision);
   }
 
-  if (stage === 'LECTURA' && result) {
-    await prisma.clubvision.update({
-      where: { id: clubvision.id },
-      data: {
-        status: 'LECTURA',
-        winnerBookId: result.winnerBookId,
-      },
-    });
-    // Notificar inicio de lectura
-    if (result.winnerBookId && result.winnerTitle) {
-      notifyLecturaNueva(
-        clubvision.clubId,
-        result.winnerTitle,
-        result.winnerBookId,
-      ).catch(console.error);
-    }
+if (stage === 'LECTURA' && result) {
+  const yaEraLectura = clubvision.status === 'LECTURA';
+
+  await prisma.clubvision.update({
+    where: { id: clubvision.id },
+    data: {
+      status: 'LECTURA',
+      winnerBookId: result.winnerBookId,
+    },
+  });
+
+  // Solo notificar la primera vez que transiciona a LECTURA
+  if (!yaEraLectura && result.winnerBookId && result.winnerTitle) {
+    notifyLecturaNueva(
+      clubvision.clubId,
+      result.winnerTitle,
+      result.winnerBookId,
+    ).catch(console.error);
   }
+}
 
   return clubvision;
 }

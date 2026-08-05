@@ -158,9 +158,10 @@ model Series {
 
   publicationStatus SeriesPublicationStatus @default(UNKNOWN)
 
-  books     Book[]
-  overrides SeriesBookOverride[]
-  hiddenBy  HiddenUserSeries[]
+  books      Book[]
+  overrides  SeriesBookOverride[]
+  hiddenBy   HiddenUserSeries[]
+  userOrders UserSeriesOrder[]
 }
 
 enum SeriesPublicationStatus {
@@ -228,6 +229,7 @@ model Book {
   clubvisionCandidates ClubvisionCandidate[]
   clubvisionResults    ClubvisionResult[]    @relation("ClubvisionWinner")
   redirectsFrom        BookRedirect[]        @relation("CanonicalBookRedirect")
+  userSeriesOrders     UserSeriesOrder[]
 
   @@index([title])
   @@index([authorId])
@@ -238,7 +240,7 @@ model Book {
 }
 
 model BookRedirect {
-  oldBookId      String   @id
+  oldBookId       String   @id
   canonicalBookId String
   canonicalBook   Book     @relation("CanonicalBookRedirect", fields: [canonicalBookId], references: [id], onDelete: Restrict)
   reason          String?
@@ -285,11 +287,11 @@ model User {
 
   conversationReads ConversationRead[]
 
-  ownedClubs      Club[]       @relation("OwnedClubs")
-  clubMemberships ClubMember[]
-  notifications   Notification[]
-  seriesOverrides SeriesBookOverride[]
-  hiddenSeries    HiddenUserSeries[]
+  ownedClubs        Club[]               @relation("OwnedClubs")
+  clubMemberships   ClubMember[]
+  notifications     Notification[]
+  seriesOverrides   SeriesBookOverride[]
+  hiddenSeries      HiddenUserSeries[]
   importRowReceipts ImportRowReceipt[]
 
   activeClubId String?
@@ -303,6 +305,7 @@ model User {
   moodVotes       ClubMoodVote[]
   authCodes       AuthCode[]
   authSessions    AuthSession[]
+  seriesOrders    UserSeriesOrder[]
 
   @@index([activeClubId])
 }
@@ -311,7 +314,7 @@ model HiddenUserSeries {
   id String @id @default(cuid())
 
   userId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   seriesId String
   series   Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
@@ -486,7 +489,7 @@ model Library {
 
   status ReadingStatus
 
-  priority Priority @default(MEDIUM)
+  priority      Priority       @default(MEDIUM)
   readingFormat ReadingFormat?
 
   startedAt DateTime?
@@ -500,7 +503,7 @@ model Library {
   lastProgress Int?
   currentPage  Int?
 
-  progressNote      String?   @db.Text
+  progressNote      String?            @db.Text
   progressUpdatedAt DateTime?
   progressReactions ProgressReaction[]
 
@@ -522,7 +525,7 @@ model ProgressReaction {
   library   Library @relation(fields: [libraryId], references: [id], onDelete: Cascade)
 
   userId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   reaction ReactionType @default(LIKE)
 
@@ -541,11 +544,11 @@ model ReadingCompletion {
   bookId String
   book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
 
-  startedAt  DateTime?
-  finishedAt DateTime
-  isReread   Boolean   @default(false)
-  rating     Float?
-  review     String?   @db.Text
+  startedAt     DateTime?
+  finishedAt    DateTime
+  isReread      Boolean        @default(false)
+  rating        Float?
+  review        String?        @db.Text
   readingFormat ReadingFormat?
 
   createdAt DateTime @default(now())
@@ -643,8 +646,8 @@ model Comment {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
-  text String @db.Text
-  type String @default("COMMENT")
+  text  String  @db.Text
+  type  String  @default("COMMENT")
   color String?
 
   parentId String?
@@ -840,15 +843,15 @@ model Notification {
 // ─────────────────────────────────────────────
 
 enum SeriesBookOverrideType {
-  LEIDO_EXTERNO  // Lo he leído pero no está en ClubReads
-  OMITIDO        // No quiero leerlo (subsagas, spin-offs)
+  LEIDO_EXTERNO // Lo he leído pero no está en ClubReads
+  OMITIDO // No quiero leerlo (subsagas, spin-offs)
 }
 
 model SeriesBookOverride {
-  id       String @id @default(cuid())
+  id String @id @default(cuid())
 
-  userId   String
-  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   seriesId String
   series   Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
@@ -856,10 +859,35 @@ model SeriesBookOverride {
   // Posición del tomo en la saga (1, 2, 3...)
   posicion Int
 
-  tipo     SeriesBookOverrideType
+  tipo SeriesBookOverrideType
 
   createdAt DateTime @default(now())
 
+  @@unique([userId, seriesId, posicion])
+  @@index([userId, seriesId])
+}
+
+// prisma/schema.prisma — añadir al final, antes del último }
+
+model UserSeriesOrder {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  seriesId String
+  series   Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  // Posición visual que el usuario quiere para este libro en esta saga
+  posicion Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, seriesId, bookId])
   @@unique([userId, seriesId, posicion])
   @@index([userId, seriesId])
 }

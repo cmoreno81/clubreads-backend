@@ -12,7 +12,8 @@ import {
 import { getCurrentClubContext } from './club-context.service.js';
 import { formatToFlutter } from './books.service.js';
 import { canonicalBookTitle } from './catalog.service.js';
-
+// Añadir import al inicio de perfil.service.ts:
+import { getUserSeriesOrders } from './user-series-order.service.js';
 function fechaToFlutter(fecha?: Date | null) {
   if (!fecha) return '';
 
@@ -332,6 +333,9 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
   const overridesRaw = await prisma.seriesBookOverride.findMany({
     where: { userId: user?.id ?? '' },
   });
+
+  // Orden personal por usuario
+  const userSeriesOrders = await getUserSeriesOrders(user?.id ?? '');
   // Mapa: seriesId -> Map<posicion, tipo>
   const overridesBySeries = new Map<string, Map<number, string>>();
   for (const o of overridesRaw) {
@@ -446,6 +450,9 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
       });
       const volumes = books.map((book) => {
         const library = bibliotecaPorId.get(book.id);
+        // Posición: primero miramos si el usuario tiene un orden personal
+        const userOrderForSeries = userSeriesOrders.get(series.id);
+        const userPositionOverride = userOrderForSeries?.get(book.id);
         const posicionNum = datosNumeroSaga(book.seriesOrder).posicion;
         const override = posicionNum != null
           ? overridesBySeries.get(series.id)?.get(posicionNum)
@@ -468,7 +475,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
           bookId: book.id,
           titulo: book.title,
           numero: book.seriesOrder ?? '',
-          posicion: datosNumeroSaga(book.seriesOrder).posicion,
+          posicion: posicionNum, 
           coverUrl: book.coverUrl ?? '',
           estado: status,
         };

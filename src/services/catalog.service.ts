@@ -145,7 +145,12 @@ function localBook(book: {
   totalPages: number | null;
   author: { name: string } | null;
   genre: { name: string };
-  library: Array<{ userId: string; status: ReadingStatus }>;
+  library: Array<{
+    userId: string;
+    status: ReadingStatus;
+    startedAt: Date | null;
+    finishedAt: Date | null;
+  }>;
 }, userId: string) {
   const own = book.library.find((item) => item.userId === userId);
   return {
@@ -160,6 +165,8 @@ function localBook(book: {
     anioPublicacion: book.publicationYear,
     enMiBiblioteca: Boolean(own),
     estado: statusToFlutter(own?.status),
+    fechaInicio: own?.startedAt?.toISOString() ?? null,
+    fechaFin: own?.finishedAt?.toISOString() ?? null,
   };
 }
 

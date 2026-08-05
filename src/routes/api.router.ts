@@ -109,7 +109,7 @@ import { handleEliminarNotificacion, handleGetNotificaciones, handleMarcarLeida,
 import { handleGetSeriesOverrides, handleRemoveSeriesOverride, handleSetSeriesOverride } from '../controllers/series-override.controller.js';
 import { handleGetHiddenSeries, handleHideSeries, handleShowSeries } from '../controllers/hidden-user-series.controller.js';
 import { HiddenUserSeriesError } from '../services/hidden-user-series.service.js';
-
+import { handleSaveUserSeriesOrder } from '../controllers/user-series-order.controller.js';
 export const apiRouter = Router();
 
 const PUBLIC_AUTH_ACTIONS = new Set([
@@ -501,6 +501,10 @@ async function handleApi(req: Request, res: Response) {
       case 'marcarConversacionVista':
         return handleMarcarConversacionVista(req, res);  
 
+      case 'saveUserSeriesOrder':
+      if (!req.auth) return requireAuthentication(req, res, () => {});
+      return handleSaveUserSeriesOrder(req, res);  
+
       default:
         return res.status(400).json({
           error: 'Acción no válida',
@@ -534,3 +538,4 @@ apiRouter.get('/achievements', handleGetAchievements);
 apiRouter.get('/club/achievements/recent', handleGetRecentClubAchievements);
 apiRouter.get('/', handleApi);
 apiRouter.post('/', handleApi);
+apiRouter.post('/series/order', handleSaveUserSeriesOrder);

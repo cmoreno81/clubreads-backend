@@ -308,6 +308,16 @@ export async function getRecentClubAchievements(userName?: string) {
     }
   }
 
-  unlocks.sort((a, b) => b.unlockedAt.getTime() - a.unlockedAt.getTime());
-  return { ok: true, club: club.name, achievements: unlocks.slice(0, 30) };
+unlocks.sort((a, b) => b.unlockedAt.getTime() - a.unlockedAt.getTime());
+return {
+  ok: true,
+  club: club.name,
+  achievements: unlocks.slice(0, 30).map((u) => ({
+    userName: u.user,
+    avatarUrl: u.avatarUrl,
+    achievementTitle: u.title,
+    achievementIcon: u.icon,
+    unlockedAt: u.unlockedAt.toISOString(),
+  })),
+};
 }
