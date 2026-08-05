@@ -82,12 +82,13 @@ export function buildAchievementDefinitions(): AchievementDefinition[] {
   ];
 }
 
-function getUnlockDate(dates: Array<Date | null>, target: number) {
+function getUnlockDate(dates: Array<Date | null>, target: number): Date | null {
   const validDates = dates
     .filter((date): date is Date => Boolean(date))
     .sort((l, r) => l.getTime() - r.getTime());
   return validDates.length >= target ? (validDates[target - 1] ?? null) : null;
 }
+
 function getGenreUnlockDate(
   books: Array<{ finishedAt: Date | null; genreName?: string | null }>,
   genre: string,
@@ -113,6 +114,32 @@ function getExplorerUnlockDate(
   }
   return null;
 }
+
+function getPagesUnlockDate(
+  books: Array<{ finishedAt: Date | null; pages?: number | null }>,
+  target: number,
+): Date | null {
+  const sorted = [...books].sort(
+    (a, b) => (a.finishedAt?.getTime() ?? 0) - (b.finishedAt?.getTime() ?? 0),
+  );
+  let accumulated = 0;
+  for (const b of sorted) {
+    accumulated += b.pages ?? 0;
+    if (accumulated >= target) return b.finishedAt ?? null;
+  }
+  return null;
+}
+
+function getCountUnlockDate(
+  dates: Array<Date | null>,
+  target: number,
+): Date | null {
+  const valid = dates
+    .filter((d): d is Date => Boolean(d))
+    .sort((a, b) => a.getTime() - b.getTime());
+  return valid[target - 1] ?? null;
+}
+
 export function buildAchievementState(
   definitions: AchievementDefinition[],
   data: AchievementData,
@@ -137,6 +164,7 @@ export function buildAchievementState(
       case 'diez-mil-paginas':
       case 'cincuenta-mil-paginas':
         progress = data.totalPages;
+        unlockedAt = getPagesUnlockDate(data.completedBooks, def.target);
         break;
 
       case 'primera-saga':
@@ -148,18 +176,24 @@ export function buildAchievementState(
 
       case 'romance-addict':
         progress = data.genreCounts.get('romance') ?? 0;
+        unlockedAt = getGenreUnlockDate(data.completedBooks, 'romance', def.target);
         break;
       case 'fantasia-forever':
         progress = data.genreCounts.get('fantasía') ?? data.genreCounts.get('fantasia') ?? 0;
+        unlockedAt = getGenreUnlockDate(data.completedBooks, 'fantasía', def.target)
+          ?? getGenreUnlockDate(data.completedBooks, 'fantasia', def.target);
         break;
       case 'thriller-queen':
         progress = data.genreCounts.get('thriller') ?? 0;
+        unlockedAt = getGenreUnlockDate(data.completedBooks, 'thriller', def.target);
         break;
       case 'dark-romance':
         progress = data.genreCounts.get('dark romance') ?? 0;
+        unlockedAt = getGenreUnlockDate(data.completedBooks, 'dark romance', def.target);
         break;
       case 'exploradora-generos':
         progress = data.genreCounts.size;
+        unlockedAt = getExplorerUnlockDate(data.completedBooks, def.target);
         break;
 
       case 'primera-resena':
@@ -173,23 +207,49 @@ export function buildAchievementState(
       case 'diez-comentarios':
       case 'cincuenta-comentarios':
         progress = data.comments;
+        // comentarios no tienen fechas individuales en AchievementData — se marca hoy si supera target
+        unlockedAt = progress >= def.target ? new Date() : null;
         break;
 
       case 'primer-voto':
       case 'cinco-votos':
       case 'diez-votos':
         progress = data.clubvisionVotes;
+        unlockedAt = progress >= def.target ? new Date() : null;
         break;
 
       case 'tres-en-mes':
-        progress = data.booksThisMonth;
-        break;
       case 'cinco-en-mes':
         progress = data.booksThisMonth;
+        unlockedAt = progress >= def.target
+          ? getCountUnlockDate(
+              data.completedBooks
+                .filter(b => {
+                  if (!b.finishedAt) return false;
+                  const now = new Date();
+                  return b.finishedAt >= new Date(now.getFullYear(), now.getMonth(), 1);
+                })
+                .map(b => b.finishedAt),
+              def.target,
+            )
+          : null;
         break;
+
       case 'diez-en-anio':
       case 'veinte-en-anio':
         progress = data.booksThisYear;
+        unlockedAt = progress >= def.target
+          ? getCountUnlockDate(
+              data.completedBooks
+                .filter(b => {
+                  if (!b.finishedAt) return false;
+                  const now = new Date();
+                  return b.finishedAt >= new Date(now.getFullYear(), 0, 1);
+                })
+                .map(b => b.finishedAt),
+              def.target,
+            )
+          : null;
         break;
     }
 
@@ -240,7 +300,10 @@ async function getCompletedBooksForUser(userId: string) {
     (a.finishedAt?.getTime() ?? Infinity) - (b.finishedAt?.getTime() ?? Infinity));
 }
 
-async function getCompletedSeriesForUser(userId: string, completedBooks: Array<{ bookId: string; finishedAt: Date | null }>) {
+async function getCompletedSeriesForUser(
+  userId: string,
+  completedBooks: Array<{ bookId: string; finishedAt: Date | null }>,
+) {
   const completedBookIds = new Set(completedBooks.map(b => b.bookId));
   const series = await prisma.series.findMany({
     where: { publicationStatus: 'COMPLETED' },
@@ -276,7 +339,6 @@ export async function getAchievementsForUser(userName: string) {
   });
 
   const comments = await prisma.comment.count({ where: { userId: user.id } });
-
   const clubvisionVotes = await prisma.clubvisionVote.count({ where: { userId: user.id } });
 
   const totalPages = completedBooks.reduce((sum, b) => sum + (b.pages ?? 0), 0);
@@ -332,16 +394,16 @@ export async function getRecentClubAchievements(userName?: string) {
     }
   }
 
-unlocks.sort((a, b) => b.unlockedAt.getTime() - a.unlockedAt.getTime());
-return {
-  ok: true,
-  club: club.name,
-  achievements: unlocks.slice(0, 30).map((u) => ({
-    userName: u.user,
-    avatarUrl: u.avatarUrl,
-    achievementTitle: u.title,
-    achievementIcon: u.icon,
-    unlockedAt: u.unlockedAt.toISOString(),
-  })),
-};
+  unlocks.sort((a, b) => b.unlockedAt.getTime() - a.unlockedAt.getTime());
+  return {
+    ok: true,
+    club: club.name,
+    achievements: unlocks.slice(0, 30).map((u) => ({
+      userName: u.user,
+      avatarUrl: u.avatarUrl,
+      achievementTitle: u.title,
+      achievementIcon: u.icon,
+      unlockedAt: u.unlockedAt.toISOString(),
+    })),
+  };
 }
