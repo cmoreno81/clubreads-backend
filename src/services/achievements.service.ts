@@ -88,7 +88,31 @@ function getUnlockDate(dates: Array<Date | null>, target: number) {
     .sort((l, r) => l.getTime() - r.getTime());
   return validDates.length >= target ? (validDates[target - 1] ?? null) : null;
 }
+function getGenreUnlockDate(
+  books: Array<{ finishedAt: Date | null; genreName?: string | null }>,
+  genre: string,
+  target: number,
+): Date | null {
+  const sorted = [...books]
+    .filter((b) => b.genreName?.toLowerCase().trim() === genre)
+    .sort((a, b) => (a.finishedAt?.getTime() ?? 0) - (b.finishedAt?.getTime() ?? 0));
+  return sorted[target - 1]?.finishedAt ?? null;
+}
 
+function getExplorerUnlockDate(
+  books: Array<{ finishedAt: Date | null; genreName?: string | null }>,
+  target: number,
+): Date | null {
+  const sorted = [...books].sort(
+    (a, b) => (a.finishedAt?.getTime() ?? 0) - (b.finishedAt?.getTime() ?? 0),
+  );
+  const seen = new Set<string>();
+  for (const b of sorted) {
+    if (b.genreName) seen.add(b.genreName.toLowerCase().trim());
+    if (seen.size >= target) return b.finishedAt ?? null;
+  }
+  return null;
+}
 export function buildAchievementState(
   definitions: AchievementDefinition[],
   data: AchievementData,
