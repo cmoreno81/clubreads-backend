@@ -339,7 +339,7 @@ export async function getAchievementsForUser(userName: string) {
     b => b.finishedAt && b.finishedAt >= yearStart,
   );
 
-const completedSeries = await getCompletedSeriesForUser(user.id, allCompletedBooks);
+const completedSeries = await getCompletedSeriesForUser(user.id, completedBooks);
 
   const reviews = await prisma.review.findMany({
     where: { userId: user.id, deletedAt: null, createdAt: { gte: yearStart } },
