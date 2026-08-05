@@ -75,10 +75,10 @@ export function buildAchievementDefinitions(): AchievementDefinition[] {
     { id: 'diez-votos', key: 'diez-votos', title: 'Electora veterana', description: '10 votaciones en Clubvisión.', icon: '👑', rarity: 'epic', target: 10, category: 'clubvision' },
 
     // ── 🔥 CONSTANCIA ──
-    { id: 'tres-en-mes', key: 'tres-en-mes', title: 'Mes intenso', description: '3 libros en un mismo mes.', icon: '🔥', rarity: 'rare', target: 3, category: 'constancia' },
-    { id: 'cinco-en-mes', key: 'cinco-en-mes', title: 'Maratoniana', description: '5 libros en un mes.', icon: '⚡', rarity: 'epic', target: 5, category: 'constancia' },
-    { id: 'diez-en-anio', key: 'diez-en-anio', title: 'Gran año lector', description: '10 libros en un año.', icon: '🗓️', rarity: 'rare', target: 10, category: 'constancia' },
-    { id: 'veinte-en-anio', key: 'veinte-en-anio', title: 'Año legendario', description: '20 libros en un solo año.', icon: '🏅', rarity: 'legendary', target: 20, category: 'constancia' },
+   { id: 'tres-en-mes', key: 'tres-en-mes', title: 'Mes intenso', description: '5 libros en un mismo mes.', icon: '🔥', rarity: 'rare', target: 5, category: 'constancia' },
+   { id: 'cinco-en-mes', key: 'cinco-en-mes', title: 'Maratoniana', description: '10 libros en un mes.', icon: '⚡', rarity: 'epic', target: 10, category: 'constancia' },
+   { id: 'diez-en-anio', key: 'diez-en-anio', title: 'Gran año lector', description: '50 libros en un año.', icon: '🗓️', rarity: 'rare', target: 50, category: 'constancia' },
+   { id: 'veinte-en-anio', key: 'veinte-en-anio', title: 'Año legendario', description: '100 libros en un solo año.', icon: '🏅', rarity: 'legendary', target: 100, category: 'constancia' },
   ];
 }
 
