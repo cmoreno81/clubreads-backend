@@ -453,7 +453,8 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         // Posición: primero miramos si el usuario tiene un orden personal
         const userOrderForSeries = userSeriesOrders.get(series.id);
         const userPositionOverride = userOrderForSeries?.get(book.id);
-        const posicionNum = datosNumeroSaga(book.seriesOrder).posicion;
+        const posicionNumBase = datosNumeroSaga(book.seriesOrder).posicion;
+        const posicionNum = userPositionOverride ?? posicionNumBase;
         const override = posicionNum != null
           ? overridesBySeries.get(series.id)?.get(posicionNum)
           : undefined;
