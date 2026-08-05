@@ -265,8 +265,7 @@ async function getCompletedBooksForUser(userId: string) {
     where: { userId },
     select: {
       id: true, bookId: true, finishedAt: true,
-      book: { select: { genre: { select: { name: true } }, pages: true } },
-    },
+book: { select: { genre: { select: { name: true } }, totalPages: true } },    },
     orderBy: { finishedAt: 'asc' },
   });
 
@@ -275,7 +274,7 @@ async function getCompletedBooksForUser(userId: string) {
   for (const c of completions) {
     books.set(c.bookId, {
       bookId: c.bookId, finishedAt: c.finishedAt,
-      genreName: c.book.genre?.name, pages: c.book.pages,
+      genreName: c.book.genre?.name, pages: c.book.totalPages,
     });
   }
 
@@ -283,7 +282,7 @@ async function getCompletedBooksForUser(userId: string) {
     where: { userId, status: ReadingStatus.FINISHED },
     select: {
       bookId: true, finishedAt: true, updatedAt: true,
-      book: { select: { genre: { select: { name: true } }, pages: true } },
+      book: { select: { genre: { select: { name: true } }, totalPages: true } },
     },
   });
 
@@ -291,7 +290,7 @@ async function getCompletedBooksForUser(userId: string) {
     if (!books.has(item.bookId)) {
       books.set(item.bookId, {
         bookId: item.bookId, finishedAt: item.finishedAt ?? item.updatedAt,
-        genreName: item.book.genre?.name, pages: item.book.pages,
+        genreName: item.book.genre?.name, pages: item.book.totalPages,
       });
     }
   }
