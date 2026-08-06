@@ -107,9 +107,13 @@ import {
 import { GoodreadsImportError } from '../services/goodreads-import.service.js';
 import { handleEliminarNotificacion, handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas } from '../controllers/notifications.controller.js';
 import { handleGetSeriesOverrides, handleRemoveSeriesOverride, handleSetSeriesOverride } from '../controllers/series-override.controller.js';
-import { handleGetHiddenSeries, handleHideSeries, handleShowSeries } from '../controllers/hidden-user-series.controller.js';
+import { handleGetHiddenSeries, handleHideSeries, handleShowSeries, handleRemoveSeries, } from '../controllers/hidden-user-series.controller.js';
 import { HiddenUserSeriesError } from '../services/hidden-user-series.service.js';
 import { handleSaveUserSeriesOrder } from '../controllers/user-series-order.controller.js';
+import {
+  handleGetClubChallenges,
+  handleSetChallenge,
+} from '../controllers/reading-challenge.controller.js';
 export const apiRouter = Router();
 
 const PUBLIC_AUTH_ACTIONS = new Set([
@@ -138,9 +142,12 @@ const POST_ONLY_ACTIONS = new Set([
   'removeSeriesOverride',
   'ocultarSaga',
   'mostrarSaga',
+  'eliminarSaga',
   'eliminarNotificacion',
   'previsualizarImportacionGoodreads',
   'confirmarImportacionGoodreads',
+  'getClubChallenges',
+  'setReadingChallenge',
 ]);
 
 async function handleApi(req: Request, res: Response) {
@@ -261,6 +268,10 @@ async function handleApi(req: Request, res: Response) {
       case 'mostrarSaga':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleShowSeries(req, res);
+
+      case 'eliminarSaga':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleRemoveSeries(req, res);  
 
       case 'notificaciones':
         if (!req.auth) return requireAuthentication(req, res, () => {});
@@ -502,8 +513,16 @@ async function handleApi(req: Request, res: Response) {
         return handleMarcarConversacionVista(req, res);  
 
       case 'saveUserSeriesOrder':
-      if (!req.auth) return requireAuthentication(req, res, () => {});
-      return handleSaveUserSeriesOrder(req, res);  
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleSaveUserSeriesOrder(req, res);  
+
+      case 'getClubChallenges':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetClubChallenges(req, res);
+
+      case 'setReadingChallenge':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleSetChallenge(req, res);
 
       default:
         return res.status(400).json({

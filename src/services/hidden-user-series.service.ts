@@ -29,6 +29,7 @@ export async function getHiddenUserSeries(userId: string) {
   const preferences = await prisma.hiddenUserSeries.findMany({
     where: {
       userId,
+      tipo: 'OCULTA',
       series: {
         books: { some: { deletedAt: null } },
       },
@@ -49,8 +50,7 @@ export async function getHiddenUserSeries(userId: string) {
   };
 }
 
-export async function hideUserSeries(userId: string, rawSeriesId: unknown) {
-  const seriesId = requiredSeriesId(rawSeriesId);
+async function requireSeriesInUserHistory(userId: string, seriesId: string) {
   const series = await prisma.series.findUnique({
     where: { id: seriesId },
     select: {
@@ -78,10 +78,27 @@ export async function hideUserSeries(userId: string, rawSeriesId: unknown) {
       'La saga no está relacionada con tu biblioteca o historial.',
     );
   }
+  return series;
+}
+
+export async function hideUserSeries(userId: string, rawSeriesId: unknown) {
+  const seriesId = requiredSeriesId(rawSeriesId);
+  await requireSeriesInUserHistory(userId, seriesId);
   await prisma.hiddenUserSeries.upsert({
     where: { userId_seriesId: { userId, seriesId } },
-    update: {},
-    create: { userId, seriesId },
+    update: { tipo: 'OCULTA' },
+    create: { userId, seriesId, tipo: 'OCULTA' },
+  });
+  return { ok: true, sagaId: seriesId };
+}
+
+export async function removeUserSeries(userId: string, rawSeriesId: unknown) {
+  const seriesId = requiredSeriesId(rawSeriesId);
+  await requireSeriesInUserHistory(userId, seriesId);
+  await prisma.hiddenUserSeries.upsert({
+    where: { userId_seriesId: { userId, seriesId } },
+    update: { tipo: 'ELIMINADA' },
+    create: { userId, seriesId, tipo: 'ELIMINADA' },
   });
   return { ok: true, sagaId: seriesId };
 }

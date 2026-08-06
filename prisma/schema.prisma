@@ -91,6 +91,11 @@ enum AuthCodePurpose {
   RESET_PASSWORD
 }
 
+enum HiddenUserSeriesType {
+  OCULTA
+  ELIMINADA
+}
+
 //
 // AUTHOR
 //
@@ -301,11 +306,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  clubvisionVotes ClubvisionVote[]
-  moodVotes       ClubMoodVote[]
-  authCodes       AuthCode[]
-  authSessions    AuthSession[]
-  seriesOrders    UserSeriesOrder[]
+  clubvisionVotes   ClubvisionVote[]
+  moodVotes         ClubMoodVote[]
+  authCodes         AuthCode[]
+  authSessions      AuthSession[]
+  seriesOrders      UserSeriesOrder[]
+  readingChallenges ReadingChallenge[]
 
   @@index([activeClubId])
 }
@@ -318,6 +324,8 @@ model HiddenUserSeries {
 
   seriesId String
   series   Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  tipo HiddenUserSeriesType @default(OCULTA) // ← nuevo
 
   createdAt DateTime @default(now())
 
@@ -890,4 +898,20 @@ model UserSeriesOrder {
   @@unique([userId, seriesId, bookId])
   @@unique([userId, seriesId, posicion])
   @@index([userId, seriesId])
+}
+
+model ReadingChallenge {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  year   Int
+  target Int // objetivo de libros
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, year])
+  @@index([year])
 }
