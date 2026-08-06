@@ -836,20 +836,19 @@ export async function enviarComentarioLectura(data: {
   });
 
   // Notificar a otros participantes del hilo
-  const participantes = await prisma.comment.findMany({
-    where: { conversationId: conversation.id, userId: { not: user.id } },
-    select: { userId: true },
-    distinct: ['userId'],
-  });
-  notifyComentarioLectura({
-    clubId: club.id,
-    autorNombre: user.name,
-    autorUserId: user.id,
-    bookTitle: libro,
-    bookId: conversation.reading?.bookId ?? '',
-    readingId: conversation.reading?.id,
-    participantes: participantes.map((p) => p.userId),
-  }).catch(console.error);
+const miembros = await prisma.clubMember.findMany({
+  where: { clubId: club.id },
+  select: { userId: true },
+});
+notifyComentarioLectura({
+  clubId: club.id,
+  autorNombre: user.name,
+  autorUserId: user.id,
+  bookTitle: libro,
+  bookId: conversation.reading?.bookId ?? '',
+  readingId: conversation.reading?.id,
+  participantes: miembros.map((m) => m.userId),
+}).catch(console.error);
 
   return { ok: true };
 }
@@ -889,7 +888,28 @@ export async function responderComentarioLectura(data: {
     },
   });
 
-  return { ok: true };
+  const conversacionConLectura = await prisma.conversation.findUnique({
+  where: { id: parent.conversationId },
+  include: { reading: { select: { id: true, bookId: true, book: { select: { title: true } } } } },
+});
+if (conversacionConLectura?.reading) {
+  const miembros = await prisma.clubMember.findMany({
+    where: { clubId: club.id },
+    select: { userId: true },
+  });
+  notifyComentarioLectura({
+    clubId: club.id,
+    autorNombre: user.name,
+    autorUserId: user.id,
+    bookTitle: conversacionConLectura.reading.book?.title ?? '',
+    bookId: conversacionConLectura.reading.bookId ?? '',
+    readingId: conversacionConLectura.reading.id,
+    participantes: miembros.map((m) => m.userId),
+  }).catch(console.error);
+}
+
+return { ok: true };
+
 }
 
 export async function toggleLikeComentario(
