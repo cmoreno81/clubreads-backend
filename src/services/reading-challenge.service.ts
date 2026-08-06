@@ -54,6 +54,7 @@ export async function getClubReadingChallenges(userName: string) {
         read,
         pct: pct ?? 0,
         hasChallenge: target !== null,
+        isMe: m.user.name === userName,
       };
     })
     .sort((a, b) => {
