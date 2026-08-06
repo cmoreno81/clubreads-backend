@@ -14,6 +14,7 @@ import {
   toggleProgressReaction,
 } from '../services/books.service.js';
 import { requestUserName } from '../middleware/auth.middleware.js';
+import { prisma } from '../prisma.js';
 
 export async function handleLibros(req: Request, res: Response) {
   const data = await getLibros(
@@ -174,4 +175,27 @@ export async function handleEditarLibro(
   });
 
   return res.json(data);
+}
+
+export async function handleActualizarPaginaLibrary(req: Request, res: Response) {
+  const userName = requestUserName(req);
+  const bookId = String(req.body?.bookId ?? '').trim();
+  const paginaActual = Number(req.body?.paginaActual);
+
+  if (!bookId || !Number.isInteger(paginaActual) || paginaActual < 0) {
+    return res.status(400).json({ ok: false, mensaje: 'Datos incorrectos.' });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { name: userName },
+    select: { id: true },
+  });
+  if (!user) return res.status(401).json({ ok: false });
+
+  await prisma.library.updateMany({
+    where: { userId: user.id, bookId },
+    data: { currentPage: paginaActual },
+  });
+
+  return res.json({ ok: true });
 }

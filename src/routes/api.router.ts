@@ -24,6 +24,7 @@ import {
   handleEditarLibro,
   handleActualizarProgresoLectura,
   handleToggleProgressReaction,
+  handleActualizarPaginaLibrary,
 } from '../controllers/books.controller.js';
 
 import { handleDashboard, handleAfinidadDetalle } from '../controllers/dashboard.controller.js';
@@ -523,6 +524,10 @@ async function handleApi(req: Request, res: Response) {
       case 'setReadingChallenge':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleSetChallenge(req, res);
+
+      case 'actualizarPaginaLibrary':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleActualizarPaginaLibrary(req, res);  
 
       default:
         return res.status(400).json({
