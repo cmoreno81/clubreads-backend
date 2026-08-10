@@ -77,6 +77,7 @@ export async function handleLibrosFinalizados(req: Request, res: Response) {
 }
 
 export async function handleCrearLibro(req: Request, res: Response) {
+  console.log('[crearLibro] body:', JSON.stringify(req.body));
   const data = await crearLibro({
     ...(req.body ?? {}),
     usuario: requestUserName(req),
