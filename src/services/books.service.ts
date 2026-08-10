@@ -38,6 +38,13 @@ import { cached, invalidatePrefix } from '../utils/simple-cache.js';
 
 const LIBRARY_TTL = 30_000; // 30 segundos
 
+function invalidateUserLibraryCache(usuario: string) {
+  invalidatePrefix(`libros:${usuario}`);
+  invalidatePrefix(`finalizados:${usuario}`);
+}
+
+
+
 function statusToFlutter(status: string) {
   if (status === ReadingStatus.READING) return 'LEYENDO';
   if (status === ReadingStatus.PAUSED) return 'PAUSADO';
@@ -138,6 +145,8 @@ function formatFromFlutter(value: unknown): ReadingFormat | null {
   return null;
 }
 
+
+
 function statusFromFlutter(value: string) {
   const status = normalizeReadingStatus(value);
   if (status === 'READING') return ReadingStatus.READING;
@@ -164,11 +173,18 @@ function buildGoodreadsSearchUrl(title: string) {
   return `https://www.goodreads.com/search?q=${encodeURIComponent(title)}`;
 }
 
+/**
+ * Permite considerar iguales títulos con:
+ * - mayúsculas diferentes;
+ * - tildes diferentes;
+ * - espacios duplicados;
+ * - espacios al principio o al final.
+ */
 function normalizarTitulo(value: string) {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[''`´]/g, "'")
+    .replace(/[’‘`´]/g, "'")
     .replace(/[–—]/g, '-')
     .replace(/\u00A0/g, ' ')
     .toLocaleLowerCase('es')
@@ -282,6 +298,10 @@ async function buscarOCrearSaga(
   });
 }
 
+/**
+ * Busca un libro sin depender exactamente de mayúsculas,
+ * tildes o espacios.
+ */
 async function buscarLibroPorTitulo(
   titulo: string,
   client: Pick<typeof prisma, 'book'> = prisma,
@@ -306,7 +326,7 @@ async function buscarLibroPorTitulo(
       goodreadsUrl: true,
       coverUrl: true,
       isbn: true,
-      publicationYear: true,
+    publicationYear: true,
       totalPages: true,
     },
   });
@@ -319,24 +339,13 @@ async function buscarLibroPorTitulo(
   );
 }
 
-// ─── Caché ────────────────────────────────────────────────────────────────────
-
-function invalidateUserLibraryCache(usuario: string) {
-  invalidatePrefix(`libros:${usuario}`);
-  invalidatePrefix(`finalizados:${usuario}`);
-}
-
-// ─── getLibros ────────────────────────────────────────────────────────────────
-
 export async function getLibros(usuario: string) {
   return cached(`libros:${usuario}`, LIBRARY_TTL, () => _getLibros(usuario));
 }
 
 async function _getLibros(usuario: string) {
-  const t0 = Date.now();
   const usuarioActual = usuario.trim();
   const { club, user } = await getCurrentClubContext(usuarioActual);
-   console.log(`[libros] context: ${Date.now() - t0}ms`);
 
   const library = await prisma.library.findMany({
     where: {
@@ -345,6 +354,7 @@ async function _getLibros(usuario: string) {
         not: ReadingStatus.FINISHED,
       },
     },
+
     include: {
       book: {
         include: {
@@ -355,12 +365,12 @@ async function _getLibros(usuario: string) {
       },
       user: true,
     },
+
     orderBy: [
       { book: { title: 'asc' } },
       { user: { name: 'asc' } },
     ],
   });
-    console.log(`[libros] query: ${Date.now() - t0}ms total`);
 
   return library.map((item) => ({
     bookId: item.book.id,
@@ -381,6 +391,7 @@ async function _getLibros(usuario: string) {
     pausedAt: item.pausedAt?.toISOString() ?? '',
     pauseReason: item.pauseReason ?? '',
     yaLoTengo: item.userId === user?.id,
+
     goodreads: item.book.goodreadsUrl ?? '',
     coverUrl: item.book.coverUrl ?? '',
     avatarUrl: item.user.avatarUrl ?? '',
@@ -388,29 +399,17 @@ async function _getLibros(usuario: string) {
   }));
 }
 
-// ─── getLibrosFinalizados ─────────────────────────────────────────────────────
-
 export async function getLibrosFinalizados(usuario: string) {
-  return cached(
-    `finalizados:${usuario}`,
-    LIBRARY_TTL,
-    () => _getLibrosFinalizados(usuario),
-  );
-}
-
-async function _getLibrosFinalizados(usuario: string) {
-    const t0 = Date.now();
-
   const { club, user } = await getCurrentClubContext(usuario);
-    console.log(`[libros] query: ${Date.now() - t0}ms total`);
-
   const library = await prisma.library.findMany({
     where: {
       user: { clubMemberships: { some: { clubId: club.id } } },
       status: ReadingStatus.FINISHED,
     },
+
     include: {
       user: true,
+
       book: {
         include: {
           author: true,
@@ -420,12 +419,12 @@ async function _getLibrosFinalizados(usuario: string) {
         },
       },
     },
+
     orderBy: [
       { book: { title: 'asc' } },
       { user: { name: 'asc' } },
     ],
   });
-  console.log(`[libros] query: ${Date.now() - t0}ms total`);
 
   return library.map((item) => {
     const review = item.book.reviews.find(
@@ -462,7 +461,82 @@ async function _getLibrosFinalizados(usuario: string) {
   });
 }
 
-// ─── getLibrosFinalizadosPage ─────────────────────────────────────────────────
+
+export async function getLibrosFinalizadosTodos(usuario: string) {
+  return cached(
+    `finalizados:${usuario}`,
+    LIBRARY_TTL,
+    () => _getLibrosFinalizadosTodos(usuario),
+  );
+}
+
+async function _getLibrosFinalizadosTodos(usuario: string) {
+  const { club, user } = await getCurrentClubContext(usuario.trim());
+
+  const library = await prisma.library.findMany({
+    where: {
+      user: { clubMemberships: { some: { clubId: club.id } } },
+      status: ReadingStatus.FINISHED,
+    },
+    select: {
+      userId: true,
+      readingFormat: true,
+      finishedAt: true,
+      user: { select: { name: true, avatarUrl: true } },
+      book: {
+        select: {
+          id: true,
+          title: true,
+          coverUrl: true,
+          goodreadsUrl: true,
+          totalPages: true,
+          standalone: true,
+          seriesOrder: true,
+          createdAt: true,
+          author: { select: { name: true } },
+          genre: { select: { name: true } },
+          series: { select: { name: true } },
+          reviews: {
+            where: { deletedAt: null },
+            select: { userId: true, rating: true, review: true },
+          },
+        },
+      },
+    },
+    orderBy: [
+      { book: { title: 'asc' } },
+      { user: { name: 'asc' } },
+    ],
+  });
+
+  return library.map((item) => {
+    const review = item.book.reviews.find((r) => r.userId === item.userId);
+    return {
+      bookId: item.book.id,
+      usuario: item.user.name,
+      libro: item.book.title,
+      autor: item.book.author?.name ?? '',
+      genero: item.book.genre.name,
+      saga: item.book.series?.name ?? '',
+      numSaga: item.book.seriesOrder ?? '',
+      autoconclusivo: item.book.standalone ? 'Si' : 'No',
+      valoracion: ratingToFlutter(review?.rating),
+      formato: formatToFlutter(item.readingFormat),
+      fechaAlta: item.book.createdAt.toISOString(),
+      resena: review?.review ?? '',
+      review: review?.review ?? '',
+      goodreads: item.book.goodreadsUrl ?? '',
+      fecha: item.finishedAt ?? '',
+      coverUrl: item.book.coverUrl ?? '',
+      avatarUrl: item.user.avatarUrl ?? '',
+      paginas: item.book.totalPages,
+      yaLoTengo: item.userId === user?.id,
+      mes: item.finishedAt
+        ? `${String(item.finishedAt.getMonth() + 1).padStart(2, '0')}/${item.finishedAt.getFullYear()}`
+        : '',
+    };
+  });
+}
 
 export async function getLibrosFinalizadosPage(
   usuario: string,
@@ -540,8 +614,6 @@ export async function getLibrosFinalizadosPage(
     }),
   };
 }
-
-// ─── Mutaciones (con invalidación de caché) ───────────────────────────────────
 
 export async function anadirLibroExistente(
   usuario: string,
@@ -794,312 +866,337 @@ export async function actualizarEstado(
   const fechaFinEditada = transition.endDate;
   const rating = transition.rating;
 
-  let startedReading = false;
-  let finishedNotificationClubIds: string[] = [];
+let startedReading = false;
+let finishedNotificationClubIds: string[] = [];
 
-  await client.$transaction(async (tx) => {
-    const readingLockKey = `${user.id}:${book.id}`;
-    await tx.$queryRaw`
-      SELECT pg_advisory_xact_lock(
-        hashtextextended(${readingLockKey}, 0)
-      )::text
-    `;
-    await tx.$queryRaw`
-      SELECT "id"
-      FROM "Library"
-      WHERE "userId" = ${user.id} AND "bookId" = ${book.id}
-      FOR UPDATE
-    `;
+await client.$transaction(async (tx) => {
+  /*
+   * El advisory lock también cubre el caso excepcional en que todavía no
+   * exista Library. Después bloqueamos la fila real y consultamos el estado:
+   * dos finalizaciones simultáneas no pueden decidir ambas que deben crear
+   * ReadingCompletion.
+   */
+  const readingLockKey = `${user.id}:${book.id}`;
+  await tx.$queryRaw`
+    SELECT pg_advisory_xact_lock(
+      hashtextextended(${readingLockKey}, 0)
+    )::text
+  `;
+  await tx.$queryRaw`
+    SELECT "id"
+    FROM "Library"
+    WHERE "userId" = ${user.id} AND "bookId" = ${book.id}
+    FOR UPDATE
+  `;
 
-    const currentLibrary = await tx.library.findUnique({
-      where: {
-        userId_bookId: {
-          userId: user.id,
-          bookId: book.id,
-        },
+  const currentLibrary = await tx.library.findUnique({
+    where: {
+      userId_bookId: {
+        userId: user.id,
+        bookId: book.id,
       },
-    });
+    },
+  });
 
-    const completionCount = await tx.readingCompletion.count({
+  const completionCount = await tx.readingCompletion.count({
+    where: {
+      userId: user.id,
+      bookId: book.id,
+    },
+  });
+
+  /*
+   * Compatibilidad con versiones antiguas de Flutter: una petición LEYENDO
+   * sobre un libro ya finalizado inicia una relectura, nunca una lectura
+   * inicial que perdería el significado del historial.
+   */
+  const effectiveStatus =
+    status === ReadingStatus.READING && completionCount > 0
+      ? ReadingStatus.REREADING
+      : status;
+
+  startedReading =
+    effectiveStatus === ReadingStatus.READING &&
+    currentLibrary?.status !== ReadingStatus.READING;
+
+  const startsNewRereading =
+    effectiveStatus === ReadingStatus.REREADING &&
+    currentLibrary?.status !== ReadingStatus.REREADING;
+
+  const statusDates =
+    effectiveStatus === ReadingStatus.READING
+      ? {
+          startedAt: currentLibrary?.startedAt ?? now,
+          finishedAt: null,
+          pausedAt: null,
+          pauseReason: null,
+        }
+      : effectiveStatus === ReadingStatus.PAUSED
+        ? {
+            startedAt: currentLibrary?.startedAt ?? now,
+            finishedAt: null,
+            pausedAt: now,
+            pauseReason: motivoPausa?.trim() || null,
+          }
+        : effectiveStatus === ReadingStatus.REREADING
+          ? {
+              startedAt: startsNewRereading
+                ? fechaInicioEditada ?? now
+                : currentLibrary?.startedAt ?? fechaInicioEditada ?? now,
+              finishedAt: null,
+              pausedAt: null,
+              pauseReason: null,
+              lastProgress: null,
+              currentPage: null,
+              progressNote: null,
+              progressUpdatedAt: null,
+            }
+          : effectiveStatus === ReadingStatus.FINISHED
+            ? {
+                startedAt:
+                  fechaInicioEditada ?? currentLibrary?.startedAt ?? now,
+                finishedAt:
+                  currentLibrary?.status === ReadingStatus.FINISHED
+                    ? fechaFinEditada ?? currentLibrary.finishedAt ?? now
+                    : fechaFinEditada ?? now,
+                pausedAt: null,
+                pauseReason: null,
+              }
+            : effectiveStatus === ReadingStatus.ABANDONED
+              ? {
+                  finishedAt: now,
+                  pausedAt: null,
+                  pauseReason: null,
+                }
+              : {
+                  startedAt: null,
+                  finishedAt: null,
+                  pausedAt: null,
+                  pauseReason: null,
+                  lastProgress: null,
+                  currentPage: null,
+                  progressNote: null,
+                  progressUpdatedAt: null,
+                };
+
+  /*
+   * FINISHED -> PENDING es una corrección del último cierre, no el borrado
+   * indiscriminado de toda la historia de lectura.
+   */
+  if (
+    currentLibrary?.status === ReadingStatus.FINISHED &&
+    effectiveStatus === ReadingStatus.PENDING
+  ) {
+    const lastCompletion = await tx.readingCompletion.findFirst({
       where: {
         userId: user.id,
         bookId: book.id,
       },
+      orderBy: [
+        { finishedAt: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
     });
 
-    const effectiveStatus =
-      status === ReadingStatus.READING && completionCount > 0
-        ? ReadingStatus.REREADING
-        : status;
-
-    startedReading =
-      effectiveStatus === ReadingStatus.READING &&
-      currentLibrary?.status !== ReadingStatus.READING;
-
-    const startsNewRereading =
-      effectiveStatus === ReadingStatus.REREADING &&
-      currentLibrary?.status !== ReadingStatus.REREADING;
-
-    const statusDates =
-      effectiveStatus === ReadingStatus.READING
-        ? {
-            startedAt: currentLibrary?.startedAt ?? now,
-            finishedAt: null,
-            pausedAt: null,
-            pauseReason: null,
-          }
-        : effectiveStatus === ReadingStatus.PAUSED
-          ? {
-              startedAt: currentLibrary?.startedAt ?? now,
-              finishedAt: null,
-              pausedAt: now,
-              pauseReason: motivoPausa?.trim() || null,
-            }
-          : effectiveStatus === ReadingStatus.REREADING
-            ? {
-                startedAt: startsNewRereading
-                  ? fechaInicioEditada ?? now
-                  : currentLibrary?.startedAt ?? fechaInicioEditada ?? now,
-                finishedAt: null,
-                pausedAt: null,
-                pauseReason: null,
-                lastProgress: null,
-                currentPage: null,
-                progressNote: null,
-                progressUpdatedAt: null,
-              }
-            : effectiveStatus === ReadingStatus.FINISHED
-              ? {
-                  startedAt:
-                    fechaInicioEditada ?? currentLibrary?.startedAt ?? now,
-                  finishedAt:
-                    currentLibrary?.status === ReadingStatus.FINISHED
-                      ? fechaFinEditada ?? currentLibrary.finishedAt ?? now
-                      : fechaFinEditada ?? now,
-                  pausedAt: null,
-                  pauseReason: null,
-                }
-              : effectiveStatus === ReadingStatus.ABANDONED
-                ? {
-                    finishedAt: now,
-                    pausedAt: null,
-                    pauseReason: null,
-                  }
-                : {
-                    startedAt: null,
-                    finishedAt: null,
-                    pausedAt: null,
-                    pauseReason: null,
-                    lastProgress: null,
-                    currentPage: null,
-                    progressNote: null,
-                    progressUpdatedAt: null,
-                  };
-
-    if (
-      currentLibrary?.status === ReadingStatus.FINISHED &&
-      effectiveStatus === ReadingStatus.PENDING
-    ) {
-      const lastCompletion = await tx.readingCompletion.findFirst({
-        where: {
-          userId: user.id,
-          bookId: book.id,
-        },
-        orderBy: [
-          { finishedAt: 'desc' },
-          { createdAt: 'desc' },
-          { id: 'desc' },
-        ],
+    if (lastCompletion) {
+      await tx.readingCompletion.delete({
+        where: { id: lastCompletion.id },
       });
+    }
 
-      if (lastCompletion) {
-        await tx.readingCompletion.delete({
-          where: { id: lastCompletion.id },
-        });
-      }
+    const previousCompletion = await tx.readingCompletion.findFirst({
+      where: {
+        userId: user.id,
+        bookId: book.id,
+      },
+      orderBy: [
+        { finishedAt: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
+    });
 
-      const previousCompletion = await tx.readingCompletion.findFirst({
-        where: {
-          userId: user.id,
-          bookId: book.id,
-        },
-        orderBy: [
-          { finishedAt: 'desc' },
-          { createdAt: 'desc' },
-          { id: 'desc' },
-        ],
-      });
-
-      if (previousCompletion) {
-        if (previousCompletion.rating !== null) {
-          await tx.review.upsert({
-            where: {
-              userId_bookId: {
-                userId: user.id,
-                bookId: book.id,
-              },
-            },
-            update: {
-              rating: previousCompletion.rating,
-              review: previousCompletion.review,
-              deletedAt: null,
-            },
-            create: {
+    if (previousCompletion) {
+      if (previousCompletion.rating !== null) {
+        await tx.review.upsert({
+          where: {
+            userId_bookId: {
               userId: user.id,
               bookId: book.id,
-              rating: previousCompletion.rating,
-              review: previousCompletion.review,
             },
-          });
-        } else {
-          await tx.review.deleteMany({
-            where: { userId: user.id, bookId: book.id },
-          });
-        }
+          },
+          update: {
+            rating: previousCompletion.rating,
+            review: previousCompletion.review,
+            deletedAt: null,
+          },
+          create: {
+            userId: user.id,
+            bookId: book.id,
+            rating: previousCompletion.rating,
+            review: previousCompletion.review,
+          },
+        });
       } else {
         await tx.review.deleteMany({
           where: { userId: user.id, bookId: book.id },
         });
       }
+    } else {
+      await tx.review.deleteMany({
+        where: { userId: user.id, bookId: book.id },
+      });
+    }
+  }
+
+  await tx.library.upsert({
+    where: {
+      userId_bookId: {
+        userId: user.id,
+        bookId: book.id,
+      },
+    },
+
+    update: {
+      status: effectiveStatus,
+      ...(requestedFormat ? { readingFormat: requestedFormat } : {}),
+      ...statusDates,
+    },
+
+    create: {
+      userId: user.id,
+      bookId: book.id,
+      status: effectiveStatus,
+      priority: Priority.MEDIUM,
+      readingFormat: requestedFormat,
+      ...statusDates,
+    },
+  }); 
+
+  if (effectiveStatus === ReadingStatus.FINISHED) {
+   const finalRating = rating as number;
+
+    if (currentLibrary?.status !== ReadingStatus.FINISHED) {
+      await tx.readingCompletion.create({
+        data: {
+          userId: user.id,
+          bookId: book.id,
+          startedAt: statusDates.startedAt,
+          finishedAt: statusDates.finishedAt as Date,
+          isReread: currentLibrary?.status === ReadingStatus.REREADING,
+          rating: finalRating,
+          review: reflexion?.trim() || null,
+          readingFormat: requestedFormat ?? currentLibrary?.readingFormat,
+        },
+      });
+      const memberships = await tx.clubMember.findMany({
+        where: { userId: user.id },
+        select: { clubId: true },
+      });
+      finishedNotificationClubIds = memberships.map(({ clubId }) => clubId);
     }
 
-    await tx.library.upsert({
+    await tx.review.upsert({
       where: {
         userId_bookId: {
           userId: user.id,
           bookId: book.id,
         },
       },
+
       update: {
-        status: effectiveStatus,
-        ...(requestedFormat ? { readingFormat: requestedFormat } : {}),
-        ...statusDates,
+        rating: finalRating,
+        review: reflexion?.trim() || null,
       },
+
       create: {
         userId: user.id,
         bookId: book.id,
-        status: effectiveStatus,
-        priority: Priority.MEDIUM,
-        readingFormat: requestedFormat,
-        ...statusDates,
+        rating: finalRating,
+        review: reflexion?.trim() || null,
       },
     });
 
-    if (effectiveStatus === ReadingStatus.FINISHED) {
-      const finalRating = rating as number;
+    return;
+  }
 
-      if (currentLibrary?.status !== ReadingStatus.FINISHED) {
-        await tx.readingCompletion.create({
-          data: {
-            userId: user.id,
-            bookId: book.id,
-            startedAt: statusDates.startedAt,
-            finishedAt: statusDates.finishedAt as Date,
-            isReread: currentLibrary?.status === ReadingStatus.REREADING,
-            rating: finalRating,
-            review: reflexion?.trim() || null,
-            readingFormat: requestedFormat ?? currentLibrary?.readingFormat,
-          },
-        });
-        const memberships = await tx.clubMember.findMany({
-          where: { userId: user.id },
-          select: { clubId: true },
-        });
-        finishedNotificationClubIds = memberships.map(({ clubId }) => clubId);
-      }
-
-      await tx.review.upsert({
-        where: {
-          userId_bookId: {
-            userId: user.id,
-            bookId: book.id,
-          },
-        },
-        update: {
-          rating: finalRating,
-          review: reflexion?.trim() || null,
-        },
-        create: {
-          userId: user.id,
-          bookId: book.id,
-          rating: finalRating,
-          review: reflexion?.trim() || null,
-        },
-      });
-
-      return;
-    }
-
-    if (effectiveStatus === ReadingStatus.ABANDONED) {
-      await tx.review.upsert({
-        where: {
-          userId_bookId: {
-            userId: user.id,
-            bookId: book.id,
-          },
-        },
-        update: {
-          rating: 0,
-          review: null,
-        },
-        create: {
-          userId: user.id,
-          bookId: book.id,
-          rating: 0,
-          review: null,
-        },
-      });
-
-      return;
-    }
-
-    if (
-      !(
-        currentLibrary?.status === ReadingStatus.FINISHED &&
-        effectiveStatus === ReadingStatus.PENDING
-      ) &&
-      completionCount === 0
-    ) {
-      await tx.review.deleteMany({
-        where: {
+  if (effectiveStatus === ReadingStatus.ABANDONED) {
+    await tx.review.upsert({
+      where: {
+        userId_bookId: {
           userId: user.id,
           bookId: book.id,
         },
-      });
-    }
-  }, {
-    isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
-    maxWait: 5_000,
-    timeout: 15_000,
-  });
+      },
+
+      update: {
+        rating: 0,
+        review: null,
+      },
+
+      create: {
+        userId: user.id,
+        bookId: book.id,
+        rating: 0,
+        review: null,
+      },
+    });
+
+    return;
+  }
+
+  /*
+   * Pendiente, leyendo, pausado o relectura:
+   * eliminamos cualquier valoración histórica.
+   */
+  if (
+    !(
+      currentLibrary?.status === ReadingStatus.FINISHED &&
+      effectiveStatus === ReadingStatus.PENDING
+    ) &&
+    completionCount === 0
+  ) {
+    await tx.review.deleteMany({
+      where: {
+        userId: user.id,
+        bookId: book.id,
+      },
+    });
+  }
+}, {
+  isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+  maxWait: 5_000,
+  timeout: 15_000,
+});
 
   invalidateUserLibraryCache(usuario);
 
-  for (const clubId of finishedNotificationClubIds) {
-    void notifyFinished({
-      clubId,
+for (const clubId of finishedNotificationClubIds) {
+  void notifyFinished({
+    clubId,
+    lectoraNombre: user.name,
+    lectoraUserId: user.id,
+    bookTitle: book.title,
+    bookId: book.id,
+  }).catch(backgroundError('book_finished_notification_failed'));
+}
+
+if (startedReading) {
+  const memberships = await client.clubMember.findMany({
+    where: { userId: user.id },
+    select: { clubId: true },
+  });
+  for (const membership of memberships) {
+    void notifyStarted({
+      clubId: membership.clubId,
       lectoraNombre: user.name,
       lectoraUserId: user.id,
       bookTitle: book.title,
       bookId: book.id,
-    }).catch(backgroundError('book_finished_notification_failed'));
+    }).catch(backgroundError('book_started_notification_failed'));
   }
-
-  if (startedReading) {
-    const memberships = await client.clubMember.findMany({
-      where: { userId: user.id },
-      select: { clubId: true },
-    });
-    for (const membership of memberships) {
-      void notifyStarted({
-        clubId: membership.clubId,
-        lectoraNombre: user.name,
-        lectoraUserId: user.id,
-        bookTitle: book.title,
-        bookId: book.id,
-      }).catch(backgroundError('book_started_notification_failed'));
-    }
-  }
+}
 
   return {
     ok: true,
@@ -1135,6 +1232,7 @@ export async function actualizarValoracion(
 
   const rating = ratingFromFlutter(valoracion);
 
+
   if (rating === null) {
     return {
       ok: false,
@@ -1149,9 +1247,11 @@ export async function actualizarValoracion(
         bookId: book.id,
       },
     },
+
     update: {
       rating,
     },
+
     create: {
       userId: user.id,
       bookId: book.id,
@@ -1207,8 +1307,13 @@ export async function crearLibro(data: any) {
       ok: false,
       mensaje: 'Usuaria no encontrada',
     };
-  }
+  }  
 
+  /*
+   * IMPORTANTE:
+   * Comprobamos primero si el libro ya existe.
+   * No creamos ni modificamos género o saga todavía.
+   */
   const existingBook = await findBookByIdentity(prisma, {
     title,
     authorName: suppliedAuthorName,
@@ -1226,17 +1331,28 @@ export async function crearLibro(data: any) {
         },
       });
 
+    /*
+     * La misma usuaria ya lo tenía:
+     * no modificamos libro, género, saga ni prioridad.
+     */
     if (existingLibrary) {
+
       return {
         ok: false,
         codigo: 'LIBRO_YA_EN_BIBLIOTECA',
         mensaje: 'Este libro ya está en tu biblioteca',
+
         libro: {
           id: existingBook.id,
           titulo: existingBook.title,
         },
       };
     }
+
+    /*
+     * Otra usuaria lo había creado:
+     * reutilizamos Book y creamos exclusivamente Library.
+     */
 
     await prisma.library.upsert({
       where: { userId_bookId: { userId: user.id, bookId: existingBook.id } },
@@ -1250,8 +1366,7 @@ export async function crearLibro(data: any) {
       },
     });
 
-    invalidateUserLibraryCache(usuario);
-
+    // Notificar libro nuevo en biblioteca
     const memberships2 = await prisma.clubMember.findMany({
       where: { userId: user.id },
       select: { clubId: true },
@@ -1269,8 +1384,10 @@ export async function crearLibro(data: any) {
       ok: true,
       creado: false,
       codigo: 'LIBRO_EXISTENTE_ANADIDO',
+
       mensaje:
         'El libro ya existía en el club y se ha añadido a tu biblioteca',
+
       libro: {
         id: existingBook.id,
         titulo: existingBook.title,
@@ -1278,6 +1395,10 @@ export async function crearLibro(data: any) {
     };
   }
 
+  /*
+   * Solo si el libro no existe creamos género,
+   * saga y el registro Book.
+   */
   const genreName =
     String(data.genero || 'Sin género').trim() ||
     'Sin género';
@@ -1307,23 +1428,29 @@ export async function crearLibro(data: any) {
     ? await buscarOCrearSaga(seriesName, genre.id)
     : null;
 
-  const coverMatch = await findBestBookCover(title);
 
-  const automaticCover =
-    coverMatch.safeToApply
-      ? coverMatch.candidate
-      : null;
+  const coverMatch = await findBestBookCover(
+  title,
+);
 
-  const automaticAuthorName =
-    !suppliedAuthorName && automaticCover?.authors.length === 1
-      ? automaticCover.authors[0].trim()
-      : '';
+const automaticCover =
+  coverMatch.safeToApply
+    ? coverMatch.candidate
+    : null;
 
-  logger.info({
-    event: 'automatic_cover_lookup',
-    outcome: automaticCover ? 'matched' : 'no_safe_match',
-  }, 'automatic cover lookup completed');
+const automaticAuthorName =
+  !suppliedAuthorName && automaticCover?.authors.length === 1
+    ? automaticCover.authors[0].trim()
+    : '';
 
+logger.info({
+  event: 'automatic_cover_lookup',
+  outcome: automaticCover ? 'matched' : 'no_safe_match',
+}, 'automatic cover lookup completed');
+
+  /*
+   * Libro y biblioteca se crean en la misma transacción.
+   */
   const result = await prisma.$transaction(
     async (tx) => {
       const resolvedAuthorName = suppliedAuthorName || automaticAuthorName;
@@ -1376,13 +1503,18 @@ export async function crearLibro(data: any) {
           seriesId: series?.id ?? null,
           seriesOrder: seriesOrder || null,
           standalone,
+
           goodreadsUrl:
             goodreadsUrl ||
             buildGoodreadsSearchUrl(title),
+
           createdById: user.id,
+
           coverUrl:
             automaticCover?.coverUrl ?? null,
+
           isbn: suppliedIsbn || automaticCover?.isbn || null,
+
           publicationYear:
             automaticCover?.publicationYear ?? null,
           totalPages: paginas > 0 ? paginas : null,
@@ -1394,7 +1526,10 @@ export async function crearLibro(data: any) {
           userId: user.id,
           bookId: createdBook.id,
           status: ReadingStatus.PENDING,
-          priority: priorityFromFlutter(data.prioridad),
+
+          priority: priorityFromFlutter(
+            data.prioridad,
+          ),
           readingFormat: formatFromFlutter(data.formato),
         },
       });
@@ -1413,12 +1548,14 @@ export async function crearLibro(data: any) {
     codigo: result.alreadyInLibrary
       ? 'LIBRO_YA_EN_BIBLIOTECA'
       : result.created ? 'LIBRO_CREADO' : 'LIBRO_EXISTENTE_ANADIDO',
+
     mensaje:
       result.alreadyInLibrary
         ? 'Este libro ya está en tu biblioteca'
         : result.created
           ? 'Libro creado y añadido a tu biblioteca'
           : 'El libro ya existía y se ha añadido a tu biblioteca',
+
     libro: {
       id: book.id,
       titulo: book.title,
@@ -1490,6 +1627,10 @@ export async function quitarLibroPendientes(
     };
   }
 
+  /*
+   * Solo permitimos eliminar libros pendientes.
+   * Nunca borramos desde aquí lecturas actuales o históricas.
+   */
   if (libraryItem.status !== ReadingStatus.PENDING) {
     return {
       ok: false,
@@ -1499,6 +1640,9 @@ export async function quitarLibroPendientes(
   }
 
   const resultado = await prisma.$transaction(async (tx) => {
+    /*
+     * Eliminamos solamente la relación de esta usuaria.
+     */
     await tx.library.delete({
       where: {
         userId_bookId: {
@@ -1508,6 +1652,10 @@ export async function quitarLibroPendientes(
       },
     });
 
+    /*
+     * Comprobamos si alguna otra usuaria conserva el libro
+     * en su biblioteca, sea cual sea su estado.
+     */
     const relacionesRestantes = await tx.library.count({
       where: {
         bookId: book.id,
@@ -1521,6 +1669,10 @@ export async function quitarLibroPendientes(
       };
     }
 
+    /*
+     * Aunque no queden relaciones Library, protegemos cualquier
+     * libro que forme parte del historial del club.
+     */
     const [
       reviews,
       readings,
@@ -1528,11 +1680,35 @@ export async function quitarLibroPendientes(
       candidaturasClubvision,
       resultadosClubvision,
     ] = await Promise.all([
-      tx.review.count({ where: { bookId: book.id } }),
-      tx.reading.count({ where: { bookId: book.id } }),
-      tx.clubvision.count({ where: { winnerBookId: book.id } }),
-      tx.clubvisionCandidate.count({ where: { bookId: book.id } }),
-      tx.clubvisionResult.count({ where: { winnerBookId: book.id } }),
+      tx.review.count({
+        where: {
+          bookId: book.id,
+        },
+      }),
+
+      tx.reading.count({
+        where: {
+          bookId: book.id,
+        },
+      }),
+
+      tx.clubvision.count({
+        where: {
+          winnerBookId: book.id,
+        },
+      }),
+
+      tx.clubvisionCandidate.count({
+        where: {
+          bookId: book.id,
+        },
+      }),
+
+      tx.clubvisionResult.count({
+        where: {
+          winnerBookId: book.id,
+        },
+      }),
     ]);
 
     const tieneHistorial =
@@ -1549,6 +1725,10 @@ export async function quitarLibroPendientes(
       };
     }
 
+    /*
+     * Nadie lo tiene y nunca formó parte del historial:
+     * podemos eliminar el Book de forma segura.
+     */
     await tx.book.delete({
       where: {
         id: book.id,
@@ -1561,16 +1741,18 @@ export async function quitarLibroPendientes(
     };
   });
 
-  invalidateUserLibraryCache(usuario);
+  invalidateUserLibraryCache(nombreUsuario);
 
   return {
     ok: true,
     codigo: resultado.libroEliminadoDelCatalogo
       ? 'LIBRO_ELIMINADO_COMPLETAMENTE'
       : 'LIBRO_QUITADO_DE_PENDIENTES',
+
     mensaje: resultado.libroEliminadoDelCatalogo
       ? 'El libro se ha quitado de tus pendientes y del catálogo'
       : 'El libro se ha quitado de tus pendientes',
+
     eliminadoDelCatalogo:
       resultado.libroEliminadoDelCatalogo,
   };
@@ -1640,17 +1822,17 @@ export async function editarLibro(data: any) {
     excludeBookId: bookId,
   });
 
-  if (duplicado) {
-    return {
-      ok: false,
-      codigo: 'TITULO_DUPLICADO',
-      mensaje: `Ya existe el libro "${duplicado.title}" en el catálogo`,
-      libroExistente: {
-        id: duplicado.id,
-        titulo: duplicado.title,
-      },
-    };
-  }
+if (duplicado) {
+  return {
+    ok: false,
+    codigo: 'TITULO_DUPLICADO',
+    mensaje: `Ya existe el libro "${duplicado.title}" en el catálogo`,
+    libroExistente: {
+      id: duplicado.id,
+      titulo: duplicado.title,
+    },
+  };
+}
 
   const genreName =
     String(data.genero || 'Sin género').trim() || 'Sin género';
@@ -1680,71 +1862,77 @@ export async function editarLibro(data: any) {
       ? await buscarOCrearSaga(seriesName, genre.id, actual.seriesId)
       : null;
 
-  const suppliedAuthor = suppliedAuthorName
-    ? (
-        await prisma.author.findFirst({
-          where: {
-            name: {
-              equals: suppliedAuthorName,
-              mode: 'insensitive',
-            },
+const suppliedAuthor = suppliedAuthorName
+  ? (
+      await prisma.author.findFirst({
+        where: {
+          name: {
+            equals: suppliedAuthorName,
+            mode: 'insensitive',
           },
-        })
-      ) ?? await prisma.author.create({
-        data: { name: suppliedAuthorName },
+        },
       })
-    : null;
+    ) ?? await prisma.author.create({
+      data: { name: suppliedAuthorName },
+    })
+  : null;
 
-  const editResult = await prisma.$transaction(async (tx) => {
-    const finalAuthorName = suppliedAuthor?.name || effectiveAuthorName;
-    const identity = { title, authorName: finalAuthorName, isbn: isbnFueEnviado ? isbn : actual.isbn };
-    await lockBookIdentity(tx, identity);
-    const concurrentDuplicate = await findBookByIdentity(tx, {
-      ...identity,
-      excludeBookId: bookId,
-    });
-    if (concurrentDuplicate) return { duplicate: concurrentDuplicate, updated: null };
-    const updated = await tx.book.update({
-      where: { id: bookId },
-      data: {
-        title,
-        authorId: suppliedAuthor?.id ?? actual.authorId,
-        genreId: genre.id,
-        standalone,
-        seriesId: standalone
-          ? null
-          : series?.id ?? null,
-        seriesOrder: standalone
-          ? null
-          : seriesOrder || null,
-        goodreadsUrl:
-          goodreadsUrl ||
-          actual.goodreadsUrl ||
-          buildGoodreadsSearchUrl(title),
-        coverUrl:
-          coverUrl ||
-          actual.coverUrl ||
-          null,
-        isbn: isbnFueEnviado ? isbn : actual.isbn,
-        totalPages: paginasFueEnviada
-          ? paginas > 0
-            ? paginas
-            : null
-          : actual.totalPages,
-      },
-    });
-    return { duplicate: null, updated };
+const editResult = await prisma.$transaction(async (tx) => {
+  const finalAuthorName = suppliedAuthor?.name || effectiveAuthorName;
+  const identity = { title, authorName: finalAuthorName, isbn: isbnFueEnviado ? isbn : actual.isbn };
+  await lockBookIdentity(tx, identity);
+  const concurrentDuplicate = await findBookByIdentity(tx, {
+    ...identity,
+    excludeBookId: bookId,
   });
+  if (concurrentDuplicate) return { duplicate: concurrentDuplicate, updated: null };
+  const updated = await tx.book.update({
+    where: { id: bookId },
+    data: {
+    title,
+    authorId: suppliedAuthor?.id ?? actual.authorId,
+    genreId: genre.id,
+    standalone,
 
-  if (editResult.duplicate) {
-    return {
-      ok: false,
-      codigo: 'LIBRO_DUPLICADO',
-      mensaje: `Ya existe el libro "${editResult.duplicate.title}" en el catálogo`,
-      libroExistente: { id: editResult.duplicate.id, titulo: editResult.duplicate.title },
-    };
-  }
-  const actualizado = editResult.updated!;
+    seriesId: standalone
+      ? null
+      : series?.id ?? null,
+
+    seriesOrder: standalone
+      ? null
+      : seriesOrder || null,
+
+    goodreadsUrl:
+      goodreadsUrl ||
+      actual.goodreadsUrl ||
+      buildGoodreadsSearchUrl(title),
+
+    coverUrl:
+      coverUrl ||
+      actual.coverUrl ||
+      null,
+
+    isbn: isbnFueEnviado ? isbn : actual.isbn,
+
+    totalPages: paginasFueEnviada
+      ? paginas > 0
+        ? paginas
+        : null
+      : actual.totalPages,
+    },
+  });
+  return { duplicate: null, updated };
+});
+
+if (editResult.duplicate) {
+  return {
+    ok: false,
+    codigo: 'LIBRO_DUPLICADO',
+    mensaje: `Ya existe el libro "${editResult.duplicate.title}" en el catálogo`,
+    libroExistente: { id: editResult.duplicate.id, titulo: editResult.duplicate.title },
+  };
+}
+const actualizado = editResult.updated!;
 
   return {
     ok: true,

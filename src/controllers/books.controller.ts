@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import {
   getLibros,
   getLibrosFinalizados,
+  getLibrosFinalizadosTodos,
   getLibrosFinalizadosPage,
   anadirLibroExistente,
   actualizarPreferenciasLibro,
@@ -196,9 +197,7 @@ export async function handleActualizarPaginaLibrary(req: Request, res: Response)
   return res.json({ ok: true });
 }
 
-export async function handleGetLibroPorId(req: Request, res: Response) {
-  const { getLibroPorId } = await import('../services/libro-por-id.service.js');
-  const bookId = String(req.query.bookId || req.query.id || '').trim();
-  const data = await getLibroPorId(bookId, requestUserName(req));
+export async function handleLibrosFinalizadosTodos(req: Request, res: Response) {
+  const data = await getLibrosFinalizadosTodos(requestUserName(req));
   return res.json(data);
 }
