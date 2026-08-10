@@ -12,6 +12,7 @@ import {
 import { handleUsuarios } from '../controllers/users.controller.js';
 
 import {
+  handleGetLibroPorId,
   handleLibros,
   handleLibrosFinalizados,
   handleAnadirLibroExistente,
@@ -420,6 +421,9 @@ export async function handleApi(
 
       case 'librosFinalizados':
         return handleLibrosFinalizados(req, res);
+
+      case 'libroPorId':
+        return handleGetLibroPorId(req, res);
 
       case 'crearLibro':
         return handleCrearLibro(req, res);

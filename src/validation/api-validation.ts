@@ -140,6 +140,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
 };
 
 export const actionQuerySchemas: Record<string, z.ZodType> = {
+  libroPorId: z.object({ action: z.literal('libroPorId'), bookId: identifierSchema }).passthrough(),
   configuracionLectura: z.object({ action: z.literal('configuracionLectura'), libro: identifierSchema }).passthrough(),
   comentariosLectura: z.object({ action: z.literal('comentariosLectura'), libro: identifierSchema, capitulo: identifierSchema }).passthrough(),
   conversacionesLibro: z.object({ action: z.literal('conversacionesLibro'), libro: identifierSchema }).passthrough(),

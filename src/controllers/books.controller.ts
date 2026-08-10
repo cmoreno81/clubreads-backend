@@ -77,7 +77,6 @@ export async function handleLibrosFinalizados(req: Request, res: Response) {
 }
 
 export async function handleCrearLibro(req: Request, res: Response) {
-  console.log('[crearLibro] body:', JSON.stringify(req.body));
   const data = await crearLibro({
     ...(req.body ?? {}),
     usuario: requestUserName(req),
@@ -195,4 +194,11 @@ export async function handleActualizarPaginaLibrary(req: Request, res: Response)
   });
 
   return res.json({ ok: true });
+}
+
+export async function handleGetLibroPorId(req: Request, res: Response) {
+  const { getLibroPorId } = await import('../services/libro-por-id.service.js');
+  const bookId = String(req.query.bookId || req.query.id || '').trim();
+  const data = await getLibroPorId(bookId, requestUserName(req));
+  return res.json(data);
 }
