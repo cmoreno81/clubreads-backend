@@ -5,6 +5,7 @@ import {
   eliminarNotificacion,
   marcarLeida,
   marcarTodasLeidas,
+  eliminarTodasNotificaciones,
 } from '../services/notifications.service.js';
 import {
   hasExplicitPagination,
@@ -34,4 +35,8 @@ export async function handleMarcarLeida(req: Request, res: Response) {
 
 export async function handleMarcarTodasLeidas(req: Request, res: Response) {
   return res.json(await marcarTodasLeidas(req.auth!.userId));
+}
+
+export async function handleEliminarTodasNotificaciones(req: Request, res: Response) {
+  return res.json(await eliminarTodasNotificaciones(req.auth!.userId));
 }

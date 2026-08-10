@@ -12,7 +12,6 @@ import {
 import { handleUsuarios } from '../controllers/users.controller.js';
 
 import {
-  handleGetLibroPorId,
   handleLibros,
   handleLibrosFinalizados,
   handleAnadirLibroExistente,
@@ -105,7 +104,7 @@ import {
   handleConfirmGoodreadsImport,
   handlePreviewGoodreadsImport,
 } from '../controllers/goodreads-import.controller.js';
-import { handleEliminarNotificacion, handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas } from '../controllers/notifications.controller.js';
+import { handleEliminarNotificacion, handleEliminarTodasNotificaciones, handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas } from '../controllers/notifications.controller.js';
 import { handleGetSeriesOverrides, handleRemoveSeriesOverride, handleSetSeriesOverride } from '../controllers/series-override.controller.js';
 import { handleGetHiddenSeries, handleHideSeries, handleShowSeries, handleRemoveSeries, } from '../controllers/hidden-user-series.controller.js';
 import { handleSaveUserSeriesOrder } from '../controllers/user-series-order.controller.js';
@@ -138,6 +137,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'marcarLeida',
   'marcarTodasLeidas',
   'eliminarNotificacion',
+  'eliminarTodasNotificaciones',
   'importarLibroCatalogo',
   'previsualizarImportacionGoodreads',
   'confirmarImportacionGoodreads',
@@ -310,6 +310,10 @@ export async function handleApi(
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleEliminarNotificacion(req, res);
 
+      case 'eliminarTodasNotificaciones':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleEliminarTodasNotificaciones(req, res);
+
       case 'librosPorAutor':
         if (!req.auth) {
           return requireAuthentication(req, res, () => {});
@@ -421,9 +425,6 @@ export async function handleApi(
 
       case 'librosFinalizados':
         return handleLibrosFinalizados(req, res);
-
-      case 'libroPorId':
-        return handleGetLibroPorId(req, res);
 
       case 'crearLibro':
         return handleCrearLibro(req, res);

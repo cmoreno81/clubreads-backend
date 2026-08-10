@@ -433,3 +433,8 @@ export async function deleteNotificationForUser(
   });
   return { ok: true };
 }
+
+export async function eliminarTodasNotificaciones(userId: string) {
+  await prisma.notification.deleteMany({ where: { userId } });
+  return { ok: true };
+}

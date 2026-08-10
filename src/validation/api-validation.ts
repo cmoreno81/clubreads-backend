@@ -104,7 +104,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   setSeriesOverride: body({ seriesId: identifierSchema, posicion: positiveIntegerSchema, tipo: z.enum(['LEIDO_EXTERNO', 'OMITIDO']) }),
   removeSeriesOverride: body({ seriesId: identifierSchema, posicion: positiveIntegerSchema }),
   ocultarSaga: idBody('sagaId'), mostrarSaga: idBody('sagaId'), eliminarSaga: idBody('sagaId'),
-  marcarLeida: idBody(), marcarTodasLeidas: emptyBody, eliminarNotificacion: idBody(),
+  marcarLeida: idBody(), marcarTodasLeidas: emptyBody, eliminarNotificacion: idBody(), eliminarTodasNotificaciones: emptyBody,
   importarLibroCatalogo: body({ origen: z.enum(['CLUBREADS', 'GOOGLE', 'OPENLIBRARY']), id: identifierSchema.optional(), titulo: shortTextSchema, autores: z.array(shortTextSchema).max(20).optional(), isbn: z.string().max(32).optional(), coverUrl: urlSchema.optional(), anioPublicacion: positiveIntegerSchema.optional(), ...bookMutationFields }),
   previsualizarImportacionGoodreads: body({ libros: goodreadsRowsSchema, source: importSourceSchema }),
   confirmarImportacionGoodreads: body({ libros: goodreadsRowsSchema, resoluciones: importResolutionsSchema.optional(), source: importSourceSchema }),
