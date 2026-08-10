@@ -4,6 +4,7 @@ interface CacheEntry<T> {
 }
 
 const store = new Map<string, CacheEntry<unknown>>();
+const inFlight = new Map<string, Promise<unknown>>();
 
 export function cached<T>(
   key: string,
@@ -14,10 +15,24 @@ export function cached<T>(
   if (entry && Date.now() < entry.expiresAt) {
     return Promise.resolve(entry.value);
   }
-  return fn().then((value) => {
-    store.set(key, { value, expiresAt: Date.now() + ttlMs });
-    return value;
-  });
+
+  // Si ya hay una petición en vuelo para esta key, todas comparten la misma Promise
+  const existing = inFlight.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+
+  const promise = fn()
+    .then((value) => {
+      store.set(key, { value, expiresAt: Date.now() + ttlMs });
+      inFlight.delete(key);
+      return value;
+    })
+    .catch((err) => {
+      inFlight.delete(key);
+      throw err;
+    });
+
+  inFlight.set(key, promise);
+  return promise;
 }
 
 export function invalidatePrefix(prefix: string) {
