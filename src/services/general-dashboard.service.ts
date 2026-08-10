@@ -161,6 +161,11 @@ export async function getGeneralDashboard(userId: string) {
   const madridYear  = Number(madridValues.year);
   const madridMonth = Number(madridValues.month); // 1-12
   const { start, end } = currentMonthRange(now);
+
+  // Limita las finalizaciones a los últimos 2 años:
+  // cubre el streak (máx ~24 meses) y la estantería anual sin traer historial completo.
+  const completionsWindowStart = new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1));
+
   const [
     user,
     completions,
@@ -173,6 +178,7 @@ export async function getGeneralDashboard(userId: string) {
     communityFormats,
     latestBooks,
     hiddenSeries,
+    trendingAuthorsRaw,
   ] =
     await Promise.all([
       prisma.user.findUnique({
@@ -204,10 +210,29 @@ export async function getGeneralDashboard(userId: string) {
           },
         },
       }),
+      // Solo últimos 2 años y campos mínimos necesarios
       prisma.readingCompletion.findMany({
-        where: { userId },
+        where: {
+          userId,
+          finishedAt: { gte: completionsWindowStart },
+        },
         orderBy: { finishedAt: 'desc' },
-        include: { book: true },
+        select: {
+          id: true,
+          finishedAt: true,
+          startedAt: true,
+          isReread: true,
+          rating: true,
+          bookId: true,
+          book: {
+            select: {
+              id: true,
+              title: true,
+              coverUrl: true,
+              totalPages: true,
+            },
+          },
+        },
       }),
       prisma.library.findMany({
         where: { userId, status: ReadingStatus.FINISHED },
@@ -295,22 +320,71 @@ export async function getGeneralDashboard(userId: string) {
         where: { readingFormat: { not: null } },
         _count: { id: true },
       }),
+      // 20 es suficiente: deduplicateLatestBooks solo devuelve 10
       prisma.book.findMany({
         where: { deletedAt: null },
         orderBy: { createdAt: 'desc' },
-        take: 100,
-        include: {
-          author: true,
-          genre: true,
+        take: 20,
+        select: {
+          id: true,
+          title: true,
+          coverUrl: true,
+          createdAt: true,
+          author: { select: { name: true } },
+          genre: { select: { name: true } },
         },
       }),
       prisma.hiddenUserSeries.findMany({
         where: { userId },
         select: { seriesId: true },
       }),
+
+      // Autoras trending: groupBy en PostgreSQL, sin escanear Library global en Node
+      prisma.book.groupBy({
+        by: ['authorId'],
+        where: {
+          authorId: { not: null },
+          deletedAt: null,
+          library: { some: {} },
+          author: { deletedAt: null },
+        },
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 10,
+      }),
     ]);
 
   if (!user) return null;
+
+  // Resolver nombres y fotos de las autoras trending en una sola query IN
+  const trendingAuthorIds = trendingAuthorsRaw
+    .map((r) => r.authorId)
+    .filter((id): id is string => id !== null);
+
+  const trendingAuthorDetails = trendingAuthorIds.length > 0
+    ? await prisma.author.findMany({
+        where: { id: { in: trendingAuthorIds } },
+        select: { id: true, name: true, photoUrl: true },
+      })
+    : [];
+
+  const authorDetailsById = new Map(
+    trendingAuthorDetails.map((a) => [a.id, a]),
+  );
+
+  const trendingAuthors = trendingAuthorsRaw
+    .map((r) => {
+      const author = r.authorId ? authorDetailsById.get(r.authorId) : null;
+      if (!author) return null;
+      return {
+        id: author.id,
+        nombre: author.name,
+        photoUrl: author.photoUrl ?? '',
+        libros: r._count.id,
+      };
+    })
+    .filter((a): a is NonNullable<typeof a> => a !== null);
+
   const clubvisionNotice = await getClubvisionNotice(
     user.clubMemberships.map(({ club }) => ({
       id: club.id,
@@ -325,45 +399,6 @@ export async function getGeneralDashboard(userId: string) {
   const popularById = new Map(
     popularGroups.map((item) => [item.bookId, item._count.userId]),
   );
-
-  // Autoras más presentes en las bibliotecas — contamos libros únicos por autora
-  // usando la tabla Book directamente (no Library, para no contar duplicados por usuaria)
-  const booksInLibrary = await prisma.library.findMany({
-    select: { bookId: true },
-    distinct: ['bookId'],
-  });
-  const libraryBookIds = booksInLibrary.map((r) => r.bookId);
-  const booksWithAuthors = await prisma.book.findMany({
-    where: {
-      id: { in: libraryBookIds },
-      authorId: { not: null },
-      author: { deletedAt: null },
-    },
-    select: {
-      authorId: true,
-      author: { select: { id: true, name: true, photoUrl: true, deletedAt: true } },
-    },
-  });
-  // Contar libros únicos por autora
-  const authorCountMap = new Map<string, { author: NonNullable<typeof booksWithAuthors[0]['author']>, libros: number }>();
-  for (const book of booksWithAuthors) {
-    if (!book.author || !book.authorId) continue;
-    const existing = authorCountMap.get(book.authorId);
-    if (existing) {
-      existing.libros += 1;
-    } else {
-      authorCountMap.set(book.authorId, { author: book.author, libros: 1 });
-    }
-  }
-  const trendingAuthors = Array.from(authorCountMap.values())
-    .sort((a, b) => b.libros - a.libros)
-    .slice(0, 10)
-    .map((e) => ({
-      id: e.author.id,
-      nombre: e.author.name,
-      photoUrl: e.author.photoUrl ?? '',
-      libros: e.libros,
-    }));
   const monthCompletions = completions.filter(
     ({ finishedAt }) => finishedAt >= start && finishedAt < end,
   );
