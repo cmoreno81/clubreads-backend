@@ -3,14 +3,27 @@ import type { Request, Response } from 'express';
 import { requestUserName } from '../middleware/auth.middleware.js';
 import {
   getGeneralCatalog,
+  getGeneralCatalogPage,
   addSeriesCatalogVolume,
   importCatalogBook,
   searchGeneralCatalog,
   updateSeriesPublicationStatus,
   updateSeriesVolumeOrder,
 } from '../services/catalog.service.js';
+import {
+  hasExplicitPagination,
+  parsePagination,
+} from '../utils/cursor-pagination.js';
 
 export async function handleGeneralCatalog(req: Request, res: Response) {
+  if (hasExplicitPagination(req.query)) {
+    return res.json(
+      await getGeneralCatalogPage(
+        requestUserName(req),
+        parsePagination(req.query),
+      ),
+    );
+  }
   return res.json(await getGeneralCatalog(requestUserName(req)));
 }
 

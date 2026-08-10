@@ -19,16 +19,16 @@ export interface AchievementState extends AchievementDefinition {
 }
 
 interface AchievementData {
-  completedBooks: Array<{ bookId: string; finishedAt: Date | null; genreName?: string | null; pages?: number | null }>;
-  completedSeries: Array<{ id: string; completedAt: Date | null }>;
-  reviews: Array<{ createdAt: Date | null }>;
-  comments: number;
-  clubvisionVotes: number;
-  totalPages: number;
-  genreCounts: Map<string, number>;
-  booksThisMonth: number;
-  booksThisYear: number;
-  abandonedBooks: number;
+  completedBooks?: Array<{ bookId?: string; id?: string; finishedAt: Date | null; genreName?: string | null; pages?: number | null }>;
+  completedSeries?: Array<{ id: string; completedAt: Date | null }>;
+  reviews?: Array<{ createdAt: Date | null }>;
+  comments?: number;
+  clubvisionVotes?: number;
+  totalPages?: number;
+  genreCounts?: Map<string, number>;
+  booksThisMonth?: number;
+  booksThisYear?: number;
+  abandonedBooks?: number;
 }
 
 export function buildAchievementDefinitions(): AchievementDefinition[] {
@@ -144,6 +144,15 @@ export function buildAchievementState(
   definitions: AchievementDefinition[],
   data: AchievementData,
 ): AchievementState[] {
+  const completedBooks = data.completedBooks ?? [];
+  const completedSeries = data.completedSeries ?? [];
+  const reviews = data.reviews ?? [];
+  const genreCounts = data.genreCounts ?? new Map<string, number>();
+  const comments = data.comments ?? 0;
+  const clubvisionVotes = data.clubvisionVotes ?? 0;
+  const totalPages = data.totalPages ?? 0;
+  const booksThisMonth = data.booksThisMonth ?? 0;
+  const booksThisYear = data.booksThisYear ?? 0;
   return definitions.map((def) => {
     let progress = 0;
     let unlockedAt: Date | null = null;
@@ -155,74 +164,74 @@ export function buildAchievementState(
       case 'veinticinco-libros':
       case 'cincuenta-libros':
       case 'cien-libros':
-        progress = data.completedBooks.length;
-        unlockedAt = getUnlockDate(data.completedBooks.map(b => b.finishedAt), def.target);
+        progress = completedBooks.length;
+        unlockedAt = getUnlockDate(completedBooks.map(b => b.finishedAt), def.target);
         break;
 
       case 'mil-paginas':
       case 'cinco-mil-paginas':
       case 'diez-mil-paginas':
       case 'cincuenta-mil-paginas':
-        progress = data.totalPages;
-        unlockedAt = getPagesUnlockDate(data.completedBooks, def.target);
+        progress = totalPages;
+        unlockedAt = getPagesUnlockDate(completedBooks, def.target);
         break;
 
       case 'primera-saga':
       case 'tres-sagas':
       case 'cinco-sagas':
-        progress = data.completedSeries.length;
-        unlockedAt = getUnlockDate(data.completedSeries.map(s => s.completedAt), def.target);
+        progress = completedSeries.length;
+        unlockedAt = getUnlockDate(completedSeries.map(s => s.completedAt), def.target);
         break;
 
       case 'romance-addict':
-        progress = data.genreCounts.get('romance') ?? 0;
-        unlockedAt = getGenreUnlockDate(data.completedBooks, 'romance', def.target);
+        progress = genreCounts.get('romance') ?? 0;
+        unlockedAt = getGenreUnlockDate(completedBooks, 'romance', def.target);
         break;
       case 'fantasia-forever':
-        progress = data.genreCounts.get('fantasía') ?? data.genreCounts.get('fantasia') ?? 0;
-        unlockedAt = getGenreUnlockDate(data.completedBooks, 'fantasía', def.target)
-          ?? getGenreUnlockDate(data.completedBooks, 'fantasia', def.target);
+        progress = genreCounts.get('fantasía') ?? genreCounts.get('fantasia') ?? 0;
+        unlockedAt = getGenreUnlockDate(completedBooks, 'fantasía', def.target)
+          ?? getGenreUnlockDate(completedBooks, 'fantasia', def.target);
         break;
       case 'thriller-queen':
-        progress = data.genreCounts.get('thriller') ?? 0;
-        unlockedAt = getGenreUnlockDate(data.completedBooks, 'thriller', def.target);
+        progress = genreCounts.get('thriller') ?? 0;
+        unlockedAt = getGenreUnlockDate(completedBooks, 'thriller', def.target);
         break;
       case 'dark-romance':
-        progress = data.genreCounts.get('dark romance') ?? 0;
-        unlockedAt = getGenreUnlockDate(data.completedBooks, 'dark romance', def.target);
+        progress = genreCounts.get('dark romance') ?? 0;
+        unlockedAt = getGenreUnlockDate(completedBooks, 'dark romance', def.target);
         break;
       case 'exploradora-generos':
-        progress = data.genreCounts.size;
-        unlockedAt = getExplorerUnlockDate(data.completedBooks, def.target);
+        progress = genreCounts.size;
+        unlockedAt = getExplorerUnlockDate(completedBooks, def.target);
         break;
 
       case 'primera-resena':
       case 'diez-resenas':
       case 'veinticinco-resenas':
-        progress = data.reviews.length;
-        unlockedAt = getUnlockDate(data.reviews.map(r => r.createdAt), def.target);
+        progress = reviews.length;
+        unlockedAt = getUnlockDate(reviews.map(r => r.createdAt), def.target);
         break;
 
       case 'primer-comentario':
       case 'diez-comentarios':
       case 'cincuenta-comentarios':
-        progress = data.comments;
+        progress = comments;
         unlockedAt = progress >= def.target ? new Date() : null;
         break;
 
       case 'primer-voto':
       case 'cinco-votos':
       case 'diez-votos':
-        progress = data.clubvisionVotes;
+        progress = clubvisionVotes;
         unlockedAt = progress >= def.target ? new Date() : null;
         break;
 
       case 'tres-en-mes':
       case 'cinco-en-mes':
-        progress = data.booksThisMonth;
+        progress = booksThisMonth;
         unlockedAt = progress >= def.target
           ? getCountUnlockDate(
-              data.completedBooks
+              completedBooks
                 .filter(b => {
                   if (!b.finishedAt) return false;
                   const now = new Date();
@@ -236,10 +245,10 @@ export function buildAchievementState(
 
       case 'diez-en-anio':
       case 'veinte-en-anio':
-        progress = data.booksThisYear;
+        progress = booksThisYear;
         unlockedAt = progress >= def.target
           ? getCountUnlockDate(
-              data.completedBooks
+              completedBooks
                 .filter(b => {
                   if (!b.finishedAt) return false;
                   const now = new Date();

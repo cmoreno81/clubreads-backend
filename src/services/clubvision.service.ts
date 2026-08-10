@@ -1,5 +1,5 @@
-import type { Club } from '@prisma/client';
-import { ReadingStatus } from '@prisma/client';
+import type { Club, Prisma } from '@prisma/client';
+import { ReadingStatus, ReadingType } from '@prisma/client';
 import {
   notifyClubvisionAbierta,
   notifyClubvisionResultados,
@@ -14,6 +14,12 @@ import {
   getClubvisionCalendarFor,
   getClubvisionStage,
 } from '../utils/clubvision-calendar.js';
+import {
+  descendingCursorFilter,
+  pageFromRows,
+  type PaginationRequest,
+} from '../utils/cursor-pagination.js';
+import { backgroundError, logger } from '../logging/logger.js';
 
 const POINTS_BY_POSITION = [12, 10, 8, 7, 6] as const;
 
@@ -62,7 +68,7 @@ async function getOrCreateCurrentClubvision(
 
   if (existing || day > 2) return existing;
 
-  return prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx) => {
     const clubvision = await tx.clubvision.upsert({
       where: {
         clubId_edition: {
@@ -80,9 +86,6 @@ async function getOrCreateCurrentClubvision(
         openedAt: getNow(),
       },
     });
-    // Notificar apertura de votación
-    notifyClubvisionAbierta(club.id).catch(console.error);
-
     // Excluir solo los libros que han ganado en ediciones anteriores
     const previousWinners = await tx.clubvisionResult.findMany({
       where: {
@@ -138,7 +141,9 @@ async function getOrCreateCurrentClubvision(
     });
 
     return clubvision;
-  });
+  }, { maxWait: 5_000, timeout: 15_000 });
+  if (created) void notifyClubvisionAbierta(club.id).catch(backgroundError('clubvision_open_notification_failed'));
+  return created;
 }
 
 export async function openScheduledClubvision() {
@@ -146,9 +151,17 @@ export async function openScheduledClubvision() {
   const synchronized = [];
 
   for (const club of clubs) {
-    synchronized.push(
-      await synchronizeCurrentClubvision('', club),
-    );
+    const calendar = getClubvisionCalendar();
+    try {
+      synchronized.push(await synchronizeCurrentClubvision('', club));
+    } catch {
+      logger.error({
+        event: 'clubvision_cron_failed',
+        clubId: club.id,
+        edition: calendar.edition,
+        phase: getClubvisionStage(calendar.day, false),
+      }, 'Clubvision cron failed');
+    }
   }
 
   return synchronized;
@@ -221,7 +234,7 @@ async function calculateClubvisionResult(clubvision: {
   const winner = sorted[0];
   if (!winner) return null;
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const result = await tx.clubvisionResult.upsert({
       where: {
         clubId_edition: {
@@ -249,14 +262,71 @@ async function calculateClubvisionResult(clubvision: {
         closedAt: getNow(),
       },
     });
-    // Notificar resultados
-    notifyClubvisionResultados(
-      clubvision.clubId,
-      result.winnerTitle,
-    ).catch(console.error);
-
     return result;
+  }, { maxWait: 5_000, timeout: 15_000 });
+  void notifyClubvisionResultados(
+    clubvision.clubId,
+    result.winnerTitle,
+  ).catch(backgroundError('clubvision_results_notification_failed'));
+  return result;
+}
+
+export async function transitionClubvisionToReading(
+  tx: Prisma.TransactionClient,
+  params: {
+    clubvisionId: string;
+    clubId: string;
+    edition: string;
+    winnerBookId: string;
+  },
+) {
+  await tx.$queryRaw`
+    SELECT pg_advisory_xact_lock(
+      hashtextextended(${`clubvision:reading:${params.clubId}:${params.edition}`}, 0)
+    )::text
+  `;
+  const current = await tx.clubvision.findUnique({
+    where: { id: params.clubvisionId },
+    select: { status: true },
   });
+  if (current?.status !== 'RESULTADOS') {
+    return { transitioned: false, officialReadingId: null };
+  }
+
+  const winnerReading = await tx.reading.findFirst({
+    where: {
+      clubId: params.clubId,
+      bookId: params.winnerBookId,
+      status: 'ACTIVE',
+    },
+    orderBy: { startedAt: 'desc' },
+  });
+  await tx.reading.updateMany({
+    where: {
+      clubId: params.clubId,
+      type: ReadingType.CLUBVISION,
+      status: 'ACTIVE',
+      ...(winnerReading ? { id: { not: winnerReading.id } } : {}),
+    },
+    data: { type: ReadingType.FREE },
+  });
+  if (winnerReading && winnerReading.type !== ReadingType.CLUBVISION) {
+    await tx.reading.update({
+      where: { id: winnerReading.id },
+      data: { type: ReadingType.CLUBVISION },
+    });
+  }
+  await tx.clubvision.update({
+    where: { id: params.clubvisionId },
+    data: {
+      status: 'LECTURA',
+      winnerBookId: params.winnerBookId,
+    },
+  });
+  return {
+    transitioned: true,
+    officialReadingId: winnerReading?.id ?? null,
+  };
 }
 
 export async function synchronizeCurrentClubvision(
@@ -295,26 +365,24 @@ export async function synchronizeCurrentClubvision(
     result = await calculateClubvisionResult(clubvision);
   }
 
-if (stage === 'LECTURA' && result) {
-  const yaEraLectura = clubvision.status === 'LECTURA';
-
-  await prisma.clubvision.update({
-    where: { id: clubvision.id },
-    data: {
-      status: 'LECTURA',
-      winnerBookId: result.winnerBookId,
-    },
-  });
-
-  // Solo notificar la primera vez que transiciona a LECTURA
-  if (!yaEraLectura && result.winnerBookId && result.winnerTitle) {
-    notifyLecturaNueva(
-      clubvision.clubId,
-      result.winnerTitle,
-      result.winnerBookId,
-    ).catch(console.error);
+  if (stage === 'LECTURA' && result?.winnerBookId) {
+    const transition = await prisma.$transaction(
+      (tx) => transitionClubvisionToReading(tx, {
+        clubvisionId: clubvision.id,
+        clubId: club.id,
+        edition: clubvision.edition,
+        winnerBookId: result!.winnerBookId!,
+      }),
+      { maxWait: 5_000, timeout: 15_000 },
+    );
+    if (transition.transitioned && result.winnerTitle) {
+      void notifyLecturaNueva(
+        clubvision.clubId,
+        result.winnerTitle,
+        result.winnerBookId,
+      ).catch(backgroundError('clubvision_reading_notification_failed'));
+    }
   }
-}
 
   return clubvision;
 }
@@ -341,11 +409,23 @@ async function getCalculatedClubvisionStatus(
   return getClubvisionStage(day, todasHanVotado);
 }
 
-export async function getClubvision(usuario: string) {
-  const { club } = await getCurrentClubContext(usuario);
+type ClubvisionReadOptions = {
+  synchronize?: boolean;
+  context?: Awaited<ReturnType<typeof getCurrentClubContext>>;
+};
+
+export async function getClubvision(
+  usuario: string,
+  options: ClubvisionReadOptions = {},
+) {
+  const { club, user: contextUser } = options.context ?? await getCurrentClubContext(usuario);
   const idVotacion = getCurrentEdition();
 
-  const clubvision = await synchronizeCurrentClubvision(usuario);
+  const clubvision = options.synchronize === false
+    ? await prisma.clubvision.findUnique({
+        where: { clubId_edition: { clubId: club.id, edition: idVotacion } },
+      })
+    : await synchronizeCurrentClubvision(usuario, club);
 
   const totalUsuarios = await prisma.clubMember.count({
     where: { clubId: club.id },
@@ -391,11 +471,6 @@ export async function getClubvision(usuario: string) {
     };
   }
 
-  const estado = await getCalculatedClubvisionStatus(
-    clubvision.id,
-    club.id,
-  );
-
   const votosUsuarios = await prisma.clubvisionVote.groupBy({
     by: ['userId'],
     where: {
@@ -404,6 +479,8 @@ export async function getClubvision(usuario: string) {
   });
 
   const votosRecibidos = votosUsuarios.length;
+  const todasHanVotado = totalUsuarios > 0 && votosRecibidos >= totalUsuarios;
+  const estado = getClubvisionStage(getClubvisionCalendar().day, todasHanVotado);
   const votosPendientes = Math.max(totalUsuarios - votosRecibidos, 0);
 
   const porcentaje =
@@ -411,27 +488,24 @@ export async function getClubvision(usuario: string) {
       ? 0
       : Math.round((votosRecibidos / totalUsuarios) * 100);
 
-  const user = usuario.trim()
-    ? (await getCurrentClubContext(usuario)).user
-    : null;
+  const user = usuario.trim() ? contextUser : null;
 
-  const haVotado =
-    !!user &&
-    (await prisma.clubvisionVote.count({
-      where: {
-        clubvisionId: clubvision.id,
-        userId: user.id,
-      },
-    })) > 0;
-
-  const candidates = await prisma.clubvisionCandidate.findMany({
+  const [userVoteCount, candidates, winner] = await Promise.all([
+    user
+      ? prisma.clubvisionVote.count({
+          where: { clubvisionId: clubvision.id, userId: user.id },
+        })
+      : Promise.resolve(0),
+    prisma.clubvisionCandidate.findMany({
     where: {
       clubvisionId: clubvision.id,
     },
-    include: {
+    select: {
       book: {
-        include: {
-          genre: true,
+        select: {
+          title: true,
+          coverUrl: true,
+          genre: { select: { name: true } },
           library: {
             where: {
               status: ReadingStatus.PENDING,
@@ -441,9 +515,7 @@ export async function getClubvision(usuario: string) {
                 },
               },
             },
-            include: {
-              user: true,
-            },
+            select: { user: { select: { name: true } } },
           },
         },
       },
@@ -451,7 +523,20 @@ export async function getClubvision(usuario: string) {
     orderBy: {
       createdAt: 'asc',
     },
-  });
+    }),
+    prisma.clubvisionResult.findUnique({
+      where: {
+        clubId_edition: { clubId: club.id, edition: getCurrentEdition() },
+      },
+      select: {
+        winnerTitle: true,
+        winnerBookId: true,
+        points: true,
+        winnerBook: { select: { coverUrl: true } },
+      },
+    }),
+  ]);
+  const haVotado = userVoteCount > 0;
 
   const candidatas = candidates.map((candidate) => ({
     libro: candidate.book.title,
@@ -461,25 +546,12 @@ export async function getClubvision(usuario: string) {
     usuarias: candidate.book.library.map((entry) => entry.user.name),
   }));
 
-  const winner = await prisma.clubvisionResult.findUnique({
-    where: {
-      clubId_edition: {
-        clubId: club.id,
-        edition: getCurrentEdition(),
-      },
-    },
-  });
-
   const ganador = winner?.winnerTitle ?? '';
   const puntosGanador = winner?.points ?? 0;
-  const ganadorCoverUrl = winner?.winnerBookId
-    ? (await prisma.book.findUnique({
-        where: { id: winner.winnerBookId },
-        select: { coverUrl: true },
-      }))?.coverUrl ?? ''
-    : '';
-  const lectoras = winner?.winnerBookId
-    ? await prisma.library.findMany({
+  const ganadorCoverUrl = winner?.winnerBook?.coverUrl ?? '';
+  const [lectoras, officialReadingCount] = winner?.winnerBookId
+    ? await Promise.all([
+      prisma.library.findMany({
         where: {
           bookId: winner.winnerBookId,
           status: ReadingStatus.FINISHED,
@@ -489,19 +561,19 @@ export async function getClubvision(usuario: string) {
             },
           },
         },
-        include: { user: true },
-      })
-    : [];
-  const lecturaConfigurada = winner?.winnerBookId
-    ? (await prisma.reading.count({
+        select: { user: { select: { name: true } } },
+      }),
+      prisma.reading.count({
         where: {
           bookId: winner.winnerBookId,
           clubId: club.id,
           type: 'CLUBVISION',
           status: 'ACTIVE',
         },
-      })) > 0
-    : false;
+      }),
+    ])
+    : [[], 0] as const;
+  const lecturaConfigurada = officialReadingCount > 0;
 
   return {
     abierta: estado === 'VOTACION',
@@ -535,6 +607,7 @@ export async function getClubvision(usuario: string) {
             : '',
 
     ganador,
+    ganadorBookId: winner?.winnerBookId ?? '',
     ganadorCoverUrl,
     lecturaConfigurada,
     lectoras: lectoras.map((entry) => entry.user.name),
@@ -551,6 +624,13 @@ export async function getClubvision(usuario: string) {
     likes: 0,
     ultimaActividad: '',
   };
+}
+
+export function getClubvisionSnapshot(
+  usuario: string,
+  context: Awaited<ReturnType<typeof getCurrentClubContext>>,
+) {
+  return getClubvision(usuario, { synchronize: false, context });
 }
 
 export async function enviarVotacion(usuario: string, votos: string[]) {
@@ -780,20 +860,146 @@ export async function getComoVotaron(usuario = '') {
   return Array.from(grouped.values());
 }
 
+type ClubvisionHistoryRow = {
+  edition: string;
+  winnerTitle: string;
+  winnerBookId: string | null;
+  winnerBook: { id: string; coverUrl: string | null } | null;
+  points: number;
+  secondTitle: string | null;
+  thirdTitle: string | null;
+};
+
+type HistoryBook = {
+  id: string;
+  title: string;
+  coverUrl: string | null;
+  deletedAt: Date | null;
+};
+
+function normalizeHistoryTitle(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’‘`´]/g, "'")
+    .toLocaleLowerCase('es')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function unambiguousHistoryBook(candidates: HistoryBook[]) {
+  const active = candidates.filter(({ deletedAt }) => deletedAt === null);
+  const preferred = active.length > 0 ? active : candidates;
+  if (preferred.length === 1) return preferred[0];
+
+  // Una portada no basta para desambiguar dos obras activas homónimas.
+  if (active.length > 1) return null;
+  const withCover = preferred.filter(({ coverUrl }) => Boolean(coverUrl));
+  return withCover.length === 1 ? withCover[0] : null;
+}
+
+export async function enrichClubvisionHistoryRows(
+  rows: ClubvisionHistoryRow[],
+  client: Pick<typeof prisma, 'book'> = prisma,
+) {
+  const titles = Array.from(new Set(rows.flatMap((row) => [
+    row.winnerBookId || row.winnerBook ? null : row.winnerTitle,
+    row.secondTitle,
+    row.thirdTitle,
+  ]).filter((title): title is string => Boolean(title?.trim()))));
+
+  const books: HistoryBook[] = titles.length === 0
+    ? []
+    : await client.book.findMany({
+        where: {
+          OR: titles.map((title) => ({
+            title: { equals: title, mode: 'insensitive' as const },
+          })),
+        },
+        select: { id: true, title: true, coverUrl: true, deletedAt: true },
+      });
+  const candidatesByTitle = new Map<string, HistoryBook[]>();
+  for (const book of books) {
+    const key = normalizeHistoryTitle(book.title);
+    candidatesByTitle.set(key, [...(candidatesByTitle.get(key) ?? []), book]);
+  }
+  const resolveTitle = (title: string | null) => {
+    if (!title?.trim()) return null;
+    return unambiguousHistoryBook(
+      candidatesByTitle.get(normalizeHistoryTitle(title)) ?? [],
+    );
+  };
+
+  return rows.map((result) => {
+    const winner = result.winnerBook ?? resolveTitle(result.winnerTitle);
+    const second = resolveTitle(result.secondTitle);
+    const third = resolveTitle(result.thirdTitle);
+    return {
+      mes: result.edition,
+      ganadora: result.winnerTitle,
+      puntos: result.points,
+      segunda: result.secondTitle ?? '',
+      tercera: result.thirdTitle ?? '',
+      ganadoraBookId: winner?.id ?? '',
+      ganadoraCoverUrl: winner?.coverUrl ?? '',
+      segundaBookId: second?.id ?? '',
+      segundaCoverUrl: second?.coverUrl ?? '',
+      terceraBookId: third?.id ?? '',
+      terceraCoverUrl: third?.coverUrl ?? '',
+    };
+  });
+}
+
 export async function getHistorialClubvision(usuario = '') {
   const { club } = await getCurrentClubContext(usuario);
   const results = await prisma.clubvisionResult.findMany({
     where: { clubId: club.id },
+    select: {
+      edition: true,
+      winnerTitle: true,
+      winnerBookId: true,
+      winnerBook: { select: { id: true, coverUrl: true } },
+      points: true,
+      secondTitle: true,
+      thirdTitle: true,
+    },
     orderBy: {
       edition: 'desc',
     },
   });
+  return enrichClubvisionHistoryRows(results);
+}
 
-  return results.map((result) => ({
-    mes: result.edition,
-    ganadora: result.winnerTitle,
-    puntos: result.points,
-    segunda: result.secondTitle ?? '',
-    tercera: result.thirdTitle ?? '',
+export async function getHistorialClubvisionPage(
+  usuario: string,
+  pagination: PaginationRequest,
+) {
+  const { club } = await getCurrentClubContext(usuario);
+  const rows = await prisma.clubvisionResult.findMany({
+    where: {
+      clubId: club.id,
+      ...descendingCursorFilter('createdAt', pagination.cursor),
+    },
+    select: {
+      id: true,
+      edition: true,
+      winnerTitle: true,
+      winnerBookId: true,
+      winnerBook: { select: { id: true, coverUrl: true } },
+      points: true,
+      secondTitle: true,
+      thirdTitle: true,
+      createdAt: true,
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: pagination.limit + 1,
+  });
+  const page = pageFromRows(rows, pagination.limit, (row) => ({
+    value: row.createdAt.toISOString(),
+    id: row.id,
   }));
+  return {
+    ...page,
+    items: await enrichClubvisionHistoryRows(page.items),
+  };
 }

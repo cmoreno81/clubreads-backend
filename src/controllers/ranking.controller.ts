@@ -5,7 +5,7 @@ import { requestUserName } from '../middleware/auth.middleware.js';
 export async function handleRanking(req: Request, res: Response) {
   const data = await getRanking(
     Number(req.query.anio || new Date().getFullYear()),
-    requestUserName(req, req.query.usuario),
+    requestUserName(req),
   );
   return res.json(data);
 }

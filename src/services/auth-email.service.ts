@@ -1,3 +1,7 @@
+import { observeExternalCall } from '../logging/external-call.js';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+
 type SendCodeParams = {
   to: string;
   name: string;
@@ -16,6 +20,32 @@ function escapeHtml(value: string) {
 }
 
 export async function sendAuthCodeEmail(params: SendCodeParams) {
+  const emailMode = process.env.AUTH_EMAIL_MODE ?? (
+    process.env.NODE_ENV === 'production' ? 'send' : 'disabled'
+  );
+  if (emailMode === 'capture') {
+    const configuredDirectory = process.env.AUTH_CODE_CAPTURE_DIR?.trim();
+    if (!configuredDirectory) {
+      throw new Error('AUTH_CODE_CAPTURE_DIR es obligatorio en modo capture');
+    }
+    const directory = resolve(configuredDirectory);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await chmod(directory, 0o700);
+    const safeId = params.idempotencyKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const output = join(directory, `${safeId}.json`);
+    await writeFile(output, JSON.stringify({
+      to: params.to,
+      name: params.name,
+      code: params.code,
+      purpose: params.purpose,
+      capturedAt: new Date().toISOString(),
+    }), { mode: 0o600, flag: 'wx' });
+    return;
+  }
+  if (emailMode === 'disabled') return;
+  if (emailMode !== 'send') {
+    throw new Error('AUTH_EMAIL_MODE debe ser send, capture o disabled');
+  }
   const apiKey = process.env.BREVO_API_KEY?.trim();
   const senderEmail = process.env.AUTH_EMAIL_FROM?.trim();
   const senderName =
@@ -41,9 +71,8 @@ export async function sendAuthCodeEmail(params: SendCodeParams) {
   const safeName = escapeHtml(params.name);
   const safeCode = escapeHtml(params.code);
 
-  const response = await fetch(
-    'https://api.brevo.com/v3/smtp/email',
-    {
+  const response = await observeExternalCall('brevo', 'send_auth_code', () =>
+    fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
       'api-key': apiKey,
@@ -72,13 +101,11 @@ export async function sendAuthCodeEmail(params: SendCodeParams) {
         params.purpose.toLowerCase(),
       ],
     }),
-  },
+  }),
   );
 
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(
-      `Brevo rechazó el correo (${response.status}): ${detail}`,
-    );
+    await response.body?.cancel();
+    throw new Error(`Brevo rechazó el correo (${response.status})`);
   }
 }

@@ -5,7 +5,13 @@ export async function getUsuarios(usuario = '') {
   const { club } = await getCurrentClubContext(usuario);
   const memberships = await prisma.clubMember.findMany({
     where: { clubId: club.id },
-    include: { user: true },
+    select: {
+      user: {
+        select: {
+          name: true,
+        },
+      },
+    },
     orderBy: {
       user: { name: 'asc' },
     },
@@ -13,6 +19,5 @@ export async function getUsuarios(usuario = '') {
 
   return memberships.map(({ user }) => ({
     nombre: user.name,
-    email: user.email,
   }));
 }

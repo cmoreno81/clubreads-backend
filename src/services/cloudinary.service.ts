@@ -7,6 +7,12 @@ cloudinary.config({
 });
 
 function validarConfiguracion() {
+  const writesEnabled = process.env.CLOUDINARY_WRITES_ENABLED ?? (
+    process.env.NODE_ENV === 'production' ? 'true' : 'false'
+  );
+  if (writesEnabled !== 'true') {
+    throw new Error('Las escrituras en Cloudinary están desactivadas');
+  }
   if (
     !process.env.CLOUDINARY_CLOUD_NAME ||
     !process.env.CLOUDINARY_API_KEY ||

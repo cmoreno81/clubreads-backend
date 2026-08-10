@@ -124,11 +124,33 @@ refresh token por los valores de la respuesta.
 - Reenvío: como máximo una vez por minuto y cinco veces por hora.
 - Login: bloqueo de 15 minutos después de cinco fallos consecutivos.
 
+## Access tokens
+
+Los access tokens se firman con `jose` usando exclusivamente `HS256` y un
+secreto simétrico de al menos 32 caracteres. Incluyen `sub`, `sid`,
+`type: "access"`, `iat`, `exp`, `iss` y `aud`; caducan a los 15 minutos. El
+backend limita el token recibido a 4096 bytes antes de verificarlo y, tras la
+verificación criptográfica, comprueba que la sesión siga activa en PostgreSQL.
+
+| Variable | Valor predeterminado |
+| --- | --- |
+| `AUTH_ACCESS_TOKEN_ISSUER` | `clubreads-api` |
+| `AUTH_ACCESS_TOKEN_AUDIENCE` | `clubreads-app` |
+
+Ambos valores deben ser iguales en todas las réplicas. Cambiarlos invalida los
+access tokens ya emitidos, por lo que debe hacerse como una rotación coordinada.
+Esta incorporación de `iss`/`aud` no cambia el formato ni el hash de los refresh
+tokens. Los access tokens emitidos antes del despliegue, que no contienen esos
+claims, dejarán de validarse; su vida máxima ya era de 15 minutos. La sesión
+PostgreSQL no se revoca: el cliente puede usar su refresh token existente para
+obtener inmediatamente un access token nuevo, sin iniciar sesión de nuevo.
+
 ## Transición desde la APK antigua
 
-Mientras `AUTH_REQUIRE_ACCESS_TOKEN=false`, las rutas antiguas siguen aceptando
-`usuario`. Cuando todas las usuarias hayan instalado la nueva APK, cambiar a
-`AUTH_REQUIRE_ACCESS_TOKEN=true` para exigir sesión en el resto de la API.
+Todas las rutas, salvo las acciones públicas de registro, activación, login,
+recuperación y renovación de sesión, exigen un access token válido. La identidad
+se obtiene siempre de la sesión; cualquier valor `usuario` enviado por clientes
+antiguos se ignora y no sirve para autenticarse.
 
 ## Configuración gratuita de Brevo
 
@@ -146,3 +168,63 @@ técnicamente una dirección gratuita por un remitente suyo para asegurar la
 entrega.
 
 Nunca se deben guardar las claves ni los secretos de autenticación en Git.
+
+# Rate limiting de red
+
+Todas las rutas bajo `/api` tienen un límite general por IP. Las acciones
+públicas de autenticación añaden límites más estrictos según su riesgo:
+
+- `login` y `refreshToken`: intentos de credenciales.
+- Solicitudes de activación, registro y recuperación: envío de correo.
+- Activación, finalización del registro y cambio de contraseña: confirmación de
+  códigos.
+
+Cuando se supera un límite, la API responde con HTTP `429`,
+`error: "RATE_LIMITED"` y un mensaje genérico. No se registran cuerpos de
+autenticación, contraseñas, códigos, tokens ni direcciones de correo.
+
+| Variable | Valor predeterminado |
+| --- | ---: |
+| `RATE_LIMIT_API_WINDOW_MS` | `60000` |
+| `RATE_LIMIT_API_MAX` | `120` |
+| `RATE_LIMIT_AUTH_WINDOW_MS` | `600000` |
+| `RATE_LIMIT_AUTH_MAX` | `10` |
+| `RATE_LIMIT_EMAIL_WINDOW_MS` | `3600000` |
+| `RATE_LIMIT_EMAIL_MAX` | `3` |
+| `RATE_LIMIT_CODE_WINDOW_MS` | `900000` |
+| `RATE_LIMIT_CODE_MAX` | `8` |
+| `TRUST_PROXY_HOPS` | `1` en producción, `0` fuera de producción |
+
+Railway termina TLS y actúa como proxy inmediato. En producción se confía por
+defecto en un único salto, no en una cadena arbitraria de `X-Forwarded-For`.
+`TRUST_PROXY_HOPS` solo debe cambiarse si la topología incorpora otro proxy
+controlado, verificando entonces el número exacto de saltos.
+
+El store en memoria protege una única instancia y se reinicia con el proceso.
+Antes de desplegar varias réplicas debe sustituirse por un store compartido,
+preferiblemente Redis, o por el rate limiting del proveedor.
+
+# CORS y cabeceras HTTP
+
+Helmet añade las cabeceras de seguridad HTTP a todas las respuestas. La API
+admite únicamente los métodos `GET`, `POST` y `OPTIONS`, y las cabeceras CORS
+`Authorization`, `Content-Type` y `Accept`. No se habilitan credenciales CORS:
+la autenticación utiliza tokens Bearer y no cookies.
+
+Las aplicaciones móviles nativas pueden llamar a la API sin cabecera `Origin`.
+Cuando una petición sí incluye `Origin`, debe coincidir exactamente con uno de
+los valores separados por comas de `CORS_ALLOWED_ORIGINS`:
+
+```text
+CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
+```
+
+En producción no se añade ningún origen implícito; si la variable está vacía,
+solo se aceptan peticiones sin `Origin`. Fuera de producción se añaden
+explícitamente `localhost` y `127.0.0.1` en los puertos `3000` y `5173`, además
+de los valores configurados. Esta excepción local no se activa cuando
+`NODE_ENV=production`.
+
+La configuración de Railway conserva un único `trust proxy`: un salto en
+producción y ninguno en desarrollo, salvo ajuste explícito mediante
+`TRUST_PROXY_HOPS`.

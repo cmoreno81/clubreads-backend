@@ -28,6 +28,39 @@ function currentMonthRange(now = new Date()) {
   return { start, end };
 }
 
+export function isCanonicalActiveReading(status: ReadingStatus) {
+  return status === ReadingStatus.READING;
+}
+
+export function completedRating(rating: number | null | undefined) {
+  return rating ?? null;
+}
+
+type ContinueSeriesContract = {
+  id: string;
+  nombre: string;
+  estado: 'EN_CURSO' | 'PENDIENTE';
+  siguiente: unknown | null;
+  hasAbandonedVolume?: boolean;
+};
+
+export function shouldShowContinueSeries(series: ContinueSeriesContract) {
+  return !series.hasAbandonedVolume && series.siguiente !== null;
+}
+
+export function compareContinueSeries(
+  left: ContinueSeriesContract,
+  right: ContinueSeriesContract,
+) {
+  // Contrato estable: estado, nombre localizado en español y series.id como
+  // desempate final cuando dos registros comparten el mismo nombre visible.
+  const priority = { EN_CURSO: 0, PENDIENTE: 1 } as const;
+  const byStatus = priority[left.estado] - priority[right.estado];
+  if (byStatus !== 0) return byStatus;
+  const byName = left.nombre.localeCompare(right.nombre, 'es');
+  return byName !== 0 ? byName : left.id.localeCompare(right.id);
+}
+
 type DashboardClub = {
   id: string;
   name: string;
@@ -163,9 +196,7 @@ export async function getGeneralDashboard(userId: string) {
           },
           library: {
             where: {
-              status: {
-                in: [ReadingStatus.READING, ReadingStatus.REREADING],
-              },
+              status: ReadingStatus.READING,
             },
             orderBy: { updatedAt: 'desc' },
             take: 4,
@@ -192,13 +223,7 @@ export async function getGeneralDashboard(userId: string) {
           OR: [
             { finishedAt: { gte: start } },
             {
-              status: {
-                in: [
-                  ReadingStatus.READING,
-                  ReadingStatus.REREADING,
-                  ReadingStatus.PAUSED,
-                ],
-              },
+              status: ReadingStatus.READING,
             },
           ],
         },
@@ -380,9 +405,7 @@ export async function getGeneralDashboard(userId: string) {
     ...monthLibrary
       .filter(
         ({ status }) =>
-          status === ReadingStatus.READING ||
-          status === ReadingStatus.REREADING ||
-          status === ReadingStatus.PAUSED,
+          isCanonicalActiveReading(status),
       )
       .map(({ id, book, startedAt }) => ({
         id: `library:${id}`,
@@ -402,8 +425,17 @@ export async function getGeneralDashboard(userId: string) {
   >;
   const personalSeries = new Map<string, PersonalSeries>();
   const hiddenSeriesIds = new Set(hiddenSeries.map(({ seriesId }) => seriesId));
+  const abandonedSeriesIds = new Set(
+    seriesLibrary
+      .filter(({ status }) => status === ReadingStatus.ABANDONED)
+      .flatMap(({ book }) => book.series ? [book.series.id] : []),
+  );
   for (const item of seriesLibrary) {
-    if (item.book.series && !hiddenSeriesIds.has(item.book.series.id)) {
+    if (
+      item.book.series &&
+      !hiddenSeriesIds.has(item.book.series.id) &&
+      !abandonedSeriesIds.has(item.book.series.id)
+    ) {
       const key = canonicalBookTitle(item.book.series.name);
       const current = personalSeries.get(key);
       if (!current) {
@@ -522,20 +554,11 @@ export async function getGeneralDashboard(userId: string) {
               enMiBiblioteca: libraryByBookId.has(next.id),
             }
           : null,
+        hasAbandonedVolume: abandonedSeriesIds.has(series.id),
       };
     })
-    .filter(
-      (series) =>
-        series.estadoEditorial !== 'COMPLETED' &&
-        series.leidos < series.total,
-    )
-    .sort((left, right) => {
-      const priority = { EN_CURSO: 0, PENDIENTE: 1 } as const;
-      const byStatus = priority[left.estado] - priority[right.estado];
-      return byStatus !== 0
-        ? byStatus
-        : left.nombre.localeCompare(right.nombre, 'es');
-    })
+    .filter(shouldShowContinueSeries)
+    .sort(compareContinueSeries)
     .slice(0, 6);
   let streak = 0;
   const cursor = new Date(
@@ -677,7 +700,7 @@ export async function getGeneralDashboard(userId: string) {
         coverUrl: book.coverUrl ?? '',
         fechaFin: finishedAt.toISOString(),
         paginas: pagesForBook(book.id, book.totalPages),
-        valoracion: rating ?? null,
+        valoracion: completedRating(rating),
       })),
       lecturasCalendario: calendarReadings,
       eventos: [...events.entries()]

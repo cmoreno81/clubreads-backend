@@ -8,6 +8,28 @@ Club Lectura Backend - Database Design v1.0
 
 Este documento define el modelo de datos del backend de Club Lectura.
 
+## Importación privada desde CSV
+
+Los CSV contienen datos personales y no deben guardarse en el repositorio ni
+incluirse en artefactos de despliegue. Para importar desde una carpeta privada,
+indica su ruta mediante `IMPORT_DATA_DIR`:
+
+```bash
+IMPORT_DATA_DIR=/ruta/privada/clubreads npm run import:sheets
+```
+
+Antes de importar, puede comprobarse la carpeta sin conectarse ni escribir en
+PostgreSQL:
+
+```bash
+IMPORT_DATA_DIR=/ruta/privada/clubreads npm run import:sheets -- --check-data
+```
+
+Si no se define la variable, el importador usa la carpeta local `data/` como
+compatibilidad. Esa carpeta está ignorada por Git. La carpeta elegida debe
+contener todos los CSV requeridos por la importación; el proceso indicará el
+nombre de cualquier archivo ausente sin mostrar el contenido de sus filas.
+
 La filosofía del proyecto es que cada dato exista una única vez y que todas las funcionalidades de la aplicación se construyan a partir de relaciones entre entidades.
 
 La base de datos será PostgreSQL y el acceso a los datos se realizará mediante Prisma ORM.
@@ -620,4 +642,3 @@ Ejemplos
 - Preguntas frecuentes
 - Material adicional
 - Clubes privados
-

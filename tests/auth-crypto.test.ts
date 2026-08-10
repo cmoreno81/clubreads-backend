@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { SignJWT } from 'jose';
 
 process.env.AUTH_ACCESS_TOKEN_SECRET =
   'test-access-secret-with-at-least-32-characters';
 process.env.AUTH_CODE_SECRET =
   'test-code-secret-with-at-least-32-characters';
+process.env.AUTH_ACCESS_TOKEN_ISSUER = 'clubreads-api-test';
+process.env.AUTH_ACCESS_TOKEN_AUDIENCE = 'clubreads-app-test';
 
 const {
   createAccessToken,
@@ -60,10 +63,94 @@ test('el código queda ligado a usuaria y propósito', () => {
   );
 });
 
-test('firma y verifica el access token y rechaza manipulaciones', () => {
-  const token = createAccessToken('user-1', 'session-1');
-  assert.deepEqual(verifyAccessToken(token)?.sub, 'user-1');
+const jwtSecret = new TextEncoder().encode(
+  process.env.AUTH_ACCESS_TOKEN_SECRET,
+);
 
-  const tampered = `${token.slice(0, -1)}${token.endsWith('a') ? 'b' : 'a'}`;
-  assert.equal(verifyAccessToken(tampered), null);
+function customAccessToken({
+  algorithm = 'HS256',
+  issuer = 'clubreads-api-test',
+  audience = 'clubreads-app-test',
+  type = 'access',
+  issuedAt = Math.floor(Date.now() / 1000),
+  expiresAt = Math.floor(Date.now() / 1000) + 15 * 60,
+}: {
+  algorithm?: 'HS256' | 'HS384';
+  issuer?: string;
+  audience?: string;
+  type?: string;
+  issuedAt?: number;
+  expiresAt?: number;
+} = {}) {
+  return new SignJWT({ sid: 'session-1', type })
+    .setProtectedHeader({ alg: algorithm, typ: 'JWT' })
+    .setSubject('user-1')
+    .setIssuer(issuer)
+    .setAudience(audience)
+    .setIssuedAt(issuedAt)
+    .setExpirationTime(expiresAt)
+    .sign(jwtSecret);
+}
+
+test('firma y verifica un access token HS256 con claims completos', async () => {
+  const token = await createAccessToken('user-1', 'session-1');
+  const payload = await verifyAccessToken(token);
+  assert.equal(payload?.sub, 'user-1');
+  assert.equal(payload?.sid, 'session-1');
+  assert.equal(payload?.type, 'access');
+  assert.equal(payload?.iss, 'clubreads-api-test');
+  assert.equal(payload?.aud, 'clubreads-app-test');
+  assert.equal(payload!.exp - payload!.iat, 15 * 60);
+});
+
+test('rechaza una firma alterada', async () => {
+  const token = await createAccessToken('user-1', 'session-1');
+  const [header, payload, signature] = token.split('.');
+  const tamperedSignature = `${signature!.slice(0, 5)}${
+    signature![5] === 'a' ? 'b' : 'a'
+  }${signature!.slice(6)}`;
+  assert.equal(
+    await verifyAccessToken(`${header}.${payload}.${tamperedSignature}`),
+    null,
+  );
+});
+
+test('rechaza algoritmo, issuer, audience y tipo incorrectos', async () => {
+  assert.equal(
+    await verifyAccessToken(await customAccessToken({ algorithm: 'HS384' })),
+    null,
+  );
+  assert.equal(
+    await verifyAccessToken(await customAccessToken({ issuer: 'otro-api' })),
+    null,
+  );
+  assert.equal(
+    await verifyAccessToken(await customAccessToken({ audience: 'otra-app' })),
+    null,
+  );
+  assert.equal(
+    await verifyAccessToken(await customAccessToken({ type: 'refresh' })),
+    null,
+  );
+});
+
+test('rechaza tokens expirados o con iat futuro', async () => {
+  const now = Math.floor(Date.now() / 1000);
+  assert.equal(
+    await verifyAccessToken(
+      await customAccessToken({ issuedAt: now - 910, expiresAt: now - 10 }),
+    ),
+    null,
+  );
+  assert.equal(
+    await verifyAccessToken(
+      await customAccessToken({ issuedAt: now + 60, expiresAt: now + 900 }),
+    ),
+    null,
+  );
+});
+
+test('rechaza tokens enormes o malformados antes de decodificar', async () => {
+  assert.equal(await verifyAccessToken('a'.repeat(4097)), null);
+  assert.equal(await verifyAccessToken('no-es-un-jwt'), null);
 });

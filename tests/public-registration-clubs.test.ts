@@ -105,7 +105,7 @@ test('la comunidad cuenta cuentas nuevas y lectoras históricas con club', () =>
 test('cualquier integrante puede configurar la lectura oficial del club', () => {
   assert.match(
     readings,
-    /const \{ club, user \} = legacyRequest[\s\S]*: await requireClubMember\(data\.usuario\)/,
+    /const \{ club, user \} = await requireClubMember\(data\.usuario\)/,
   );
   assert.doesNotMatch(
     readings,

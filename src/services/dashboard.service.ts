@@ -1,7 +1,9 @@
 import { prisma } from '../prisma.js';
-import { getClubvision } from './clubvision.service.js';
+import { getClubvisionSnapshot } from './clubvision.service.js';
 import { ratingToFlutter } from '../utils/rating.utils.js';
+import { activityTimestamp } from '../utils/activity-timestamp.js';
 import { getCurrentClubContext } from './club-context.service.js';
+import { logger } from '../logging/logger.js';
 
 function ratingAverage(ratings: number[]) {
   if (ratings.length === 0) return '0';
@@ -10,41 +12,57 @@ function ratingAverage(ratings: number[]) {
   return (total / ratings.length).toFixed(2);
 }
 
-function currentMonthKey() {
-  const now = new Date();
+export function madridMonthRange(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Madrid',
     year: 'numeric',
     month: '2-digit',
   }).formatToParts(now);
   const v = Object.fromEntries(parts.map((p) => [p.type, p.value]));
-  return `${v.month}/${v.year}`;
+  const year = Number(v.year);
+  const monthIndex = Number(v.month) - 1;
+  const zonedMonthStart = (targetYear: number, targetMonth: number) => {
+    const guess = new Date(Date.UTC(targetYear, targetMonth, 1));
+    const offsetName = new Intl.DateTimeFormat('en', {
+      timeZone: 'Europe/Madrid',
+      timeZoneName: 'longOffset',
+    }).formatToParts(guess).find(({ type }) => type === 'timeZoneName')?.value ?? 'GMT+00:00';
+    const match = /GMT([+-])(\d{2}):(\d{2})/.exec(offsetName);
+    const offsetMinutes = match
+      ? (match[1] === '+' ? 1 : -1) * (Number(match[2]) * 60 + Number(match[3]))
+      : 0;
+    return new Date(guess.getTime() - offsetMinutes * 60_000);
+  };
+  return {
+    start: zonedMonthStart(year, monthIndex),
+    end: zonedMonthStart(year, monthIndex + 1),
+  };
 }
 
-function itemMonthKey(date: Date) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Madrid',
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(date);
-  const v = Object.fromEntries(parts.map((p) => [p.type, p.value]));
-  return `${v.month}/${v.year}`;
-}
-
-function tiempoRelativo(fecha: Date) {
-  const diffMin = Math.floor((Date.now() - fecha.getTime()) / 60000);
-
-  if (diffMin < 1) return 'ahora';
-  if (diffMin < 60) return `hace ${diffMin} min`;
-
-  const horas = Math.floor(diffMin / 60);
-  if (horas < 24) return `hace ${horas} h`;
-  if (horas < 48) return 'ayer';
-
-  return fecha.toLocaleDateString('es-ES', {
-    day: 'numeric',
-    month: 'short',
-  });
+async function dashboardBlock<T>(
+  block: string,
+  operation: () => Promise<T>,
+  rows: (result: T) => number,
+) {
+  const started = process.hrtime.bigint();
+  try {
+    const result = await operation();
+    logger.info({
+      event: 'dashboard_block',
+      block,
+      durationMs: Math.round(Number(process.hrtime.bigint() - started) / 10_000) / 100,
+      rows: rows(result),
+    }, 'dashboard block completed');
+    return result;
+  } catch (error) {
+    logger.warn({
+      event: 'dashboard_block',
+      block,
+      durationMs: Math.round(Number(process.hrtime.bigint() - started) / 10_000) / 100,
+      outcome: 'error',
+    }, 'dashboard block failed');
+    throw error;
+  }
 }
 
 function getMood(valoracionMedia: string) {
@@ -71,64 +89,205 @@ function contarReaccionesProgreso(
   );
 }
 
+type AffinityMember = {
+  userId: string;
+  user: {
+    id: string;
+    name: string;
+    avatarUrl: string | null;
+  };
+};
 
-export async function getDashboard(usuario = '') {
-  const { club, user } = await getCurrentClubContext(usuario);
-  const month = currentMonthKey();
+type AffinityCompletion = {
+  userId?: string;
+  bookId: string;
+};
 
-  const finishedBooks = await prisma.readingCompletion.findMany({
+type AffinityDataSource = {
+  clubMember: {
+    findMany(args: unknown): Promise<AffinityMember[]>;
+  };
+  readingCompletion: {
+    findMany(args: unknown): Promise<AffinityCompletion[]>;
+  };
+};
+
+export async function getAnnualAffinityRanking(
+  clubId: string,
+  userId: string,
+  yearStart: Date,
+  dataSource = prisma as unknown as AffinityDataSource,
+) {
+  const nextYearStart = new Date(
+    Date.UTC(yearStart.getUTCFullYear() + 1, 0, 1),
+  );
+  const myCompletions = await dataSource.readingCompletion.findMany({
     where: {
+      userId,
+      finishedAt: { gte: yearStart, lt: nextYearStart },
       isReread: false,
-      user: { clubMemberships: { some: { clubId: club.id } } },
     },
-    include: {
-      user: true,
-      book: true,
-    },
+    select: { bookId: true },
   });
+  const myBookIds = myCompletions.map((completion) => completion.bookId);
 
-  const reviews = await prisma.review.findMany({
-    where: {
-      rating: { gt: 0 },
-      user: { clubMemberships: { some: { clubId: club.id } } },
-    },
-  });
+  if (myBookIds.length === 0) return [];
 
-  const leyendoAhora = await prisma.library.findMany({
-    where: {
-      status: { in: ['READING', 'REREADING'] },
-      user: { clubMemberships: { some: { clubId: club.id } } },
-    },
-    include: {
-      user: true,
-      book: {
-        include: {
-          genre: true,
-        },
+  const members = await dataSource.clubMember.findMany({
+    where: { clubId, userId: { not: userId } },
+    select: {
+      userId: true,
+      user: {
+        select: { id: true, name: true, avatarUrl: true },
       },
-      progressReactions: true,
-    },
-    orderBy: {
-      updatedAt: 'desc',
     },
   });
+
+  if (members.length === 0) return [];
+
+  const memberIds = members.map((member) => member.userId);
+  const otherCompletions = await dataSource.readingCompletion.findMany({
+    where: {
+      userId: { in: memberIds },
+      finishedAt: { gte: yearStart, lt: nextYearStart },
+      isReread: false,
+      bookId: { in: myBookIds },
+    },
+    select: { userId: true, bookId: true },
+  });
+
+  const commonBooksByUser = new Map<string, number>();
+  for (const completion of otherCompletions) {
+    if (!completion.userId) continue;
+    commonBooksByUser.set(
+      completion.userId,
+      (commonBooksByUser.get(completion.userId) ?? 0) + 1,
+    );
+  }
+
+  return members
+    .map((member) => ({
+      id: member.user.id,
+      nombre: member.user.name,
+      avatarUrl: member.user.avatarUrl ?? '',
+      librosComunes: commonBooksByUser.get(member.userId) ?? 0,
+    }))
+    .filter((affinity) => affinity.librosComunes > 0)
+    .sort((a, b) => b.librosComunes - a.librosComunes)
+    .slice(0, 5);
+}
+
+
+type DashboardRuntime = {
+  client?: typeof prisma;
+  getContext?: typeof getCurrentClubContext;
+  clubvisionSnapshot?: typeof getClubvisionSnapshot;
+  affinity?: typeof getAnnualAffinityRanking;
+};
+
+export async function getDashboard(usuario = '', runtime: DashboardRuntime = {}) {
+  const client = runtime.client ?? prisma;
+  const getContext = runtime.getContext ?? getCurrentClubContext;
+  const clubvisionSnapshot = runtime.clubvisionSnapshot ?? getClubvisionSnapshot;
+  const affinity = runtime.affinity ?? getAnnualAffinityRanking;
+  const context = await dashboardBlock(
+    'context', () => getContext(usuario), () => 1,
+  );
+  const { club, user } = context;
+  const { start: monthStart, end: monthEnd } = madridMonthRange();
+  const yearStart = new Date(Date.UTC(new Date().getFullYear(), 0, 1));
+
+  const [monthlyGroups, reviewAggregate, leyendoAhora, clubvision, rankingAfinidad] = await Promise.all([
+    dashboardBlock('monthly_completions', () => client.readingCompletion.groupBy({
+      by: ['userId'],
+      where: {
+        isReread: false,
+        finishedAt: { gte: monthStart, lt: monthEnd },
+        user: { clubMemberships: { some: { clubId: club.id } } },
+      },
+      _count: { id: true },
+    }), (rows) => rows.length),
+    dashboardBlock('review_average', () => client.review.aggregate({
+      where: {
+        rating: { gt: 0 },
+        user: { clubMemberships: { some: { clubId: club.id } } },
+      },
+      _avg: { rating: true },
+    }), (result) => result._avg.rating === null ? 0 : 1),
+    dashboardBlock('currently_reading', () => client.library.findMany({
+      where: {
+        status: { in: ['READING', 'REREADING'] },
+        user: { clubMemberships: { some: { clubId: club.id } } },
+      },
+      select: {
+        id: true,
+        lastProgress: true,
+        currentPage: true,
+        progressNote: true,
+        progressUpdatedAt: true,
+        user: { select: { name: true, avatarUrl: true } },
+        book: {
+          select: {
+            id: true, title: true, coverUrl: true, totalPages: true,
+            genre: { select: { name: true } },
+          },
+        },
+        progressReactions: { select: { userId: true, reaction: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    }), (rows) => rows.length),
+    dashboardBlock(
+      'clubvision_snapshot',
+      () => clubvisionSnapshot(usuario, context),
+      (result) => result.totalCandidatas,
+    ),
+    user
+      ? dashboardBlock(
+          'affinity',
+          () => affinity(
+            club.id,
+            user.id,
+            yearStart,
+            client as unknown as AffinityDataSource,
+          ),
+          (rows) => rows.length,
+        )
+      : Promise.resolve([]),
+  ]);
+
+  const monthlyUsers = monthlyGroups.length === 0
+    ? []
+    : await dashboardBlock('monthly_readers', () => client.user.findMany({
+        where: { id: { in: monthlyGroups.map(({ userId }) => userId) } },
+        select: { id: true, name: true, avatarUrl: true },
+      }), (rows) => rows.length);
 
   const contadorUsuarios = new Map<string, number>();
-
-  for (const item of finishedBooks) {
-    const itemMonth = itemMonthKey(item.finishedAt);
-
-    if (itemMonth !== month) continue;
-
+  const monthlyCountByUser = new Map(
+    monthlyGroups.map((item) => [item.userId, item._count.id]),
+  );
+  for (const item of monthlyUsers) {
     contadorUsuarios.set(
-      item.user.name,
-      (contadorUsuarios.get(item.user.name) ?? 0) + 1,
+      item.name,
+      monthlyCountByUser.get(item.id) ?? 0,
     );
   }
 
   const topUsuario = Array.from(contadorUsuarios.entries()).sort(
-    (a, b) => b[1] - a[1],
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'),
   )[0];
+  const avatarPorUsuario = new Map(
+    monthlyUsers.map((item) => [item.name, item.avatarUrl ?? '']),
+  );
+  const topLectorasMes = Array.from(contadorUsuarios.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'))
+    .slice(0, 3)
+    .map(([usuario, total]) => ({
+      usuario,
+      nombre: usuario,
+      avatarUrl: avatarPorUsuario.get(usuario) ?? '',
+      total,
+    }));
 
   const leyendoPorUsuario = new Map<
     string,
@@ -188,119 +347,85 @@ export async function getDashboard(usuario = '') {
     }),
   );
 
-  const clubvision = await getClubvision(usuario);
   const ganador = clubvision.ganador || '';
-
-  const libroActual = ganador
-  ? await prisma.book.findFirst({
-      where: {
-        title: ganador,
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        title: true,
-        coverUrl: true,
-      },
-    })
-  : null;
+  const winnerBookId = clubvision.ganadorBookId || '';
 
   const leyendoLecturaActual = ganador
     ? leyendoAhora
-        .filter((item) => item.book.title === ganador)
+        .filter((item) => winnerBookId
+          ? item.book.id === winnerBookId
+          : item.book.title === ganador)
         .map((item) => item.user.name)
     : [];
 
-  const finalizadosLecturaActual = ganador
-    ? await prisma.library.findMany({
+  const [finalizadosLecturaActual, reviewsLecturaActual, lecturaOficial] = ganador
+    ? await Promise.all([
+      dashboardBlock('official_finished', () => client.library.findMany({
         where: {
           status: 'FINISHED',
           user: { clubMemberships: { some: { clubId: club.id } } },
-          book: {
-            title: ganador,
-          },
+          ...(winnerBookId ? { bookId: winnerBookId } : { book: { title: ganador } }),
         },
-        include: {
-          user: true,
-          book: {
-            include: {
-              reviews: true,
-            },
-          },
+        select: { userId: true, user: { select: { name: true } } },
+        orderBy: { finishedAt: 'desc' },
+      }), (rows) => rows.length),
+      dashboardBlock('official_reviews', () => client.review.findMany({
+        where: {
+          ...(winnerBookId ? { bookId: winnerBookId } : { book: { title: ganador } }),
+          user: { clubMemberships: { some: { clubId: club.id } } },
         },
-        orderBy: {
-          finishedAt: 'desc',
-        },
-      })
-    : [];
-
-  const lecturaOficial = ganador
-    ? await prisma.reading.findFirst({
+        select: { userId: true, rating: true },
+      }), (rows) => rows.length),
+      dashboardBlock('official_reading', () => client.reading.findFirst({
         where: {
           type: 'CLUBVISION',
           clubId: club.id,
-          book: {
-            title: ganador,
-          },
+          ...(winnerBookId ? { bookId: winnerBookId } : { book: { title: ganador } }),
         },
-        include: {
-          conversations: {
-            include: {
-              comments: {
-                include: {
-                  user: true,
-                  likes: true,
-                  replies: {
-                    include: {
-                      user: true,
-                      likes: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-        orderBy: {
-          startedAt: 'desc',
-        },
-      })
-    : null;
+        select: { id: true },
+        orderBy: { startedAt: 'desc' },
+      }), (result) => result ? 1 : 0),
+    ])
+    : [[], [], null] as const;
 
   let comentariosLecturaActual = 0;
   let likesLecturaActual = 0;
   let ultimaFechaLecturaActual: Date | null = null;
-  let ultimaActividadLecturaActual = '';
 
   if (lecturaOficial) {
-    for (const conversation of lecturaOficial.conversations) {
-      for (const comment of conversation.comments) {
-        if (comment.deletedAt) continue;
-
-        comentariosLecturaActual++;
-        likesLecturaActual += comment.likes.length;
-
-        if (!ultimaFechaLecturaActual || comment.createdAt > ultimaFechaLecturaActual) {
-          ultimaFechaLecturaActual = comment.createdAt;
-          ultimaActividadLecturaActual = `💬 ${comment.user.name} comentó`;
-        }
-
-        for (const reply of comment.replies) {
-          if (reply.deletedAt) continue;
-
-          comentariosLecturaActual++;
-          likesLecturaActual += reply.likes.length;
-
-          if (!ultimaFechaLecturaActual || reply.createdAt > ultimaFechaLecturaActual) {
-            ultimaFechaLecturaActual = reply.createdAt;
-            ultimaActividadLecturaActual = `↩️ ${reply.user.name} respondió`;
-          }
-        }
-      }
+    const activityWhere = {
+      deletedAt: null,
+      conversation: { readingId: lecturaOficial.id },
+    };
+    const [commentCount, likeCount, latest] = await Promise.all([
+      dashboardBlock(
+        'official_comment_count',
+        () => client.comment.count({ where: activityWhere }),
+        (count) => count,
+      ),
+      dashboardBlock(
+        'official_like_count',
+        () => client.like.count({ where: { comment: activityWhere } }),
+        (count) => count,
+      ),
+      dashboardBlock('official_latest_activity', () => client.comment.findFirst({
+        where: activityWhere,
+        select: {
+          createdAt: true,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      }), (result) => result ? 1 : 0),
+    ]);
+    comentariosLecturaActual = commentCount;
+    likesLecturaActual = likeCount;
+    if (latest) {
+      ultimaFechaLecturaActual = latest.createdAt;
     }
   }
 
-  const valoracionMedia = ratingAverage(reviews.map((review) => review.rating));
+  const valoracionMedia = reviewAggregate._avg.rating === null
+    ? '0'
+    : reviewAggregate._avg.rating.toFixed(2);
 
   const genreCounter = new Map<string, number>();
 
@@ -320,53 +445,15 @@ export async function getDashboard(usuario = '') {
     ? `${topGenre[0]} domina las lecturas actuales del club.`
     : 'El club está repartido entre varios géneros.';
 
-  // ── Ranking de afinidad anual ──
-  const yearStart = new Date(Date.UTC(new Date().getFullYear(), 0, 1));
-  let rankingAfinidad: Array<{ id: string; nombre: string; avatarUrl: string; librosComunes: number }> = [];
-
-  if (user) {
-    const misLibrosAnio = await prisma.readingCompletion.findMany({
-      where: {
-        userId: user.id,
-        finishedAt: { gte: yearStart },
-        isReread: false,
-      },
-      select: { bookId: true },
-    });
-    const misBookIds = new Set(misLibrosAnio.map((r) => r.bookId));
-
-    const miembros = await prisma.clubMember.findMany({
-      where: { clubId: club.id, userId: { not: user.id } },
-      include: { user: { select: { id: true, name: true, avatarUrl: true } } },
-    });
-
-    const afinidades = await Promise.all(
-      miembros.map(async (m) => {
-        const susLibros = await prisma.readingCompletion.findMany({
-          where: {
-            userId: m.userId,
-            finishedAt: { gte: yearStart },
-            isReread: false,
-            bookId: { in: [...misBookIds] },
-          },
-          select: { bookId: true },
-        });
-        return {
-          id: m.user.id,
-          nombre: m.user.name,
-          avatarUrl: m.user.avatarUrl ?? '',
-          librosComunes: susLibros.length,
-        };
-      }),
-    );
-
-    rankingAfinidad = afinidades
-      .filter((a) => a.librosComunes > 0)
-      .sort((a, b) => b.librosComunes - a.librosComunes)
-      .slice(0, 5);
-  }
+  const reviewByUser = new Map(
+    reviewsLecturaActual.map((review) => [review.userId, review.rating]),
+  );
 
   return {
+    usuarioActual: {
+      nombre: user?.name ?? '',
+      avatarUrl: user?.avatarUrl ?? '',
+    },
     resumen: {
       usuarioMes: topUsuario?.[0] ?? '',
       librosUsuarioMes: topUsuario?.[1] ?? 0,
@@ -384,6 +471,7 @@ export async function getDashboard(usuario = '') {
     mood: getMood(valoracionMedia),
     libroMes: [],
     clubvision,
+    topLectorasMes,
 
     lecturaActual: {
       ok: Boolean(ganador),
@@ -391,20 +479,16 @@ export async function getDashboard(usuario = '') {
       comentarios: comentariosLecturaActual,
       likes: likesLecturaActual,
       ultimaActividad: ultimaFechaLecturaActual
-        ? `${ultimaActividadLecturaActual} ${tiempoRelativo(ultimaFechaLecturaActual)}`
-        : '',
+        ? activityTimestamp(ultimaFechaLecturaActual)
+        : null,
       totalLeyendo: leyendoLecturaActual.length,
       totalFinalizado: finalizadosLecturaActual.length,
       leyendo: leyendoLecturaActual,
-     coverUrl: libroActual?.coverUrl ?? '',
+      coverUrl: clubvision.ganadorCoverUrl ?? '',
       finalizado: finalizadosLecturaActual.map((item) => {
-        const review = item.book.reviews.find(
-          (review) => review.userId === item.userId,
-        );
-
         return {
           usuario: item.user.name,
-          valoracion: ratingToFlutter(review?.rating),
+          valoracion: ratingToFlutter(reviewByUser.get(item.userId)),
         };
       }),
     },

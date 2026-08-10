@@ -15,7 +15,11 @@ test('pasar un libro pendiente a leyendo avisa al resto del club una vez', () =>
     books,
     /effectiveStatus === ReadingStatus\.READING[\s\S]*currentLibrary\?\.status !== ReadingStatus\.READING/,
   );
-  assert.match(books, /if \(startedReading\)[\s\S]*notifyLibroEmpezado/);
+  assert.match(
+    books,
+    /const notifyStarted = runtime\.notifyStarted \?\? notifyLibroEmpezado/,
+  );
+  assert.match(books, /if \(startedReading\)[\s\S]*notifyStarted\(/);
   assert.match(
     notifications,
     /NotificationType\.LIBRO_EMPEZADO[\s\S]*ha empezado a leer/,

@@ -1,3 +1,5 @@
+import { observeExternalCall } from '../logging/external-call.js';
+
 type OpenLibraryDocument = {
   key?: string;
   title?: string;
@@ -94,10 +96,10 @@ async function searchGoogleBooks(query: string) {
   if (process.env.GOOGLE_BOOKS_API_KEY) {
     url.searchParams.set('key', process.env.GOOGLE_BOOKS_API_KEY);
   }
-  const response = await fetch(url, {
+  const response = await observeExternalCall('google_books', 'search_cover', () => fetch(url, {
     headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(12_000),
-  });
+    signal: AbortSignal.timeout(8_000),
+  }));
   if (!response.ok) throw new Error(`GOOGLE_BOOKS_HTTP_${response.status}`);
   const payload = await response.json() as { items?: GoogleVolume[] };
   return payload.items ?? [];
@@ -303,10 +305,10 @@ async function searchOpenLibrary(
 
   const timeout = setTimeout(() => {
     controller.abort();
-  }, 12_000);
+  }, 8_000);
 
   try {
-    const response = await fetch(
+    const response = await observeExternalCall('open_library', 'search_cover', () => fetch(
       `${OPEN_LIBRARY_SEARCH_URL}?${params.toString()}`,
       {
         headers: {
@@ -316,7 +318,7 @@ async function searchOpenLibrary(
         },
         signal: controller.signal,
       },
-    );
+    ));
 
     if (!response.ok) {
       throw new Error(
@@ -419,15 +421,15 @@ export async function findBestBookCover(
 
 async function coverExists(url: string) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 6_000);
+  const timeout = setTimeout(() => controller.abort(), 5_000);
   try {
-    const response = await fetch(url, {
+    const response = await observeExternalCall('cover_host', 'verify_cover', () => fetch(url, {
       headers: {
         Accept: 'image/*',
         'User-Agent': 'ClubReads/1.0 (goodreads-import)',
       },
       signal: controller.signal,
-    });
+    }));
     const isImage =
       response.ok &&
       (response.headers.get('content-type') ?? '').startsWith('image/');

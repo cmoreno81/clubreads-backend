@@ -23,6 +23,17 @@ import {
   resolveCanonicalBookId,
 } from './book-identity.service.js';
 import { validateReadingTransitionInput } from '../utils/reading-transition.utils.js';
+import {
+  descendingCursorFilter,
+  pageFromRows,
+  type PaginationRequest,
+} from '../utils/cursor-pagination.js';
+import { backgroundError, logger } from '../logging/logger.js';
+import {
+  normalizePriority,
+  normalizeReadingFormat,
+  normalizeReadingStatus,
+} from '../validation/api-enums.js';
 
 function statusToFlutter(status: string) {
   if (status === ReadingStatus.READING) return 'LEYENDO';
@@ -103,16 +114,9 @@ function priorityToFlutter(priority: string) {
 }
 
 function priorityFromFlutter(value: unknown): Priority {
-  const priority = String(value ?? '').trim().toUpperCase();
-
-  if (priority === 'ALTA' || priority === 'HIGH') {
-    return Priority.HIGH;
-  }
-
-  if (priority === 'BAJA' || priority === 'LOW') {
-    return Priority.LOW;
-  }
-
+  const priority = normalizePriority(value);
+  if (priority === 'HIGH') return Priority.HIGH;
+  if (priority === 'LOW') return Priority.LOW;
   return Priority.MEDIUM;
 }
 
@@ -124,30 +128,22 @@ export function formatToFlutter(format: ReadingFormat | null) {
 }
 
 function formatFromFlutter(value: unknown): ReadingFormat | null {
-  const format = String(value ?? '').trim().toUpperCase();
-  if (format === 'FISICO' || format === 'FÍSICO' || format === 'PHYSICAL') {
-    return ReadingFormat.PHYSICAL;
-  }
+  const format = normalizeReadingFormat(value);
+  if (format === 'PHYSICAL') return ReadingFormat.PHYSICAL;
   if (format === 'DIGITAL') return ReadingFormat.DIGITAL;
-  if (format === 'AUDIOLIBRO' || format === 'AUDIOBOOK') {
-    return ReadingFormat.AUDIOBOOK;
-  }
+  if (format === 'AUDIOBOOK') return ReadingFormat.AUDIOBOOK;
   return null;
 }
 
 
 
 function statusFromFlutter(value: string) {
-  const estado = value.trim().toUpperCase();
-
-  if (estado === 'LEYENDO') return ReadingStatus.READING;
-  if (estado === 'PAUSADO') return ReadingStatus.PAUSED;
-  if (estado === 'FINALIZADO') return ReadingStatus.FINISHED;
-  if (estado === 'ABANDONADO') return ReadingStatus.ABANDONED;
-  if (estado === 'RELECTURA' || estado === 'RELEYENDO') {
-    return ReadingStatus.REREADING;
-  }
-
+  const status = normalizeReadingStatus(value);
+  if (status === 'READING') return ReadingStatus.READING;
+  if (status === 'PAUSED') return ReadingStatus.PAUSED;
+  if (status === 'FINISHED') return ReadingStatus.FINISHED;
+  if (status === 'ABANDONED') return ReadingStatus.ABANDONED;
+  if (status === 'REREADING') return ReadingStatus.REREADING;
   return ReadingStatus.PENDING;
 }
 
@@ -298,6 +294,7 @@ async function buscarOCrearSaga(
  */
 async function buscarLibroPorTitulo(
   titulo: string,
+  client: Pick<typeof prisma, 'book'> = prisma,
 ) {
   const tituloNormalizado = normalizarTitulo(titulo);
 
@@ -305,7 +302,7 @@ async function buscarLibroPorTitulo(
     return null;
   }
 
-  const libros = await prisma.book.findMany({
+  const libros = await client.book.findMany({
     where: {
       deletedAt: null,
     },
@@ -448,6 +445,83 @@ export async function getLibrosFinalizados(usuario: string) {
         : '',
     };
   });
+}
+
+export async function getLibrosFinalizadosPage(
+  usuario: string,
+  pagination: PaginationRequest,
+) {
+  const { club, user } = await getCurrentClubContext(usuario);
+  const rows = await prisma.library.findMany({
+    where: {
+      user: { clubMemberships: { some: { clubId: club.id } } },
+      status: ReadingStatus.FINISHED,
+      finishedAt: { not: null },
+      ...descendingCursorFilter('finishedAt', pagination.cursor),
+    },
+    select: {
+      id: true,
+      userId: true,
+      readingFormat: true,
+      finishedAt: true,
+      user: { select: { name: true, avatarUrl: true } },
+      book: {
+        select: {
+          id: true,
+          title: true,
+          seriesOrder: true,
+          standalone: true,
+          goodreadsUrl: true,
+          coverUrl: true,
+          totalPages: true,
+          createdAt: true,
+          author: { select: { name: true } },
+          genre: { select: { name: true } },
+          series: { select: { name: true } },
+          reviews: {
+            where: { deletedAt: null },
+            select: { userId: true, rating: true, review: true },
+          },
+        },
+      },
+    },
+    orderBy: [{ finishedAt: 'desc' }, { id: 'desc' }],
+    take: pagination.limit + 1,
+  });
+  const page = pageFromRows(rows, pagination.limit, (row) => ({
+    value: row.finishedAt!.toISOString(),
+    id: row.id,
+  }));
+  return {
+    ...page,
+    items: page.items.map((item) => {
+      const review = item.book.reviews.find(({ userId }) => userId === item.userId);
+      return {
+        bookId: item.book.id,
+        usuario: item.user.name,
+        libro: item.book.title,
+        autor: item.book.author?.name ?? '',
+        genero: item.book.genre.name,
+        saga: item.book.series?.name ?? '',
+        numSaga: item.book.seriesOrder ?? '',
+        autoconclusivo: item.book.standalone ? 'Si' : 'No',
+        valoracion: ratingToFlutter(review?.rating),
+        formato: formatToFlutter(item.readingFormat),
+        fechaAlta: item.book.createdAt.toISOString(),
+        resena: review?.review ?? '',
+        review: review?.review ?? '',
+        goodreads: item.book.goodreadsUrl ?? '',
+        fecha: item.finishedAt ?? '',
+        coverUrl: item.book.coverUrl ?? '',
+        avatarUrl: item.user.avatarUrl ?? '',
+        paginas: item.book.totalPages,
+        yaLoTengo: item.userId === user?.id,
+        mes: item.finishedAt
+          ? `${String(item.finishedAt.getMonth() + 1).padStart(2, '0')}/${item.finishedAt.getFullYear()}`
+          : '',
+      };
+    }),
+  };
 }
 
 export async function anadirLibroExistente(
@@ -651,8 +725,16 @@ export async function actualizarEstado(
   fechaInicio?: string,
   fechaFin?: string,
   formato?: string,
+  runtime: {
+    client?: typeof prisma;
+    notifyStarted?: typeof notifyLibroEmpezado;
+    notifyFinished?: typeof notifyLibroTerminado;
+  } = {},
 ) {
-  const user = await prisma.user.findUnique({
+  const client = runtime.client ?? prisma;
+  const notifyStarted = runtime.notifyStarted ?? notifyLibroEmpezado;
+  const notifyFinished = runtime.notifyFinished ?? notifyLibroTerminado;
+  const user = await client.user.findUnique({
     where: {
       name: usuario.trim(),
     },
@@ -665,7 +747,7 @@ export async function actualizarEstado(
     };
   }
 
-  const book = await buscarLibroPorTitulo(libro);
+  const book = await buscarLibroPorTitulo(libro, client);
 
   if (!book) {
     return {
@@ -690,8 +772,9 @@ export async function actualizarEstado(
   const rating = transition.rating;
 
 let startedReading = false;
+let finishedNotificationClubIds: string[] = [];
 
-await prisma.$transaction(async (tx) => {
+await client.$transaction(async (tx) => {
   /*
    * El advisory lock también cubre el caso excepcional en que todavía no
    * exista Library. Después bloqueamos la fila real y consultamos el estado:
@@ -912,20 +995,11 @@ await prisma.$transaction(async (tx) => {
           readingFormat: requestedFormat ?? currentLibrary?.readingFormat,
         },
       });
-      // Notificar libro terminado a los clubs de la usuaria
       const memberships = await tx.clubMember.findMany({
         where: { userId: user.id },
         select: { clubId: true },
       });
-      for (const m of memberships) {
-        notifyLibroTerminado({
-          clubId: m.clubId,
-          lectoraNombre: user.name,
-          lectoraUserId: user.id,
-          bookTitle: book.title,
-          bookId: book.id,
-        }).catch(console.error);
-      }
+      finishedNotificationClubIds = memberships.map(({ clubId }) => clubId);
     }
 
     await tx.review.upsert({
@@ -997,21 +1071,33 @@ await prisma.$transaction(async (tx) => {
   }
 }, {
   isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+  maxWait: 5_000,
+  timeout: 15_000,
 });
 
+for (const clubId of finishedNotificationClubIds) {
+  void notifyFinished({
+    clubId,
+    lectoraNombre: user.name,
+    lectoraUserId: user.id,
+    bookTitle: book.title,
+    bookId: book.id,
+  }).catch(backgroundError('book_finished_notification_failed'));
+}
+
 if (startedReading) {
-  const memberships = await prisma.clubMember.findMany({
+  const memberships = await client.clubMember.findMany({
     where: { userId: user.id },
     select: { clubId: true },
   });
   for (const membership of memberships) {
-    void notifyLibroEmpezado({
+    void notifyStarted({
       clubId: membership.clubId,
       lectoraNombre: user.name,
       lectoraUserId: user.id,
       bookTitle: book.title,
       bookId: book.id,
-    }).catch(console.error);
+    }).catch(backgroundError('book_started_notification_failed'));
   }
 }
 
@@ -1194,7 +1280,7 @@ export async function crearLibro(data: any) {
         autoraNombre: user.name,
         autoraUserId: user.id,
         libros: [{ id: existingBook.id, title: existingBook.title }],
-      }).catch(console.error);
+      }).catch(backgroundError('library_addition_notification_failed'));
     }
 
     return {
@@ -1260,18 +1346,10 @@ const automaticAuthorName =
     ? automaticCover.authors[0].trim()
     : '';
 
-if (automaticCover) {
-  console.log(
-    '🖼️ PORTADA ENCONTRADA:',
-    automaticCover.title,
-    automaticCover.coverUrl,
-  );
-} else {
-  console.log(
-    '⚠️ SIN PORTADA AUTOMÁTICA SEGURA:',
-    title,
-  );
-}
+logger.info({
+  event: 'automatic_cover_lookup',
+  outcome: automaticCover ? 'matched' : 'no_safe_match',
+}, 'automatic cover lookup completed');
 
   /*
    * Libro y biblioteca se crean en la misma transacción.

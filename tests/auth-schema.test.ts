@@ -17,6 +17,14 @@ const readingsService = readFileSync(
   new URL('../src/services/readings.service.ts', import.meta.url),
   'utf8',
 );
+const router = readFileSync(
+  new URL('../src/routes/api.router.ts', import.meta.url),
+  'utf8',
+);
+const authMiddleware = readFileSync(
+  new URL('../src/middleware/auth.middleware.ts', import.meta.url),
+  'utf8',
+);
 
 test('las credenciales se añaden a User sin sustituir la cuenta', () => {
   const user = schema.match(/model User \{[\s\S]*?\n\}/)?.[0];
@@ -52,17 +60,17 @@ test('la migración normaliza correos y aborta ante duplicados', () => {
   );
 });
 
-test('la transición mantiene escrituras antiguas hasta exigir token', () => {
+test('toda la API privada exige token y no acepta identidad legada', () => {
+  assert.match(router, /!PUBLIC_AUTH_ACTIONS\.has\(action\) && !req\.auth/);
+  assert.doesNotMatch(router, /AUTH_REQUIRE_ACCESS_TOKEN/);
   assert.match(
-    readingsService,
-    /AUTH_REQUIRE_ACCESS_TOKEN !== 'true'/,
+    router,
+    /apiRouter\.get\('\/achievements', requireAuthentication/,
   );
   assert.match(
-    readingsService,
-    /!data\.usuario\?\.trim\(\) && legacyApkEnabled\(\)/,
+    router,
+    /'\/series\/order',[\s\S]*requireAuthentication/,
   );
-  assert.match(
-    readingsService,
-    /!usuario\.trim\(\) && legacyApkEnabled\(\)/,
-  );
+  assert.doesNotMatch(readingsService, /legacyApkEnabled|legacyRequest/);
+  assert.doesNotMatch(authMiddleware, /String\(legacyValue/);
 });

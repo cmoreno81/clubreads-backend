@@ -10,6 +10,7 @@ import { prisma } from '../prisma.js';
 import { canonicalBookTitle } from './catalog.service.js';
 import { findImportedBookCover } from './book-cover.service.js';
 import { findBookByIdentity, lockBookIdentity } from './book-identity.service.js';
+import { logger, logAt } from '../logging/logger.js';
 
 const MAX_IMPORT_ROWS = 2_000;
 const IMPORT_TRANSACTION_MAX_WAIT_MS = 10_000;
@@ -924,14 +925,14 @@ export async function confirmGoodreadsImport(
         ? `Fila ${context.activeRow.index + 1} (${context.activeRow.title || 'sin título'})`
         : `Lote ${batchIndex + 1}`;
       const isTimeout = error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028';
-      console.error('Fallo en lote de importación', {
+      logAt(logger, 'error', {
+        event: 'goodreads_import_batch_failed',
         batch: batchIndex + 1,
         batchStart: batch[0]?.index,
         batchEnd: batch.at(-1)?.index,
         activeRow: context.activeRow?.index,
-        title: context.activeRow?.title,
-        error,
-      });
+        err: error,
+      }, 'Goodreads import batch failed');
       throw new GoodreadsImportError(
         isTimeout ? 503 : 500,
         isTimeout ? 'GOODREADS_IMPORT_BATCH_TIMEOUT' : 'GOODREADS_IMPORT_BATCH_FAILED',

@@ -1,5 +1,10 @@
 import { NotificationType } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import {
+  descendingCursorFilter,
+  pageFromRows,
+  type PaginationRequest,
+} from '../utils/cursor-pagination.js';
 
 // ─────────────────────────────────────────────
 // Crear notificaciones
@@ -322,6 +327,68 @@ export async function getNotificaciones(userId: string) {
       fecha: n.createdAt.toISOString(),
     })),
     noLeidas,
+  };
+}
+
+type NotificationPageRow = {
+  id: string;
+  tipo: NotificationType;
+  titulo: string;
+  mensaje: string;
+  leida: boolean;
+  clubId: string | null;
+  bookId: string | null;
+  extra: string | null;
+  createdAt: Date;
+};
+
+type NotificationPageClient = {
+  notification: {
+    findMany(args: any): Promise<NotificationPageRow[]>;
+  };
+};
+
+export async function getNotificacionesPage(
+  userId: string,
+  pagination: PaginationRequest,
+  client: NotificationPageClient = prisma,
+) {
+  const rows = await client.notification.findMany({
+    where: {
+      userId,
+      ...descendingCursorFilter('createdAt', pagination.cursor),
+    },
+    select: {
+      id: true,
+      tipo: true,
+      titulo: true,
+      mensaje: true,
+      leida: true,
+      clubId: true,
+      bookId: true,
+      extra: true,
+      createdAt: true,
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: pagination.limit + 1,
+  });
+  const page = pageFromRows(rows, pagination.limit, (row) => ({
+    value: row.createdAt.toISOString(),
+    id: row.id,
+  }));
+  return {
+    ...page,
+    items: page.items.map((notification) => ({
+      id: notification.id,
+      tipo: notification.tipo,
+      titulo: notification.titulo,
+      mensaje: notification.mensaje,
+      leida: notification.leida,
+      clubId: notification.clubId,
+      bookId: notification.bookId,
+      extra: notification.extra ? JSON.parse(notification.extra) : null,
+      fecha: notification.createdAt.toISOString(),
+    })),
   };
 }
 

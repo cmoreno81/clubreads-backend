@@ -14,7 +14,7 @@ import {
 } from '../services/auth.service.js';
 
 function value(req: Request, name: string) {
-  return String(req.body?.[name] ?? req.query[name] ?? '');
+  return String(req.body?.[name] ?? '');
 }
 
 export async function handleRequestActivation(

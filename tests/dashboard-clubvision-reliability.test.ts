@@ -2,12 +2,21 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [dashboard, clubvision, schema, migration] = await Promise.all([
+const [dashboard, clubDashboard, clubvision, schema, migration] = await Promise.all([
   readFile(new URL('../src/services/general-dashboard.service.ts', import.meta.url), 'utf8'),
+  readFile(new URL('../src/services/dashboard.service.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/services/clubvision.service.ts', import.meta.url), 'utf8'),
   readFile(new URL('../prisma/schema.prisma', import.meta.url), 'utf8'),
   readFile(new URL('../prisma/migrations/20260803193000_optimize_dashboard_clubvision/migration.sql', import.meta.url), 'utf8'),
 ]);
+
+test('dashboard de club agrega top mensual, avatar actual y Clubvisión', () => {
+  assert.match(clubDashboard, /topLectorasMes/);
+  assert.match(clubDashboard, /\.slice\(0, 3\)/);
+  assert.match(clubDashboard, /avatarUrl: avatarPorUsuario\.get\(usuario\)/);
+  assert.match(clubDashboard, /usuarioActual:/);
+  assert.match(clubDashboard, /clubvision,/);
+});
 
 test('dashboardGeneral entrega sagas completas, limitadas y sin cargar perfilUsuario', () => {
   assert.match(dashboard, /sagasAbiertas: openSeries/);

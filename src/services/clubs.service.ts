@@ -5,6 +5,7 @@ import { notifyNuevaMiembro } from './notifications.service.js';
 import { prisma } from '../prisma.js';
 import { ClubContextError } from './club-context.service.js';
 import { subirAvatarDesdeBase64, subirAvatarDesdeUrl } from './cloudinary.service.js';
+import { backgroundError } from '../logging/logger.js';
 
 function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, ' ');
@@ -170,7 +171,7 @@ export async function joinClub(userId: string, codeValue: string) {
       clubId: club.id,
       nuevaMiembroNombre: user.name,
       nuevaMiembroUserId: userId,
-    }).catch(console.error);
+    }).catch(backgroundError('new_member_notification_failed'));
   }
 
   return { ok: true, clubId: club.id, nombre: club.name };

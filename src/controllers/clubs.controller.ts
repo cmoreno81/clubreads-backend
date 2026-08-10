@@ -47,7 +47,7 @@ export async function handleClubInvite(req: Request, res: Response) {
   return res.json(
     await getInvite(
       req.auth!.userId,
-      String(req.body?.clubId ?? req.query.clubId ?? ''),
+      String(req.body?.clubId ?? ''),
     ),
   );
 }
@@ -59,8 +59,16 @@ export async function handleLeaveClub(req: Request, res: Response) {
 }
 
 export async function handleUpdateClub(req: Request, res: Response) {
+  return handleUpdateClubWith(req, res, updateClub);
+}
+
+export async function handleUpdateClubWith(
+  req: Request,
+  res: Response,
+  update: typeof updateClub,
+) {
   return res.json(
-    await updateClub(req.auth!.userId, String(req.body?.clubId ?? ''), {
+    await update(req.auth!.userId, String(req.body?.clubId ?? ''), {
       nombre: req.body?.nombre,
       descripcion: req.body?.descripcion,
       avatarUrl: req.body?.avatarUrl,
@@ -69,6 +77,6 @@ export async function handleUpdateClub(req: Request, res: Response) {
 }
 
 export async function handleGetClubMembers(req: Request, res: Response) {
-  const clubId = String(req.query.clubId ?? req.body?.clubId ?? '');
+  const clubId = String(req.query.clubId ?? '');
   return res.json(await getClubMembers(req.auth!.userId, clubId));
 }

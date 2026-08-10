@@ -1,0 +1,24 @@
+name: clubreads-disposable-test
+
+services:
+  postgres_disposable:
+    image: postgres:18
+    restart: "no"
+    environment:
+      POSTGRES_DB: clubreads_disposable_test
+      POSTGRES_USER: ${DISPOSABLE_DB_USER:?Define DISPOSABLE_DB_USER en .env.disposable}
+      POSTGRES_PASSWORD: ${DISPOSABLE_DB_PASSWORD:?Define DISPOSABLE_DB_PASSWORD en .env.disposable}
+    ports:
+      - "127.0.0.1:${DISPOSABLE_DB_PORT:-55432}:5432"
+    volumes:
+      - clubreads_disposable_test_pgdata_v18:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d clubreads_disposable_test"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  clubreads_disposable_test_pgdata_v18:
+    name: clubreads_disposable_test_pgdata_v18

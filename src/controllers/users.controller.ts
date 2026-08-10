@@ -4,7 +4,7 @@ import { requestUserName } from '../middleware/auth.middleware.js';
 
 export async function handleUsuarios(req: Request, res: Response) {
   const data = await getUsuarios(
-    requestUserName(req, req.query.usuario),
+    requestUserName(req),
   );
   return res.json(data);
 }

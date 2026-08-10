@@ -1,40 +1,44 @@
-version: "3.9"
+name: clubreads-local
 
 services:
   postgres:
     image: postgres:16
-
-    container_name: clublectura_postgres
-
     restart: unless-stopped
-
     environment:
-      POSTGRES_USER: clublectura
-      POSTGRES_PASSWORD: clublectura
-      POSTGRES_DB: clublectura
-
+      POSTGRES_USER: ${POSTGRES_USER:-clubreads_local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD para el entorno local}
+      POSTGRES_DB: ${POSTGRES_DB:-clubreads_local}
     ports:
-      - "5433:5432"
-
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - database
 
   pgadmin:
-    image: dpage/pgadmin4
-
-    container_name: clublectura_pgadmin
-
+    image: dpage/pgadmin4:9
+    profiles: ["tools"]
     restart: unless-stopped
-
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@clublectura.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@clubreads.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?Define PGADMIN_DEFAULT_PASSWORD para el entorno local}
     ports:
-      - "5050:80"
-
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    networks:
+      - database
 
 volumes:
   postgres_data:
+
+networks:
+  database:
+    internal: true

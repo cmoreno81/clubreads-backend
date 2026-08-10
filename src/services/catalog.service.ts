@@ -13,6 +13,18 @@ import {
   lockBookIdentity,
   resolveCanonicalBookId,
 } from './book-identity.service.js';
+import {
+  descendingCursorFilter,
+  pageFromRows,
+  type PaginationRequest,
+} from '../utils/cursor-pagination.js';
+import { observeExternalCall } from '../logging/external-call.js';
+import { backgroundError } from '../logging/logger.js';
+import {
+  normalizePriority,
+  normalizeReadingFormat,
+  normalizeReadingStatus,
+} from '../validation/api-enums.js';
 
 type ExternalVolume = {
   id?: unknown;
@@ -63,21 +75,17 @@ async function notifyLibraryAddition(
 }
 
 function priorityFromFlutter(value: unknown): Priority {
-  const normalized = String(value ?? '').trim().toUpperCase();
-  if (normalized === 'ALTA' || normalized === 'HIGH') return Priority.HIGH;
-  if (normalized === 'BAJA' || normalized === 'LOW') return Priority.LOW;
+  const normalized = normalizePriority(value);
+  if (normalized === 'HIGH') return Priority.HIGH;
+  if (normalized === 'LOW') return Priority.LOW;
   return Priority.MEDIUM;
 }
 
 function formatFromFlutter(value: unknown): ReadingFormat | null {
-  const normalized = String(value ?? '').trim().toUpperCase();
-  if (['FISICO', 'FÍSICO', 'PHYSICAL'].includes(normalized)) {
-    return ReadingFormat.PHYSICAL;
-  }
+  const normalized = normalizeReadingFormat(value);
+  if (normalized === 'PHYSICAL') return ReadingFormat.PHYSICAL;
   if (normalized === 'DIGITAL') return ReadingFormat.DIGITAL;
-  if (['AUDIOLIBRO', 'AUDIOBOOK'].includes(normalized)) {
-    return ReadingFormat.AUDIOBOOK;
-  }
+  if (normalized === 'AUDIOBOOK') return ReadingFormat.AUDIOBOOK;
   return null;
 }
 
@@ -239,13 +247,13 @@ async function searchOpenLibrary(query: string) {
       'fields',
       'key,title,author_name,isbn,cover_i,first_publish_year,number_of_pages_median,subject',
     );
-    const response = await fetch(url, {
+    const response = await observeExternalCall('open_library', 'catalog_search', () => fetch(url, {
       signal: AbortSignal.timeout(5000),
       headers: {
         Accept: 'application/json',
         'User-Agent': 'ClubReads/1.0 (book catalog search)',
       },
-    });
+    }));
     if (!response.ok) return [];
     const payload = await response.json() as { docs?: OpenLibraryDoc[] };
     return (payload.docs ?? [])
@@ -272,6 +280,49 @@ export async function getGeneralCatalog(userName: string) {
     take: 30,
   });
   return { ok: true, libros: books.map((book) => localBook(book, user.id)) };
+}
+
+export async function getGeneralCatalogPage(
+  userName: string,
+  pagination: PaginationRequest,
+) {
+  const user = await authenticatedUser(userName);
+  const rows = await prisma.book.findMany({
+    where: {
+      deletedAt: null,
+      ...descendingCursorFilter('createdAt', pagination.cursor),
+    },
+    select: {
+      id: true,
+      title: true,
+      isbn: true,
+      coverUrl: true,
+      publicationYear: true,
+      totalPages: true,
+      createdAt: true,
+      author: { select: { name: true } },
+      genre: { select: { name: true } },
+      library: {
+        where: { userId: user.id },
+        select: {
+          userId: true,
+          status: true,
+          startedAt: true,
+          finishedAt: true,
+        },
+      },
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: pagination.limit + 1,
+  });
+  const page = pageFromRows(rows, pagination.limit, (book) => ({
+    value: book.createdAt.toISOString(),
+    id: book.id,
+  }));
+  return {
+    ...page,
+    items: page.items.map((book) => localBook(book, user.id)),
+  };
 }
 
 export async function searchGeneralCatalog(userName: string, rawQuery: string) {
@@ -303,10 +354,10 @@ export async function searchGeneralCatalog(userName: string, rawQuery: string) {
     if (process.env.GOOGLE_BOOKS_API_KEY) {
       url.searchParams.set('key', process.env.GOOGLE_BOOKS_API_KEY);
     }
-    const response = await fetch(url, {
+    const response = await observeExternalCall('google_books', 'catalog_search', () => fetch(url, {
       signal: AbortSignal.timeout(5000),
       headers: { Accept: 'application/json' },
-    });
+    }));
     if (response.ok) {
       googleAvailable = true;
       const payload = await response.json() as { items?: ExternalVolume[] };
@@ -370,7 +421,7 @@ export async function importCatalogBook(
       readingFormat: formatFromFlutter(data.formato),
     },
   });
-  void notifyLibraryAddition(user, book).catch(console.error);
+  void notifyLibraryAddition(user, book).catch(backgroundError('library_addition_notification_failed'));
   return {
     ok: true,
     codigo: 'LIBRO_CATALOGO_ANADIDO',
@@ -455,14 +506,7 @@ export async function addSeriesCatalogVolume(
     String(data.estado ?? '').trim().length > 0;
   const formatWasProvided = Object.prototype.hasOwnProperty.call(data, 'formato');
   const requestedStatus = statusWasProvided
-    ? ({
-        PENDING: ReadingStatus.PENDING,
-        PENDIENTE: ReadingStatus.PENDING,
-        READING: ReadingStatus.READING,
-        LEYENDO: ReadingStatus.READING,
-        FINISHED: ReadingStatus.FINISHED,
-        FINALIZADO: ReadingStatus.FINISHED,
-      } as Record<string, ReadingStatus>)[String(data.estado).trim().toUpperCase()]
+    ? normalizeReadingStatus(data.estado) as ReadingStatus | null
     : undefined;
   if (statusWasProvided && !requestedStatus) {
     return { ok: false, mensaje: 'El estado indicado no es válido' };
@@ -588,7 +632,7 @@ export async function addSeriesCatalogVolume(
   const book = transactionResult.book!;
   const existingLibrary = transactionResult.existingLibrary;
   if (!existingLibrary) {
-    void notifyLibraryAddition(user, book).catch(console.error);
+    void notifyLibraryAddition(user, book).catch(backgroundError('library_addition_notification_failed'));
   }
   return {
     ok: true,

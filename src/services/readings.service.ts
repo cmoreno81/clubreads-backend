@@ -15,9 +15,20 @@ import {
   getCurrentClubContext,
   requireClubMember,
 } from './club-context.service.js';
+import {
+  ascendingCursorFilter,
+  descendingCursorFilter,
+  pageFromRows,
+  type PaginationRequest,
+} from '../utils/cursor-pagination.js';
+import { backgroundError } from '../logging/logger.js';
+import { normalizeReadingType } from '../validation/api-enums.js';
+import { activityTimestamp } from '../utils/activity-timestamp.js';
 
 function tipoFromFlutter(tipo: string): ReadingType {
-  return tipo === 'OFICIAL' ? ReadingType.CLUBVISION : ReadingType.FREE;
+  return normalizeReadingType(tipo) === 'CLUBVISION'
+    ? ReadingType.CLUBVISION
+    : ReadingType.FREE;
 }
 
 function tipoToFlutter(tipo: ReadingType) {
@@ -26,26 +37,6 @@ function tipoToFlutter(tipo: ReadingType) {
 
 export function shouldShowActiveReading(type: ReadingType, readers: number) {
   return type !== ReadingType.FREE || readers >= 2;
-}
-
-function legacyApkEnabled() {
-  return process.env.AUTH_REQUIRE_ACCESS_TOKEN !== 'true';
-}
-
-function tiempoRelativo(fecha: Date) {
-  const diffMin = Math.floor((Date.now() - fecha.getTime()) / 60000);
-
-  if (diffMin < 1) return 'ahora';
-  if (diffMin < 60) return `hace ${diffMin} min`;
-
-  const horas = Math.floor(diffMin / 60);
-  if (horas < 24) return `hace ${horas} h`;
-  if (horas < 48) return 'ayer';
-
-  return fecha.toLocaleDateString('es-ES', {
-    day: 'numeric',
-    month: 'short',
-  });
 }
 
 function buildChapters(
@@ -84,7 +75,6 @@ function buildChapters(
       let nuevosComentarios = 0;
       let nuevasRespuestas = 0;
       let ultimaFecha: Date | null = null;
-      let ultimoUsuario = '';
 
       const lastSeenAt = conversation.reads[0]?.lastSeenAt ?? null;
 
@@ -105,7 +95,6 @@ function buildChapters(
 
         if (!ultimaFecha || comment.createdAt > ultimaFecha) {
           ultimaFecha = comment.createdAt;
-          ultimoUsuario = comment.user.name;
         }
 
         for (const reply of comment.replies) {
@@ -125,7 +114,6 @@ function buildChapters(
 
           if (!ultimaFecha || reply.createdAt > ultimaFecha) {
             ultimaFecha = reply.createdAt;
-            ultimoUsuario = reply.user.name;
           }
         }
       }
@@ -139,9 +127,7 @@ function buildChapters(
         nuevasRespuestas,
         nuevosTotal: nuevosComentarios + nuevasRespuestas,
         tieneNovedades: nuevosComentarios + nuevasRespuestas > 0,
-        ultimaActividad: ultimaFecha
-          ? `💬 ${ultimoUsuario} comentó ${tiempoRelativo(ultimaFecha)}`
-          : '',
+        ultimaActividad: activityTimestamp(ultimaFecha),
       };
     });
 }
@@ -198,7 +184,7 @@ export async function getLecturasActivas(usuario = '') {
     lectoras: number;
     configurada: boolean;
     comentarios: number;
-    ultimaActividad: string;
+    ultimaActividad: string | null;
     tipo: string;
     estado: string;
   }[] = [];
@@ -212,7 +198,6 @@ export async function getLecturasActivas(usuario = '') {
 
     let comentarios = 0;
     let ultimaFecha: Date | null = null;
-    let ultimaActividad = '';
 
     for (const conversation of reading.conversations) {
       for (const comment of conversation.comments) {
@@ -222,7 +207,6 @@ export async function getLecturasActivas(usuario = '') {
 
         if (!ultimaFecha || comment.createdAt > ultimaFecha) {
           ultimaFecha = comment.createdAt;
-          ultimaActividad = `💬 ${comment.user.name} comentó`;
         }
 
         for (const reply of comment.replies) {
@@ -232,7 +216,6 @@ export async function getLecturasActivas(usuario = '') {
 
           if (!ultimaFecha || reply.createdAt > ultimaFecha) {
             ultimaFecha = reply.createdAt;
-            ultimaActividad = `↩️ ${reply.user.name} respondió`;
           }
         }
       }
@@ -244,9 +227,7 @@ export async function getLecturasActivas(usuario = '') {
       lectoras,
       configurada: true,
       comentarios,
-      ultimaActividad: ultimaFecha
-        ? `${ultimaActividad} ${tiempoRelativo(ultimaFecha)}`
-        : '',
+      ultimaActividad: activityTimestamp(ultimaFecha),
       tipo: tipoToFlutter(reading.type),
       estado: 'ACTIVA',
     });
@@ -290,7 +271,7 @@ export async function getLecturasActivas(usuario = '') {
       lectoras: lectura._count.userId,
       configurada: false,
       comentarios: 0,
-      ultimaActividad: '',
+      ultimaActividad: null,
       tipo: 'LIBRE',
       estado: 'ACTIVA',
     });
@@ -341,7 +322,7 @@ export async function getLecturasActivas(usuario = '') {
         lectoras,
         configurada: false,
         comentarios: 0,
-        ultimaActividad: '',
+        ultimaActividad: null,
         tipo: 'OFICIAL',
         estado: 'ACTIVA',
       });
@@ -365,10 +346,7 @@ export async function crearLectura(data: {
   tipo: string;
 }) {
   const requestedType = tipoFromFlutter(data.tipo);
-  const legacyRequest = !data.usuario?.trim() && legacyApkEnabled();
-  const { club, user } = legacyRequest
-    ? await getCurrentClubContext()
-    : await requireClubMember(data.usuario);
+  const { club, user } = await requireClubMember(data.usuario);
   const title = String(data.libro || '').trim();
   const capitulos = Number(data.capitulos || 0);
   const paginas = data.paginas === undefined ? undefined : Number(data.paginas);
@@ -525,7 +503,7 @@ export async function crearLectura(data: {
       bookTitle: book.title,
       bookId: book.id,
       readingId: notificationReadingId,
-    }).catch(console.error);
+    }).catch(backgroundError('shared_reading_notification_failed'));
   }
 
   return { ok: true };
@@ -701,10 +679,10 @@ export async function getComentariosLectura(
               user: true,
               likes: true,
             },
-            orderBy: { createdAt: 'asc' },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           },
         },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       },
     },
   });
@@ -745,6 +723,7 @@ if (usuario) {
     });
   }
 }
+
   return {
     ok: true,
     capitulo,
@@ -775,6 +754,118 @@ if (usuario) {
         reacciones: contarReacciones(reply.likes),
         miReaccion: reply.likes.find((like) => like.userId === usuarioId)?.reaction ?? null,
         miLike: reply.likes.some((like) => like.userId === usuarioId),
+        editado: reply.edited,
+        eliminado: false,
+        esMia: reply.user.name === usuarioActual,
+        avatarUrl: reply.user.avatarUrl ?? '',
+      })),
+    })),
+  };
+}
+
+export async function getComentariosLecturaPage(
+  libro: string,
+  capitulo: string,
+  usuarioActual: string,
+  pagination: PaginationRequest,
+) {
+  const { club } = await getCurrentClubContext(usuarioActual);
+  const conversation = await prisma.conversation.findFirst({
+    where: {
+      title: capitulo,
+      reading: {
+        clubId: club.id,
+        book: { title: libro },
+        status: ReadingSessionStatus.ACTIVE,
+      },
+    },
+    select: { id: true },
+  });
+  if (!conversation) return { items: [], nextCursor: null, hasMore: false };
+
+  const user = await prisma.user.findUnique({
+    where: { name: usuarioActual.trim() },
+    select: { id: true },
+  });
+  const usuarioId = user?.id ?? '';
+  if (user) {
+    await prisma.conversationRead.upsert({
+      where: {
+        userId_conversationId: {
+          userId: user.id,
+          conversationId: conversation.id,
+        },
+      },
+      update: { lastSeenAt: new Date() },
+      create: { userId: user.id, conversationId: conversation.id },
+    });
+  }
+
+  const comments = await prisma.comment.findMany({
+    where: {
+      conversationId: conversation.id,
+      parentId: null,
+      deletedAt: null,
+      ...ascendingCursorFilter('createdAt', pagination.cursor),
+    },
+    select: {
+      id: true,
+      text: true,
+      type: true,
+      color: true,
+      edited: true,
+      createdAt: true,
+      user: { select: { name: true, avatarUrl: true } },
+      likes: { select: { userId: true, reaction: true } },
+      replies: {
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          text: true,
+          edited: true,
+          createdAt: true,
+          user: { select: { name: true, avatarUrl: true } },
+          likes: { select: { userId: true, reaction: true } },
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      },
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    take: pagination.limit + 1,
+  });
+  const page = pageFromRows(comments, pagination.limit, (comment) => ({
+    value: comment.createdAt.toISOString(),
+    id: comment.id,
+  }));
+  return {
+    ...page,
+    items: page.items.map((comment) => ({
+      id: comment.id,
+      libro,
+      capitulo,
+      usuario: comment.user.name,
+      fecha: comment.createdAt.toLocaleString('es-ES'),
+      comentario: comment.text,
+      tipo: comment.type,
+      color: comment.color ?? '',
+      likes: comment.likes.length,
+      reacciones: contarReacciones(comment.likes),
+      miReaccion: comment.likes.find(({ userId }) => userId === usuarioId)?.reaction ?? null,
+      editado: comment.edited,
+      eliminado: false,
+      miLike: comment.likes.some(({ userId }) => userId === usuarioId),
+      esMio: comment.user.name === usuarioActual,
+      avatarUrl: comment.user.avatarUrl ?? '',
+      respuestas: comment.replies.map((reply) => ({
+        id: reply.id,
+        comentarioId: comment.id,
+        usuario: reply.user.name,
+        fecha: reply.createdAt.toLocaleString('es-ES'),
+        respuesta: reply.text,
+        likes: reply.likes.length,
+        reacciones: contarReacciones(reply.likes),
+        miReaccion: reply.likes.find(({ userId }) => userId === usuarioId)?.reaction ?? null,
+        miLike: reply.likes.some(({ userId }) => userId === usuarioId),
         editado: reply.edited,
         eliminado: false,
         esMia: reply.user.name === usuarioActual,
@@ -825,7 +916,7 @@ export async function enviarComentarioLectura(data: {
 
   if (!conversation) return { ok: false, mensaje: 'Capítulo no encontrado' };
 
-  await prisma.comment.create({
+  const created = await prisma.comment.create({
     data: {
       conversationId: conversation.id,
       userId: user.id,
@@ -833,24 +924,54 @@ export async function enviarComentarioLectura(data: {
       type: tipo,
       color: tipo === 'QUOTE' ? color : null,
     },
+    select: {
+      id: true,
+      text: true,
+      type: true,
+      color: true,
+      edited: true,
+      createdAt: true,
+      user: { select: { name: true, avatarUrl: true } },
+    },
   });
 
   // Notificar a otros participantes del hilo
-const miembros = await prisma.clubMember.findMany({
-  where: { clubId: club.id },
-  select: { userId: true },
-});
-notifyComentarioLectura({
-  clubId: club.id,
-  autorNombre: user.name,
-  autorUserId: user.id,
-  bookTitle: libro,
-  bookId: conversation.reading?.bookId ?? '',
-  readingId: conversation.reading?.id,
-  participantes: miembros.map((m) => m.userId),
-}).catch(console.error);
+  const miembros = await prisma.clubMember.findMany({
+    where: { clubId: club.id },
+    select: { userId: true },
+  });
+  notifyComentarioLectura({
+    clubId: club.id,
+    autorNombre: user.name,
+    autorUserId: user.id,
+    bookTitle: libro,
+    bookId: conversation.reading?.bookId ?? '',
+    readingId: conversation.reading?.id,
+    participantes: miembros.map((m) => m.userId),
+  }).catch(backgroundError('comment_notification_failed'));
 
-  return { ok: true };
+  return {
+    ok: true,
+    comentario: {
+      id: created.id,
+      libro,
+      capitulo,
+      usuario: created.user.name,
+      avatarUrl: created.user.avatarUrl ?? '',
+      fecha: created.createdAt.toLocaleString('es-ES'),
+      comentario: created.text,
+      tipo: created.type,
+      color: created.color ?? '',
+      likes: 0,
+      reacciones: contarReacciones([]),
+      miReaccion: null,
+      miLike: false,
+      esMio: true,
+      editado: created.edited,
+      eliminado: false,
+      respuestas: [],
+    },
+  };
 }
 
 export async function responderComentarioLectura(data: {
@@ -905,7 +1026,7 @@ if (conversacionConLectura?.reading) {
     bookId: conversacionConLectura.reading.bookId ?? '',
     readingId: conversacionConLectura.reading.id,
     participantes: miembros.map((m) => m.userId),
-  }).catch(console.error);
+  }).catch(backgroundError('reply_notification_failed'));
 }
 
 return { ok: true };
@@ -1023,13 +1144,8 @@ export async function editarComentarioLectura(
     return { ok: false, mensaje: 'Faltan datos' };
   }
 
-  const legacyRequest = !usuario.trim() && legacyApkEnabled();
-  const context = legacyRequest
-    ? await getCurrentClubContext()
-    : await requireClubMember(usuario);
-  const { club, user, membership } = context;
+  const { club, user, membership } = await requireClubMember(usuario);
   const canModerate =
-    legacyRequest ||
     membership?.role === ClubRole.OWNER ||
     membership?.role === ClubRole.ADMIN;
   const existing = await prisma.comment.findFirst({
@@ -1063,13 +1179,8 @@ export async function eliminarComentarioLectura(
     return { ok: false, mensaje: 'Falta comentarioId' };
   }
 
-  const legacyRequest = !usuario.trim() && legacyApkEnabled();
-  const context = legacyRequest
-    ? await getCurrentClubContext()
-    : await requireClubMember(usuario);
-  const { club, user, membership } = context;
+  const { club, user, membership } = await requireClubMember(usuario);
   const canModerate =
-    legacyRequest ||
     membership?.role === ClubRole.OWNER ||
     membership?.role === ClubRole.ADMIN;
   const existing = await prisma.comment.findFirst({
@@ -1178,9 +1289,89 @@ export async function getConversacionesLibro(libro: string, usuario = '') {
           : 'FINALIZADA',
       comentarios,
       likes,
-      ultimaActividad: ultimaFecha
-        ? `Última actividad ${tiempoRelativo(ultimaFecha)}`
-        : '',
+      ultimaActividad: activityTimestamp(ultimaFecha),
     };
   });
+}
+
+export async function getConversacionesLibroPage(
+  libro: string,
+  usuario: string,
+  pagination: PaginationRequest,
+) {
+  const { club } = await getCurrentClubContext(usuario);
+  const readings = await prisma.reading.findMany({
+    where: {
+      clubId: club.id,
+      book: { title: libro.trim() },
+      ...descendingCursorFilter('startedAt', pagination.cursor),
+    },
+    select: {
+      id: true,
+      type: true,
+      status: true,
+      startedAt: true,
+      book: { select: { title: true } },
+      conversations: {
+        select: {
+          comments: {
+            select: {
+              deletedAt: true,
+              createdAt: true,
+              likes: { select: { id: true } },
+              replies: {
+                select: {
+                  deletedAt: true,
+                  createdAt: true,
+                  likes: { select: { id: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+    take: pagination.limit + 1,
+  });
+  const page = pageFromRows(readings, pagination.limit, (reading) => ({
+    value: reading.startedAt.toISOString(),
+    id: reading.id,
+  }));
+  return {
+    ...page,
+    items: page.items.map((reading) => {
+      let comentarios = 0;
+      let likes = 0;
+      let ultimaFecha: Date | null = null;
+      for (const conversation of reading.conversations) {
+        for (const comment of conversation.comments) {
+          if (comment.deletedAt) continue;
+          comentarios++;
+          likes += comment.likes.length;
+          if (!ultimaFecha || comment.createdAt > ultimaFecha) {
+            ultimaFecha = comment.createdAt;
+          }
+          for (const reply of comment.replies) {
+            if (reply.deletedAt) continue;
+            comentarios++;
+            likes += reply.likes.length;
+            if (!ultimaFecha || reply.createdAt > ultimaFecha) {
+              ultimaFecha = reply.createdAt;
+            }
+          }
+        }
+      }
+      return {
+        libro: reading.book.title,
+        tipo: tipoToFlutter(reading.type),
+        estado: reading.status === ReadingSessionStatus.ACTIVE
+          ? 'ACTIVA'
+          : 'FINALIZADA',
+        comentarios,
+        likes,
+        ultimaActividad: activityTimestamp(ultimaFecha),
+      };
+    }),
+  };
 }

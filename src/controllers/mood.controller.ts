@@ -6,18 +6,15 @@ import { requestUserName } from '../middleware/auth.middleware.js';
 
 export async function handleMoodClub(req: Request, res: Response) {
   const data = await getMoodClub(
-    requestUserName(req, req.query.usuario),
+    requestUserName(req),
   );
   return res.json(data);
 }
 
 export async function handleRegistrarMoodClub(req: Request, res: Response) {
   const data = await registrarMoodClub(
-    requestUserName(
-      req,
-      req.body?.usuario ?? req.query.usuario,
-    ),
-    String(req.query.mood || req.body?.mood || ''),
+    requestUserName(req),
+    String(req.body?.mood || ''),
   );
   return res.json(data);
 }

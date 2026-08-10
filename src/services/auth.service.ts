@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import { AuthCodePurpose } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
+import { backgroundError } from '../logging/logger.js';
 import {
   createAccessToken,
   generateRefreshToken,
@@ -73,7 +74,7 @@ async function issueSession(userId: string) {
 
   return {
     ok: true,
-    accessToken: createAccessToken(userId, session.id),
+    accessToken: await createAccessToken(userId, session.id),
     refreshToken,
     expiresIn: 15 * 60,
     usuario: {
@@ -188,7 +189,7 @@ async function requestCode(
     await prisma.authCode.deleteMany({
       where: { id: authCode.id, consumedAt: null },
     });
-    console.error('No se pudo entregar un código de acceso', error);
+    backgroundError('auth_code_delivery_failed')(error);
     return GENERIC_CODE_RESPONSE;
   }
 
@@ -484,17 +485,60 @@ export async function login(emailValue: string, password: string) {
   return issueSession(user.id);
 }
 
-export async function refreshSession(refreshToken: string) {
+type RefreshSessionRecord = {
+  id: string;
+  userId: string;
+  revokedAt: Date | null;
+  expiresAt: Date;
+  lastUsedAt: Date;
+};
+
+export type RefreshSessionDependencies = {
+  findByHash: (tokenHash: string) => Promise<RefreshSessionRecord | null>;
+  findById: (sessionId: string) => Promise<RefreshSessionRecord | null>;
+  rotate: (
+    sessionId: string,
+    tokenHash: string,
+    nextTokenHash: string,
+  ) => Promise<number>;
+};
+
+const refreshSessionDependencies: RefreshSessionDependencies = {
+  findByHash: (tokenHash) =>
+    prisma.authSession.findUnique({
+      where: { refreshTokenHash: tokenHash },
+    }),
+  findById: (sessionId) =>
+    prisma.authSession.findUnique({ where: { id: sessionId } }),
+  rotate: async (sessionId, tokenHash, nextTokenHash) => {
+    const result = await prisma.authSession.updateMany({
+      where: {
+        id: sessionId,
+        refreshTokenHash: tokenHash,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      data: {
+        refreshTokenHash: nextTokenHash,
+        lastUsedAt: new Date(),
+      },
+    });
+    return result.count;
+  },
+};
+
+export async function refreshSession(
+  refreshToken: string,
+  dependencies: RefreshSessionDependencies = refreshSessionDependencies,
+) {
   const normalizedToken = refreshToken.trim();
   const tokenHash = hashRefreshToken(normalizedToken);
-  const session = await prisma.authSession.findUnique({
-    where: { refreshTokenHash: tokenHash },
-  });
+  const session = await dependencies.findByHash(tokenHash);
 
   if (!session) {
     const sessionId = normalizedToken.split('.', 1)[0];
     const rotatedSession = sessionId
-      ? await prisma.authSession.findUnique({ where: { id: sessionId } })
+      ? await dependencies.findById(sessionId)
       : null;
     if (
       rotatedSession &&
@@ -525,19 +569,12 @@ export async function refreshSession(refreshToken: string) {
   }
 
   const nextRefreshToken = generateRefreshToken(session.id);
-  const rotated = await prisma.authSession.updateMany({
-    where: {
-      id: session.id,
-      refreshTokenHash: tokenHash,
-      revokedAt: null,
-      expiresAt: { gt: new Date() },
-    },
-    data: {
-      refreshTokenHash: hashRefreshToken(nextRefreshToken),
-      lastUsedAt: new Date(),
-    },
-  });
-  if (rotated.count !== 1) {
+  const rotated = await dependencies.rotate(
+    session.id,
+    tokenHash,
+    hashRefreshToken(nextRefreshToken),
+  );
+  if (rotated !== 1) {
     throw new AuthError(
       'El token ya ha sido renovado por otra petición',
       409,
@@ -547,7 +584,7 @@ export async function refreshSession(refreshToken: string) {
 
   return {
     ok: true,
-    accessToken: createAccessToken(session.userId, session.id),
+    accessToken: await createAccessToken(session.userId, session.id),
     refreshToken: nextRefreshToken,
     expiresIn: 15 * 60,
   };

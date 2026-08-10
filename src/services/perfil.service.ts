@@ -1,6 +1,7 @@
 import { ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
+import { backgroundError } from '../logging/logger.js';
 import {
   ratingFromFlutter,
   ratingToFlutter,
@@ -14,6 +15,11 @@ import { formatToFlutter } from './books.service.js';
 import { canonicalBookTitle } from './catalog.service.js';
 // Añadir import al inicio de perfil.service.ts:
 import { getUserSeriesOrders } from './user-series-order.service.js';
+import {
+  descendingCursorFilter,
+  pageFromRows,
+  type PaginationRequest,
+} from '../utils/cursor-pagination.js';
 function fechaToFlutter(fecha?: Date | null) {
   if (!fecha) return '';
 
@@ -633,6 +639,84 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
   };
 }
 
+export async function getPerfilHistorialPage(
+  usuario: string,
+  solicitante: string,
+  pagination: PaginationRequest,
+) {
+  const nombre = usuario.trim();
+  if (!nombre) return { items: [], nextCursor: null, hasMore: false };
+  const ownProfile = nombre === solicitante.trim();
+  const club = ownProfile
+    ? null
+    : (await getCurrentClubContext(solicitante)).club;
+  const user = await prisma.user.findFirst({
+    where: {
+      name: nombre,
+      ...(club ? { clubMemberships: { some: { clubId: club.id } } } : {}),
+    },
+    select: { id: true },
+  });
+  if (!user) return { items: [], nextCursor: null, hasMore: false };
+
+  const rows = await prisma.readingCompletion.findMany({
+    where: {
+      userId: user.id,
+      ...descendingCursorFilter('finishedAt', pagination.cursor),
+    },
+    select: {
+      id: true,
+      bookId: true,
+      startedAt: true,
+      finishedAt: true,
+      rating: true,
+      review: true,
+      readingFormat: true,
+      isReread: true,
+      book: {
+        select: {
+          title: true,
+          coverUrl: true,
+          genre: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: [{ finishedAt: 'desc' }, { id: 'desc' }],
+    take: pagination.limit + 1,
+  });
+  const page = pageFromRows(rows, pagination.limit, (item) => ({
+    value: item.finishedAt.toISOString(),
+    id: item.id,
+  }));
+  const libraries = await prisma.library.findMany({
+    where: {
+      userId: user.id,
+      bookId: { in: page.items.map(({ bookId }) => bookId) },
+    },
+    select: { id: true, bookId: true },
+  });
+  const libraryByBook = new Map(
+    libraries.map((library) => [library.bookId, library.id]),
+  );
+  return {
+    ...page,
+    items: page.items.map((item) => ({
+      completionId: item.id,
+      libraryId: libraryByBook.get(item.bookId) ?? '',
+      bookId: item.bookId,
+      libro: item.book.title,
+      genero: item.book.genre.name,
+      fechaInicio: fechaToFlutter(item.startedAt),
+      fechaFin: fechaToFlutter(item.finishedAt),
+      valoracion: ratingToFlutter(item.rating),
+      resena: item.review ?? '',
+      formato: formatToFlutter(item.readingFormat),
+      coverUrl: item.book.coverUrl ?? '',
+      esRelectura: item.isReread,
+    })),
+  };
+}
+
 // ─────────────────────────────────────────────
 // Histórico de meses lectores
 // ─────────────────────────────────────────────
@@ -1085,7 +1169,7 @@ export async function actualizarAvatarPerfil(params: {
       avatarUrl: avatarCloudinary,
     };
   } catch (error) {
-    console.error('Error actualizando avatar:', error);
+    backgroundError('avatar_update_failed')(error);
 
     return {
       ok: false,

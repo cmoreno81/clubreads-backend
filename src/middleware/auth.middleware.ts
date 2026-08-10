@@ -6,6 +6,42 @@ import type {
 
 import { prisma } from '../prisma.js';
 import { verifyAccessToken } from '../services/auth-crypto.service.js';
+import type { AccessTokenPayload } from '../services/auth-crypto.service.js';
+
+type AuthenticatedSession = {
+  id: string;
+  userId: string;
+  user: { name: string };
+};
+
+type SessionLookup = (
+  where: {
+    id: string;
+    userId: string;
+    revokedAt: null;
+    expiresAt: { gt: Date };
+  },
+) => Promise<AuthenticatedSession | null>;
+
+export async function findActiveAccessSession(
+  payload: AccessTokenPayload,
+  lookup: SessionLookup = (where) =>
+    prisma.authSession.findFirst({
+      where,
+      select: {
+        id: true,
+        userId: true,
+        user: { select: { name: true } },
+      },
+    }),
+) {
+  return lookup({
+    id: payload.sid,
+    userId: payload.sub,
+    revokedAt: null,
+    expiresAt: { gt: new Date() },
+  });
+}
 
 export async function authenticateOptional(
   req: Request,
@@ -16,7 +52,7 @@ export async function authenticateOptional(
   if (!authorization) return next();
 
   const match = /^Bearer\s+(.+)$/i.exec(authorization);
-  const payload = match ? verifyAccessToken(match[1]!) : null;
+  const payload = match ? await verifyAccessToken(match[1]!) : null;
   if (!payload) {
     return res.status(401).json({
       ok: false,
@@ -25,15 +61,7 @@ export async function authenticateOptional(
     });
   }
 
-  const session = await prisma.authSession.findFirst({
-    where: {
-      id: payload.sid,
-      userId: payload.sub,
-      revokedAt: null,
-      expiresAt: { gt: new Date() },
-    },
-    include: { user: true },
-  });
+  const session = await findActiveAccessSession(payload);
   if (!session) {
     return res.status(401).json({
       ok: false,
@@ -67,7 +95,7 @@ export function requireAuthentication(
 
 export function requestUserName(
   req: Request,
-  legacyValue: unknown = '',
+  _legacyValue: unknown = '',
 ) {
-  return req.auth?.userName ?? String(legacyValue ?? '');
+  return req.auth?.userName ?? '';
 }

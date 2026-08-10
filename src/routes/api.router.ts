@@ -1,4 +1,4 @@
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 
 import {
@@ -63,12 +63,11 @@ import {
 } from '../controllers/mood.controller.js';
 
 import { handleTendenciasClub } from '../controllers/tendencias.controller.js';
-import { ClubContextError } from '../services/club-context.service.js';
-import { AuthError } from '../services/auth.service.js';
 import {
   authenticateOptional,
   requireAuthentication,
 } from '../middleware/auth.middleware.js';
+import { publicAuthRateLimiter } from '../middleware/rate-limit.middleware.js';
 import {
   handleActivateAccount,
   handleCompleteRegistration,
@@ -105,16 +104,15 @@ import {
   handleConfirmGoodreadsImport,
   handlePreviewGoodreadsImport,
 } from '../controllers/goodreads-import.controller.js';
-import { GoodreadsImportError } from '../services/goodreads-import.service.js';
 import { handleEliminarNotificacion, handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas } from '../controllers/notifications.controller.js';
 import { handleGetSeriesOverrides, handleRemoveSeriesOverride, handleSetSeriesOverride } from '../controllers/series-override.controller.js';
 import { handleGetHiddenSeries, handleHideSeries, handleShowSeries, handleRemoveSeries, } from '../controllers/hidden-user-series.controller.js';
-import { HiddenUserSeriesError } from '../services/hidden-user-series.service.js';
 import { handleSaveUserSeriesOrder } from '../controllers/user-series-order.controller.js';
 import {
   handleGetClubChallenges,
   handleSetChallenge,
 } from '../controllers/reading-challenge.controller.js';
+import { validateActionInput } from '../validation/api-validation.js';
 export const apiRouter = Router();
 
 const PUBLIC_AUTH_ACTIONS = new Set([
@@ -127,49 +125,83 @@ const PUBLIC_AUTH_ACTIONS = new Set([
   'resetPassword',
   'refreshToken',
 ]);
-const POST_ONLY_ACTIONS = new Set([
+export const POST_ONLY_ACTIONS = new Set([
   ...PUBLIC_AUTH_ACTIONS,
   'logout',
   'cambiarPassword',
-  'crearClub',
-  'unirseClub',
-  'seleccionarClub',
-  'invitacionClub',
-  'importarLibroCatalogo',
-  'vincularVolumenSaga',
-  'actualizarNumeroVolumenSaga',
-  'actualizarEstadoEditorialSaga',
   'setSeriesOverride',
   'removeSeriesOverride',
   'ocultarSaga',
   'mostrarSaga',
   'eliminarSaga',
+  'marcarLeida',
+  'marcarTodasLeidas',
   'eliminarNotificacion',
+  'importarLibroCatalogo',
   'previsualizarImportacionGoodreads',
   'confirmarImportacionGoodreads',
-  'getClubChallenges',
+  'vincularVolumenSaga',
+  'actualizarNumeroVolumenSaga',
+  'actualizarEstadoEditorialSaga',
+  'crearClub',
+  'unirseClub',
+  'seleccionarClub',
+  'invitacionClub',
+  'salirClub',
+  'editarClub',
+  'crearLibro',
+  'editarLibro',
+  'anadirLibroExistente',
+  'actualizarPreferenciasLibro',
+  'quitarLibroPendientes',
+  'iniciarLectura',
+  'actualizarEstado',
+  'actualizarProgresoLectura',
+  'toggleProgressReaction',
+  'actualizarValoracion',
+  'actualizarPaginaLibrary',
+  'enviarVotacion',
+  'crearLectura',
+  'guardarComentarioLectura',
+  'responderComentario',
+  'toggleLikeComentario',
+  'editarComentario',
+  'eliminarComentario',
+  'editarRespuesta',
+  'eliminarRespuesta',
+  'marcarConversacionVista',
+  'actualizarFechasLectura',
+  'actualizarAvatarPerfil',
+  'registrarMoodClub',
+  'saveUserSeriesOrder',
   'setReadingChallenge',
 ]);
 
-async function handleApi(req: Request, res: Response) {
+export function enforceActionMethod(
+  action: string,
+  req: Request,
+  res: Response,
+) {
+  if (!POST_ONLY_ACTIONS.has(action) || req.method === 'POST') return null;
+
+  return res.status(405).set('Allow', 'POST').json({
+    ok: false,
+    error: 'METHOD_NOT_ALLOWED',
+    mensaje: 'Esta acción solo admite POST',
+  });
+}
+
+export async function handleApi(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   try {
     const action = String(req.query.action || '');
-    if (
-      POST_ONLY_ACTIONS.has(action) &&
-      req.method !== 'POST'
-    ) {
-      return res.status(405).json({
-        ok: false,
-        error: 'METHOD_NOT_ALLOWED',
-        mensaje: 'Esta acción solo admite POST',
-      });
-    }
+    const methodError = enforceActionMethod(action, req, res);
+    if (methodError) return methodError;
 
-    if (
-      process.env.AUTH_REQUIRE_ACCESS_TOKEN === 'true' &&
-      !PUBLIC_AUTH_ACTIONS.has(action) &&
-      !req.auth
-    ) {
+    if (!PUBLIC_AUTH_ACTIONS.has(action) && !req.auth) {
       return res.status(401).json({
         ok: false,
         error: 'AUTHENTICATION_REQUIRED',
@@ -177,24 +209,11 @@ async function handleApi(req: Request, res: Response) {
       });
     }
 
+    const validationError = validateActionInput(action, req, res);
+    if (validationError) return validationError;
+
     if (PUBLIC_AUTH_ACTIONS.has(action) || req.auth) {
       res.set('Cache-Control', 'no-store');
-    }
-
-    const claimedUser = String(
-      req.body?.usuario ?? req.query.usuario ?? '',
-    ).trim();
-
-    if (
-      req.auth &&
-      claimedUser &&
-      claimedUser !== req.auth.userName
-    ) {
-      return res.status(403).json({
-        ok: false,
-        error: 'IDENTITY_MISMATCH',
-        mensaje: 'La usuaria no coincide con la sesión',
-      });
     }
 
     switch (action) {
@@ -536,30 +555,22 @@ async function handleApi(req: Request, res: Response) {
         });
     }
   } catch (error) {
-    console.error(error);
-
-    if (
-      error instanceof ClubContextError ||
-      error instanceof AuthError ||
-      error instanceof GoodreadsImportError ||
-      error instanceof HiddenUserSeriesError
-    ) {
-      return res.status(error.statusCode).json({
-        ok: false,
-        error: error.code,
-        mensaje: error.message,
-      });
-    }
-
-    return res.status(500).json({
-      error: 'Error interno del servidor',
-    });
+    return next(error);
   }
 }
 
+apiRouter.use(publicAuthRateLimiter);
 apiRouter.use(authenticateOptional);
-apiRouter.get('/achievements', handleGetAchievements);
-apiRouter.get('/club/achievements/recent', handleGetRecentClubAchievements);
+apiRouter.get('/achievements', requireAuthentication, handleGetAchievements);
+apiRouter.get(
+  '/club/achievements/recent',
+  requireAuthentication,
+  handleGetRecentClubAchievements,
+);
 apiRouter.get('/', handleApi);
 apiRouter.post('/', handleApi);
-apiRouter.post('/series/order', handleSaveUserSeriesOrder);
+apiRouter.post(
+  '/series/order',
+  requireAuthentication,
+  handleSaveUserSeriesOrder,
+);

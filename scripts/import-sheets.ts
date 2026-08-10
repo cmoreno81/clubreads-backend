@@ -5,12 +5,41 @@ import { Priority, ReadingStatus } from '@prisma/client';
 import { prisma } from '../src/prisma.js';
 import { findBookByIdentity, lockBookIdentity } from '../src/services/book-identity.service.js';
 
-const DATA_DIR = fs.existsSync(path.join(process.cwd(), 'data'))
-  ? path.join(process.cwd(), 'data')
-  : path.join(process.cwd(), 'ClubLecturaBackend', 'data');
+const configuredDataDir = process.env.IMPORT_DATA_DIR?.trim();
+const localDataDir = path.join(process.cwd(), 'data');
+const DATA_DIR = configuredDataDir
+  ? path.resolve(configuredDataDir)
+  : fs.existsSync(localDataDir)
+    ? localDataDir
+    : path.join(process.cwd(), 'ClubLecturaBackend', 'data');
 
 type CsvRow = Record<string, string>;
 const FOUNDER_CLUB_SLUG = 'nuestros-gustos-son-cliches';
+
+class ImportDataError extends Error {}
+
+const REQUIRED_CSV_FILES = [
+  'config.csv',
+  'libros.csv',
+  'libros-finalizados.csv',
+  'historial-clubvision.csv',
+  'votos-clubvision.csv',
+  'comentarios-lecturas.csv',
+] as const;
+
+function validateRequiredCsvFiles() {
+  for (const fileName of REQUIRED_CSV_FILES) {
+    const filePath = path.join(DATA_DIR, fileName);
+
+    try {
+      if (!fs.statSync(filePath).isFile()) throw new Error('not a file');
+    } catch {
+      throw new ImportDataError(
+        `Falta el CSV requerido "${fileName}" en la carpeta de importación.`,
+      );
+    }
+  }
+}
 
 async function getFounderClub() {
   return prisma.club.findUniqueOrThrow({
@@ -20,14 +49,32 @@ async function getFounderClub() {
 
 function readCsv(fileName: string): CsvRow[] {
   const filePath = path.join(DATA_DIR, fileName);
-  const content = fs.readFileSync(filePath, 'utf8');
+  let content: string;
 
-  return parse(content, {
-    columns: true,
-    skip_empty_lines: true,
-    bom: true,
-    trim: true,
-  });
+  try {
+    content = fs.readFileSync(filePath, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new ImportDataError(
+        `Falta el CSV requerido "${fileName}" en la carpeta de importación.`,
+      );
+    }
+
+    throw new ImportDataError(`No se puede leer el CSV requerido "${fileName}".`);
+  }
+
+  try {
+    return parse(content, {
+      columns: true,
+      skip_empty_lines: true,
+      bom: true,
+      trim: true,
+    });
+  } catch {
+    throw new ImportDataError(
+      `El CSV requerido "${fileName}" no tiene un formato válido.`,
+    );
+  }
 }
 
 function clean(value: unknown): string {
@@ -210,7 +257,7 @@ async function importActiveBooks() {
     });
 
     if (!user) {
-      console.warn(`Usuaria no encontrada: ${userName}`);
+      console.warn('Se omite una fila de libros: usuaria no encontrada.');
       continue;
     }
 
@@ -260,7 +307,7 @@ async function importFinishedBooks() {
     });
 
     if (!user) {
-      console.warn(`Usuaria no encontrada: ${userName}`);
+      console.warn('Se omite una fila de libros finalizados: usuaria no encontrada.');
       continue;
     }
 
@@ -503,7 +550,7 @@ async function importClubvisionVotes() {
     });
 
     if (!user) {
-      console.warn(`Usuaria no encontrada en votos: ${userName}`);
+      console.warn('Se omite una fila de votos: usuaria no encontrada.');
       continue;
     }
 
@@ -515,7 +562,7 @@ async function importClubvisionVotes() {
       const book = await findBookByTitle(title);
 
       if (!book) {
-        console.warn(`Libro no encontrado en voto: ${title}`);
+        console.warn('Se omite un voto: libro no encontrado.');
         continue;
       }
 
@@ -563,6 +610,12 @@ async function importClubvisionVotes() {
 }
 
 async function main() {
+  validateRequiredCsvFiles();
+  if (process.argv.includes('--check-data')) {
+    console.log('Carpeta de importación validada: todos los CSV requeridos existen.');
+    return;
+  }
+
   console.log('Importando CSV...');
 
   await importUsers();
@@ -577,7 +630,11 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error(error);
+    console.error(
+      error instanceof ImportDataError
+        ? error.message
+        : 'La importación ha fallado. No se muestran detalles para proteger los datos personales.',
+    );
     process.exit(1);
   })
   .finally(async () => {
@@ -695,14 +752,14 @@ async function importReadingComments() {
     });
 
     if (!user) {
-      console.warn(`Usuaria no encontrada en comentario: ${userName}`);
+      console.warn('Se omite un comentario: usuaria no encontrada.');
       continue;
     }
 
     const conversation = await getOrCreateReadingForComment(bookTitle, chapterTitle);
 
     if (!conversation) {
-      console.warn(`Libro no encontrado en comentario: ${bookTitle}`);
+      console.warn('Se omite un comentario: libro no encontrado.');
       continue;
     }
 

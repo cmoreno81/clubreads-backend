@@ -4,16 +4,33 @@ import {
   actualizarAvatarPerfil,
   actualizarFechasLectura,
   getPerfilUsuario,
+  getPerfilHistorialPage,
 } from '../services/perfil.service.js';
 import { requestUserName } from '../middleware/auth.middleware.js';
+import {
+  hasExplicitPagination,
+  parsePagination,
+} from '../utils/cursor-pagination.js';
 
 export async function handlePerfilUsuario(
   req: Request,
   res: Response,
 ) {
+  const perfil = String(
+    req.query.perfil ?? req.query.usuario ?? req.auth?.userName ?? '',
+  );
+  if (hasExplicitPagination(req.query)) {
+    return res.json(
+      await getPerfilHistorialPage(
+        perfil,
+        requestUserName(req),
+        parsePagination(req.query),
+      ),
+    );
+  }
   const data = await getPerfilUsuario(
-    String(req.query.perfil ?? req.query.usuario ?? req.auth?.userName ?? ''),
-    requestUserName(req, req.query.usuario),
+    perfil,
+    requestUserName(req),
   );
 
   return res.json(data);
@@ -25,31 +42,15 @@ export async function handleActualizarFechasLectura(
 ) {
   const body = req.body ?? {};
 
-  const valoracionRecibida =
-    Object.prototype.hasOwnProperty.call(body, 'valoracion')
-      ? body.valoracion
-      : req.query.valoracion;
-
-  const resenaRecibida =
-    Object.prototype.hasOwnProperty.call(body, 'resena')
-      ? body.resena
-      : req.query.resena;
+  const valoracionRecibida = body.valoracion;
+  const resenaRecibida = body.resena;
 
   const data = await actualizarFechasLectura({
-    usuario: requestUserName(
-      req,
-      body.usuario ?? req.query.usuario,
-    ),
-    libraryId: String(
-      body.libraryId ?? req.query.libraryId ?? '',
-    ),
-    completionId: String(
-      body.completionId ?? req.query.completionId ?? '',
-    ),
-    fechaInicio:
-      body.fechaInicio ?? req.query.fechaInicio ?? '',
-    fechaFin:
-      body.fechaFin ?? req.query.fechaFin ?? '',
+    usuario: requestUserName(req),
+    libraryId: String(body.libraryId ?? ''),
+    completionId: String(body.completionId ?? ''),
+    fechaInicio: body.fechaInicio ?? '',
+    fechaFin: body.fechaFin ?? '',
 
     /*
      * `undefined` significa que la APK antigua no ha enviado
@@ -72,13 +73,8 @@ export async function handleActualizarAvatarPerfil(
   const body = req.body ?? {};
 
   const data = await actualizarAvatarPerfil({
-    usuario: requestUserName(
-      req,
-      body.usuario ?? req.query.usuario,
-    ),
-    avatarUrl: String(
-      body.avatarUrl ?? req.query.avatarUrl ?? '',
-    ),
+    usuario: requestUserName(req),
+    avatarUrl: String(body.avatarUrl ?? ''),
   });
 
   return res.json(data);

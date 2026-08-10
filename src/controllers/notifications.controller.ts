@@ -1,12 +1,22 @@
 import type { Request, Response } from 'express';
 import {
   getNotificaciones,
+  getNotificacionesPage,
   eliminarNotificacion,
   marcarLeida,
   marcarTodasLeidas,
 } from '../services/notifications.service.js';
+import {
+  hasExplicitPagination,
+  parsePagination,
+} from '../utils/cursor-pagination.js';
 
 export async function handleGetNotificaciones(req: Request, res: Response) {
+  if (hasExplicitPagination(req.query)) {
+    return res.json(
+      await getNotificacionesPage(req.auth!.userId, parsePagination(req.query)),
+    );
+  }
   return res.json(await getNotificaciones(req.auth!.userId));
 }
 
