@@ -333,8 +333,10 @@ export async function getLibros(usuario: string) {
 }
 
 async function _getLibros(usuario: string) {
+  const t0 = Date.now();
   const usuarioActual = usuario.trim();
   const { club, user } = await getCurrentClubContext(usuarioActual);
+   console.log(`[libros] context: ${Date.now() - t0}ms`);
 
   const library = await prisma.library.findMany({
     where: {
@@ -358,6 +360,7 @@ async function _getLibros(usuario: string) {
       { user: { name: 'asc' } },
     ],
   });
+    console.log(`[libros] query: ${Date.now() - t0}ms total`);
 
   return library.map((item) => ({
     bookId: item.book.id,
@@ -396,7 +399,11 @@ export async function getLibrosFinalizados(usuario: string) {
 }
 
 async function _getLibrosFinalizados(usuario: string) {
+    const t0 = Date.now();
+
   const { club, user } = await getCurrentClubContext(usuario);
+    console.log(`[libros] query: ${Date.now() - t0}ms total`);
+
   const library = await prisma.library.findMany({
     where: {
       user: { clubMemberships: { some: { clubId: club.id } } },
@@ -418,6 +425,7 @@ async function _getLibrosFinalizados(usuario: string) {
       { user: { name: 'asc' } },
     ],
   });
+  console.log(`[libros] query: ${Date.now() - t0}ms total`);
 
   return library.map((item) => {
     const review = item.book.reviews.find(

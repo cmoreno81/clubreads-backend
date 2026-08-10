@@ -148,6 +148,8 @@ async function getClubvisionNotice(clubs: DashboardClub[], now: Date) {
 }
 
 export async function getGeneralDashboard(userId: string) {
+    const t0 = Date.now();
+
   const now = new Date();
   // Usamos Europe/Madrid para que el mes del dashboard coincida con la
   // hora local española, igual que el calendario de Clubvisión.
@@ -353,7 +355,7 @@ export async function getGeneralDashboard(userId: string) {
         take: 10,
       }),
     ]);
-
+  console.log(`[dashboard] Promise.all: ${Date.now() - t0}ms`);
   if (!user) return null;
 
   // Resolver nombres y fotos de las autoras trending en una sola query IN
