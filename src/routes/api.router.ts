@@ -139,6 +139,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'marcarLeida',
   'marcarTodasLeidas',
   'eliminarNotificacion',
+  'eliminarTodasNotificaciones',
   'importarLibroCatalogo',
   'previsualizarImportacionGoodreads',
   'confirmarImportacionGoodreads',
