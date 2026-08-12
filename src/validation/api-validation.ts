@@ -51,7 +51,7 @@ export const optionalDateSchema = z.union([z.literal(''), dateSchema]).optional(
 
 export const commentTypeSchema = z.enum(['COMMENT', 'QUOTE']);
 export const importSourceSchema = z.enum(['GOODREADS', 'BOOKMORY']);
-export const legacyBooleanSchema = z.union([z.boolean(), z.literal('1'), z.literal('0')]);
+export const legacyBooleanSchema = z.union([z.boolean(), z.literal(1), z.literal(0), z.literal('1'), z.literal('0')]);
 
 function datesAreOrdered(start?: string, end?: string) {
   if (!start || !end) return true;
