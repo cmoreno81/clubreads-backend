@@ -19,6 +19,7 @@ import {
   pageFromRows,
   type PaginationRequest,
 } from '../utils/cursor-pagination.js';
+import { syncAchievementsForUser } from './achievements.service.js';
 import { backgroundError, logger } from '../logging/logger.js';
 
 const POINTS_BY_POSITION = [12, 10, 8, 7, 6] as const;
@@ -725,6 +726,9 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
   });
 
   await synchronizeCurrentClubvision(usuario);
+
+  // Sincronizar logros al votar
+  void syncAchievementsForUser(user.id, user.name, club.id).catch(() => {});
 
   return {
     ok: true,

@@ -21,6 +21,7 @@ import {
   pageFromRows,
   type PaginationRequest,
 } from '../utils/cursor-pagination.js';
+import { syncAchievementsForUser } from './achievements.service.js';
 import { backgroundError } from '../logging/logger.js';
 import { normalizeReadingType } from '../validation/api-enums.js';
 import { activityTimestamp } from '../utils/activity-timestamp.js';
@@ -954,6 +955,9 @@ export async function enviarComentarioLectura(data: {
     readingId: conversation.reading?.id,
     participantes: miembros.map((m) => m.userId),
   }).catch(backgroundError('comment_notification_failed'));
+
+  // Sincronizar logros al comentar
+  void syncAchievementsForUser(user.id, user.name, club.id).catch(() => {});
 
   return {
     ok: true,

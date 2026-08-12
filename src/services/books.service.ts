@@ -35,6 +35,7 @@ import {
   normalizeReadingStatus,
 } from '../validation/api-enums.js';
 import { cached, invalidatePrefix } from '../utils/simple-cache.js';
+import { syncAchievementsForUser } from './achievements.service.js';
 
 const LIBRARY_TTL = 30_000; // 30 segundos
 
@@ -1182,6 +1183,13 @@ for (const clubId of finishedNotificationClubIds) {
   }).catch(backgroundError('book_finished_notification_failed'));
 }
 
+// Sincronizar logros al terminar un libro
+if (finishedNotificationClubIds.length > 0) {
+  for (const clubId of finishedNotificationClubIds) {
+    void syncAchievementsForUser(user.id, user.name, clubId).catch(() => {});
+  }
+}
+
 if (startedReading) {
   const memberships = await client.clubMember.findMany({
     where: { userId: user.id },
@@ -1258,6 +1266,15 @@ export async function actualizarValoracion(
       rating,
     },
   });
+
+  // Sincronizar logros al valorar un libro
+  const memberships = await prisma.clubMember.findMany({
+    where: { userId: user.id },
+    select: { clubId: true },
+  });
+  for (const { clubId } of memberships) {
+    void syncAchievementsForUser(user.id, user.name, clubId).catch(() => {});
+  }
 
   return {
     ok: true,
