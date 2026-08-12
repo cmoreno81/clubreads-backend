@@ -438,3 +438,39 @@ export async function eliminarTodasNotificaciones(userId: string) {
   await prisma.notification.deleteMany({ where: { userId } });
   return { ok: true };
 }
+export async function notifyLogroDesbloqueado({
+  clubId,
+  userId,
+  achievementTitle,
+  achievementIcon,
+}: {
+  clubId: string;
+  userId: string;
+  achievementTitle: string;
+  achievementIcon: string;
+}) {
+  // Notificar a todos los miembros del club excepto al que desbloqueó el logro
+  const members = await prisma.clubMember.findMany({
+    where: { clubId, userId: { not: userId } },
+    select: { userId: true },
+  });
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true },
+  });
+
+  if (!user || members.length === 0) return;
+
+  await prisma.notification.createMany({
+    data: members.map((m) => ({
+      userId: m.userId,
+      tipo: 'LOGRO_DESBLOQUEADO' as const,
+      titulo: 'Nuevo logro desbloqueado',
+      mensaje: `${user.name} ha desbloqueado "${achievementTitle}" ${achievementIcon}`,
+      clubId,
+      extra: JSON.stringify({ achievementTitle, achievementIcon, logradoPor: user.name }),
+    })),
+  });
+}
+

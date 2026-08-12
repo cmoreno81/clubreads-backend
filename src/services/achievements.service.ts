@@ -58,8 +58,7 @@ export function buildAchievementDefinitions(): AchievementDefinition[] {
     { id: 'thriller-queen', key: 'thriller-queen', title: 'Thriller queen', description: '5 libros de Thriller.', icon: '🔪', rarity: 'rare', target: 5, category: 'generos' },
     { id: 'dark-romance', key: 'dark-romance', title: 'Dark side', description: '5 libros de Dark Romance.', icon: '🖤', rarity: 'rare', target: 5, category: 'generos' },
     { id: 'exploradora-generos', key: 'exploradora-generos', title: 'Exploradora', description: 'Lee libros de 5 géneros distintos.', icon: '🗺️', rarity: 'epic', target: 5, category: 'generos' },
-    { id: 'drama-queen', key: 'drama-queen', title: 'Drama queen', description: '10 libros de Drama.', icon: '🎭', rarity: 'rare', target: 10, category: 'generos' },
-    
+
     // ── ✍️ RESEÑAS ──
     { id: 'primera-resena', key: 'primera-resena', title: 'Primera reseña', description: 'Escribe tu primera reseña.', icon: '✍️', rarity: 'common', target: 1, category: 'resenas' },
     { id: 'diez-resenas', key: 'diez-resenas', title: 'Crítica literaria', description: '10 reseñas escritas.', icon: '📝', rarity: 'rare', target: 10, category: 'resenas' },
@@ -201,12 +200,6 @@ export function buildAchievementState(
         progress = genreCounts.get('dark romance') ?? 0;
         unlockedAt = getGenreUnlockDate(completedBooks, 'dark romance', def.target);
         break;
-
-      case 'drama-queen':
-        progress = genreCounts.get('drama') ?? 0;
-        unlockedAt = getGenreUnlockDate(completedBooks, 'drama', def.target);
-        break;
-
       case 'exploradora-generos':
         progress = genreCounts.size;
         unlockedAt = getExplorerUnlockDate(completedBooks, def.target);
@@ -395,6 +388,37 @@ const completedSeries = await getCompletedSeriesForUser(user.id, completedBooks)
   return { ok: true, user: user.name, achievements };
 }
 
+export async function syncAchievementsForUser(userId: string, userName: string, clubId: string) {
+  const data = await getAchievementsForUser(userName);
+  if (!data.ok || !Array.isArray(data.achievements)) return;
+
+  const newUnlocks: AchievementDefinition[] = [];
+
+  for (const ach of data.achievements) {
+    if (!ach.unlocked) continue;
+
+    const already = await prisma.achievementUnlock.findUnique({
+      where: { userId_achievementId: { userId, achievementId: ach.id } },
+    });
+    if (already) continue;
+
+    // Persistir el desbloqueo
+    await prisma.achievementUnlock.create({
+      data: { userId, achievementId: ach.id },
+    });
+    newUnlocks.push(ach);
+  }
+
+  // Disparar notificaciones para los nuevos desbloqueos
+  if (newUnlocks.length > 0) {
+    const { notifyLogroDesbloqueado } = await import('./notifications.service.js');
+    for (const ach of newUnlocks) {
+      void notifyLogroDesbloqueado({ clubId, userId, achievementTitle: ach.title, achievementIcon: ach.icon })
+        .catch(() => {});
+    }
+  }
+}
+
 export async function getRecentClubAchievements(userName?: string) {
   const { club } = await import('./club-context.service.js')
     .then(m => m.getCurrentClubContext(userName));
@@ -404,33 +428,68 @@ export async function getRecentClubAchievements(userName?: string) {
     select: { user: { select: { id: true, name: true, avatarUrl: true } } },
   });
 
-  const unlocks: Array<AchievementState & { userId: string; user: string; avatarUrl: string; unlockedAt: Date }> = [];
+  // Sincronizar logros de todos los miembros (persiste nuevos desbloqueos y notifica)
+  await Promise.all(
+    members.map((m) => syncAchievementsForUser(m.user.id, m.user.name, club.id))
+  );
 
-  for (const member of members) {
-    const data = await getAchievementsForUser(member.user.name);
-    if (!data.ok || !Array.isArray(data.achievements)) continue;
+  // Leer desde BD — rápido y ordenado
+  const unlocks = await prisma.achievementUnlock.findMany({
+    where: {
+      userId: { in: members.map((m) => m.user.id) },
+    },
+    orderBy: { unlockedAt: 'desc' },
+    include: { user: { select: { name: true, avatarUrl: true } } },
+  });
 
-    for (const ach of data.achievements) {
-      if (!ach.unlocked || !ach.unlockedAt) continue;
-      unlocks.push({
-        ...ach,
-        userId: member.user.id,
-        user: member.user.name,
-        avatarUrl: member.user.avatarUrl ?? '',
-        unlockedAt: ach.unlockedAt as Date,
+  // Mapa de definiciones para title e icon
+  const defMap = new Map<string, AchievementDefinition>(buildAchievementDefinitions().map((d) => [d.id, d]));
+  
+  // Ranking por miembro: contar logros únicos
+  const memberMap = new Map<string, {
+    userName: string;
+    avatarUrl: string;
+    total: number;
+    recientes: typeof unlocks;
+  }>();
+  for (const u of unlocks) {
+    const existing = memberMap.get(u.userId);
+    if (existing) {
+      existing.total++;
+      if (existing.recientes.length < 10) existing.recientes.push(u);
+    } else {
+      memberMap.set(u.userId, {
+        userName: u.user.name,
+        avatarUrl: u.user.avatarUrl ?? '',
+        total: 1,
+        recientes: [u],
       });
     }
   }
 
-  unlocks.sort((a, b) => b.unlockedAt.getTime() - a.unlockedAt.getTime());
+  const ranking = [...memberMap.values()]
+    .sort((a, b) => b.total - a.total)
+    .map((m) => ({
+      userName: m.userName,
+      avatarUrl: m.avatarUrl,
+      total: m.total,
+      logros: m.recientes.map((u) => ({
+        achievementId: u.achievementId,
+        achievementTitle: defMap.get(u.achievementId)?.title ?? u.achievementId,
+        achievementIcon: defMap.get(u.achievementId)?.icon ?? '🏅',
+        unlockedAt: u.unlockedAt.toISOString(),
+      })),
+    }));
+
   return {
     ok: true,
     club: club.name,
+    ranking,
     achievements: unlocks.slice(0, 30).map((u) => ({
-      userName: u.user,
-      avatarUrl: u.avatarUrl,
-      achievementTitle: u.title,
-      achievementIcon: u.icon,
+      userName: u.user.name,
+      avatarUrl: u.user.avatarUrl ?? '',
+      achievementTitle: defMap.get(u.achievementId)?.title ?? u.achievementId,
+      achievementIcon: defMap.get(u.achievementId)?.icon ?? '🏅',
       unlockedAt: u.unlockedAt.toISOString(),
     })),
   };

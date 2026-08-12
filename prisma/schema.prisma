@@ -292,12 +292,13 @@ model User {
 
   conversationReads ConversationRead[]
 
-  ownedClubs        Club[]               @relation("OwnedClubs")
-  clubMemberships   ClubMember[]
-  notifications     Notification[]
-  seriesOverrides   SeriesBookOverride[]
-  hiddenSeries      HiddenUserSeries[]
-  importRowReceipts ImportRowReceipt[]
+  ownedClubs         Club[]               @relation("OwnedClubs")
+  clubMemberships    ClubMember[]
+  notifications      Notification[]
+  seriesOverrides    SeriesBookOverride[]
+  hiddenSeries       HiddenUserSeries[]
+  importRowReceipts  ImportRowReceipt[]
+  achievementUnlocks AchievementUnlock[]
 
   activeClubId String?
 
@@ -813,6 +814,19 @@ model ClubvisionResult {
 // NOTIFICACIONES IN-APP
 // ─────────────────────────────────────────────
 
+model AchievementUnlock {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+  @@index([achievementId])
+}
+
 enum NotificationType {
   CLUBVISION_ABIERTA
   CLUBVISION_RESULTADOS
@@ -822,6 +836,7 @@ enum NotificationType {
   LIBRO_EMPEZADO
   LIBRO_NUEVO_BIBLIOTECA
   NUEVA_MIEMBRO
+  LOGRO_DESBLOQUEADO
 }
 
 model Notification {
