@@ -37,8 +37,8 @@ const priorityMap = {
 } as const;
 
 const reactionValues = ['LIKE', 'AGREE', 'ANGRY', 'FUNNY', 'THUMBS_UP', 'CRY', 'WOW', 'SWEAR', 'CLAP'] as const;
-const readingTypeValues = ['LIBRE', 'FREE', 'OFICIAL', 'CLUBVISION'] as const;
-const readingTypeMap = { LIBRE: 'FREE', FREE: 'FREE', OFICIAL: 'CLUBVISION', CLUBVISION: 'CLUBVISION' } as const;
+const readingTypeValues = ['LIBRE', 'FREE', 'Libre', 'OFICIAL', 'CLUBVISION', 'Oficial'] as const;
+const readingTypeMap = { LIBRE: 'FREE', FREE: 'FREE', Libre: 'FREE', OFICIAL: 'CLUBVISION', CLUBVISION: 'CLUBVISION', Oficial: 'CLUBVISION' } as const;
 
 export const statusSchema = z.enum(readingStatusValues).transform((value) => readingStatusMap[value]);
 export const formatSchema = z.enum(readingFormatValues).transform((value) => readingFormatMap[value]);
