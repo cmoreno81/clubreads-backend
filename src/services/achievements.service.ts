@@ -58,7 +58,8 @@ export function buildAchievementDefinitions(): AchievementDefinition[] {
     { id: 'thriller-queen', key: 'thriller-queen', title: 'Thriller queen', description: '5 libros de Thriller.', icon: '🔪', rarity: 'rare', target: 5, category: 'generos' },
     { id: 'dark-romance', key: 'dark-romance', title: 'Dark side', description: '5 libros de Dark Romance.', icon: '🖤', rarity: 'rare', target: 5, category: 'generos' },
     { id: 'exploradora-generos', key: 'exploradora-generos', title: 'Exploradora', description: 'Lee libros de 5 géneros distintos.', icon: '🗺️', rarity: 'epic', target: 5, category: 'generos' },
-
+    { id: 'drama-queen', key: 'drama-queen', title: 'Drama queen', description: '10 libros de Drama.', icon: '🎭', rarity: 'rare', target: 10, category: 'generos' },
+    
     // ── ✍️ RESEÑAS ──
     { id: 'primera-resena', key: 'primera-resena', title: 'Primera reseña', description: 'Escribe tu primera reseña.', icon: '✍️', rarity: 'common', target: 1, category: 'resenas' },
     { id: 'diez-resenas', key: 'diez-resenas', title: 'Crítica literaria', description: '10 reseñas escritas.', icon: '📝', rarity: 'rare', target: 10, category: 'resenas' },
@@ -200,6 +201,12 @@ export function buildAchievementState(
         progress = genreCounts.get('dark romance') ?? 0;
         unlockedAt = getGenreUnlockDate(completedBooks, 'dark romance', def.target);
         break;
+
+      case 'drama-queen':
+        progress = genreCounts.get('drama') ?? 0;
+        unlockedAt = getGenreUnlockDate(completedBooks, 'drama', def.target);
+        break;
+
       case 'exploradora-generos':
         progress = genreCounts.size;
         unlockedAt = getExplorerUnlockDate(completedBooks, def.target);
