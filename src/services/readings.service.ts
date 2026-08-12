@@ -282,6 +282,9 @@ export async function getLecturasActivas(usuario = '') {
     orderBy: {
       edition: 'desc',
     },
+    include: {
+      winnerBook: { select: { id: true, title: true, coverUrl: true } },
+    },
   });
 
   const resultClubvision = latestResult
@@ -296,28 +299,30 @@ export async function getLecturasActivas(usuario = '') {
       })
     : null;
 
+  const winnerTitle = latestResult?.winnerBook?.title ?? latestResult?.winnerTitle ?? null;
+
   if (
-    latestResult?.winnerTitle &&
+    winnerTitle &&
     resultClubvision?.status === 'LECTURA' &&
     resultClubvision.clubId === club.id
   ) {
     const yaExiste = resultado.some(
       (item) =>
-        item.libro.trim().toLowerCase() ===
-        latestResult.winnerTitle.trim().toLowerCase(),
+        item.libro.trim().toLowerCase() === winnerTitle.trim().toLowerCase(),
     );
 
     if (!yaExiste) {
-      const book = await prisma.book.findFirst({
-        where: {
-          title: latestResult.winnerTitle,
-        },
-      });
+      const book =
+        latestResult?.winnerBook ??
+        (await prisma.book.findFirst({
+          where: { title: winnerTitle },
+          select: { id: true, title: true, coverUrl: true },
+        }));
 
       const lectoras = book ? lectorasByBook.get(book.id) ?? 0 : 0;
 
       resultado.unshift({
-        libro: latestResult.winnerTitle,
+        libro: winnerTitle,
         coverUrl: book?.coverUrl ?? '',
         lectoras,
         configurada: false,
