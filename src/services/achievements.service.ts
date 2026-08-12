@@ -435,16 +435,9 @@ export async function getRecentClubAchievements(userName?: string) {
     select: { user: { select: { id: true, name: true, avatarUrl: true } } },
   });
 
-  // Sincronizar logros de todos los miembros (persiste nuevos desbloqueos y notifica)
-  await Promise.all(
-    members.map((m) => syncAchievementsForUser(m.user.id, m.user.name, club.id))
-  );
-
-  // Leer desde BD — rápido y ordenado
+  // Solo leer desde BD — sin sincronizar
   const unlocks = await prisma.achievementUnlock.findMany({
-    where: {
-      userId: { in: members.map((m) => m.user.id) },
-    },
+    where: { userId: { in: members.map((m) => m.user.id) } },
     orderBy: { unlockedAt: 'desc' },
     include: { user: { select: { name: true, avatarUrl: true } } },
   });
