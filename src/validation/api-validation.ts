@@ -126,7 +126,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   actualizarValoracion: body({ libro: identifierSchema, valoracion: ratingSchema }),
   actualizarPaginaLibrary: body({ bookId: identifierSchema, paginaActual: pageSchema }),
   enviarVotacion: body({ v1: identifierSchema, v2: identifierSchema, v3: identifierSchema, v4: identifierSchema, v5: identifierSchema }),
-  crearLectura: body({ libro: identifierSchema, capitulos: positiveIntegerSchema, prologo: legacyBooleanSchema.optional(), epilogo: legacyBooleanSchema.optional(), paginas: pageSchema.optional(), tipo: readingTypeSchema.optional() }),
+  crearLectura: body({ libro: identifierSchema, capitulos: integerSchema.refine((v) => Number(v) >= 0, 'Debe ser mayor o igual a cero'), prologo: legacyBooleanSchema.optional(), epilogo: legacyBooleanSchema.optional(), paginas: pageSchema.optional(), tipo: readingTypeSchema.optional() }),
   guardarComentarioLectura: body({ libro: identifierSchema, capitulo: z.union([identifierSchema, integerSchema]), comentario: textSchema.optional(), texto: textSchema.optional(), tipo: commentTypeSchema.optional(), color: z.string().max(32).optional() }).refine((v) => Boolean(v.comentario || v.texto), { path: ['comentario'], message: 'Comentario obligatorio' }),
   responderComentario: body({ comentarioId: identifierSchema, respuesta: textSchema }),
   toggleLikeComentario: commentIdBody.and(body({ reaccion: reactionSchema.optional() })),
