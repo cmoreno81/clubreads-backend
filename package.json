@@ -15,7 +15,7 @@
     "audit:import": "tsx scripts/audit-import.ts",
     "audit:details": "tsx scripts/audit-details.ts",
     "audit:auth-clubs": "tsx scripts/audit-auth-clubs.ts",
-    "clubvision:open": "tsx scripts/open-clubvision.ts",
+    "clubvision:open": "node dist/jobs/open-clubvision.job.js",
     "covers:preview": "tsx scripts/backfill-missing-covers.ts",
     "covers:apply": "tsx scripts/backfill-missing-covers.ts --apply",
     "covers:scheduled": "node dist/jobs/missing-cover-backfill.job.js",
