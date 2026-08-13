@@ -85,6 +85,7 @@ import {
 import {
   handleClubInvite,
   handleCreateClub,
+  handleCrearEspacioPersonal,
   handleGetClubMembers,
   handleJoinClub,
   handleLeaveClub,
@@ -147,6 +148,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'actualizarNumeroVolumenSaga',
   'actualizarEstadoEditorialSaga',
   'crearClub',
+  'crearEspacioPersonal',
   'unirseClub',
   'seleccionarClub',
   'invitacionClub',
@@ -393,6 +395,12 @@ export async function handleApi(
           return requireAuthentication(req, res, () => {});
         }
         return handleClubInvite(req, res);
+
+      case 'crearEspacioPersonal':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleCrearEspacioPersonal(req, res);
 
       case 'salirClub':
         if (!req.auth) {

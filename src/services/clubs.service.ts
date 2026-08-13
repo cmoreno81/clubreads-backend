@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { ClubRole } from '@prisma/client';
+import { ClubRole, ClubType } from '@prisma/client';
 import { notifyNuevaMiembro } from './notifications.service.js';
 
 import { prisma } from '../prisma.js';
@@ -40,6 +40,7 @@ export async function listMyClubs(userId: string) {
               slug: true,
               description: true,
               avatarUrl: true,
+              tipo: true,
             },
           },
         },
@@ -59,6 +60,7 @@ export async function listMyClubs(userId: string) {
       descripcion: club.description ?? '',
       avatarUrl: club.avatarUrl ?? '',
       rol: role,
+      tipo: club.tipo,
       activo: club.id === user.activeClubId,
     })),
   };
@@ -220,6 +222,88 @@ export async function getInvite(userId: string, clubIdValue: string) {
     });
   }
   return { ok: true, codigo: code, clubId, nombre: membership.club.name };
+}
+
+// ─────────────────────────────────────────────
+// Espacio lector personal (modo solitario)
+// ─────────────────────────────────────────────
+
+/**
+ * Crea el espacio lector personal del usuario si no existe todavía,
+ * lo selecciona como club activo y lo devuelve.
+ * Es idempotente: si ya existe, simplemente lo activa y devuelve.
+ */
+export async function crearEspacioPersonal(userId: string) {
+  // ¿Ya tiene un espacio personal?
+  const existing = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      club: { tipo: ClubType.PERSONAL },
+    },
+    include: { club: true },
+  });
+
+  if (existing) {
+    // Ya existe — simplemente seleccionarlo como activo
+    await prisma.user.update({
+      where: { id: userId },
+      data: { activeClubId: existing.clubId },
+    });
+    return {
+      ok: true,
+      club: {
+        id: existing.club.id,
+        nombre: existing.club.name,
+        tipo: existing.club.tipo,
+        activo: true,
+        esNuevo: false,
+      },
+    };
+  }
+
+  // Crear el espacio personal
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true },
+  });
+  if (!user) {
+    throw new ClubContextError('Cuenta no encontrada', 404, 'USER_NOT_FOUND');
+  }
+
+  const nombre = `Mi espacio lector`;
+  const base = slugBase(`espacio-personal-${userId.slice(0, 8)}`);
+
+  const club = await prisma.$transaction(async (tx) => {
+    const created = await tx.club.create({
+      data: {
+        name: nombre,
+        slug: base,
+        tipo: ClubType.PERSONAL,
+        visibility: 'PRIVATE',
+        ownerId: userId,
+        // Sin inviteCode — el espacio personal no admite miembros externos
+        members: {
+          create: { userId, role: ClubRole.OWNER },
+        },
+      },
+    });
+    await tx.user.update({
+      where: { id: userId },
+      data: { activeClubId: created.id },
+    });
+    return created;
+  });
+
+  return {
+    ok: true,
+    club: {
+      id: club.id,
+      nombre: club.name,
+      tipo: club.tipo,
+      activo: true,
+      esNuevo: true,
+    },
+  };
 }
 
 // ─────────────────────────────────────────────

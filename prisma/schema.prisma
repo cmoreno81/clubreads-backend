@@ -79,6 +79,11 @@ enum ClubVisibility {
   PUBLIC
 }
 
+enum ClubType {
+  SOCIAL   // club normal con varios miembros
+  PERSONAL // espacio lector individual (sin funciones sociales)
+}
+
 enum ClubRole {
   OWNER
   ADMIN
@@ -402,6 +407,8 @@ model Club {
   description String?
 
   avatarUrl String?
+
+  tipo ClubType @default(SOCIAL)
 
   visibility ClubVisibility @default(PRIVATE)
 

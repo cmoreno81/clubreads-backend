@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 
 import {
   createClub,
+  crearEspacioPersonal,
   getInvite,
   joinClub,
   listMyClubs,
@@ -79,4 +80,8 @@ export async function handleUpdateClubWith(
 export async function handleGetClubMembers(req: Request, res: Response) {
   const clubId = String(req.query.clubId ?? '');
   return res.json(await getClubMembers(req.auth!.userId, clubId));
+}
+
+export async function handleCrearEspacioPersonal(req: Request, res: Response) {
+  return res.json(await crearEspacioPersonal(req.auth!.userId));
 }
