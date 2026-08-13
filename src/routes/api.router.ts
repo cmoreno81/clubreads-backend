@@ -115,6 +115,12 @@ import {
   handleGetClubChallenges,
   handleSetChallenge,
 } from '../controllers/reading-challenge.controller.js';
+import {
+  handleDoCheckin,
+  handleGetCheckinHistory,
+  handleGetHeatmap,
+  handleGetWrapped,
+} from '../controllers/checkin.controller.js';
 import { validateActionInput } from '../validation/api-validation.js';
 export const apiRouter = Router();
 
@@ -149,6 +155,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'actualizarEstadoEditorialSaga',
   'crearClub',
   'crearEspacioPersonal',
+  'doCheckin',
   'unirseClub',
   'seleccionarClub',
   'invitacionClub',
@@ -567,7 +574,23 @@ export async function handleApi(
 
       case 'actualizarPaginaLibrary':
         if (!req.auth) return requireAuthentication(req, res, () => {});
-        return handleActualizarPaginaLibrary(req, res);  
+        return handleActualizarPaginaLibrary(req, res);
+
+      case 'doCheckin':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleDoCheckin(req, res);
+
+      case 'historialCheckin':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetCheckinHistory(req, res);
+
+      case 'mapaCalor':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetHeatmap(req, res);
+
+      case 'wrappedAnual':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetWrapped(req, res);
 
       default:
         return res.status(400).json({

@@ -318,6 +318,7 @@ model User {
   authSessions      AuthSession[]
   seriesOrders      UserSeriesOrder[]
   readingChallenges ReadingChallenge[]
+  dailyCheckins     DailyCheckin[]
 
   @@index([activeClubId])
 }
@@ -936,4 +937,24 @@ model ReadingChallenge {
 
   @@unique([userId, year])
   @@index([year])
+}
+
+/// Check-in diario de lectura.
+/// Un registro por usuario y día — idempotente (upsert).
+model DailyCheckin {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Fecha en formato YYYY-MM-DD (zona local del servidor, UTC).
+  date String // "2026-08-13"
+
+  /// Nota opcional del check-in ("Hoy terminé el capítulo 12…").
+  note String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }
