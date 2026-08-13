@@ -765,6 +765,7 @@ export async function actualizarProgresoLectura(
   if (!lectura) return { ok: false, mensaje: 'Lectura activa no encontrada' };
 
   let pagina: number | null = null;
+  let paginasLeidas = 0; // delta de páginas leídas en esta actualización
   if (paginaFueEnviada) {
     pagina = Math.round(Number(paginaActual));
     const totalPaginas = totalFueEnviado
@@ -780,7 +781,11 @@ export async function actualizarProgresoLectura(
       };
     }
     porcentaje = Math.round((pagina / totalPaginas) * 100);
+    // Páginas avanzadas respecto a la última actualización (mínimo 0)
+    paginasLeidas = Math.max(0, pagina - (lectura.currentPage ?? 0));
   }
+
+  const today = new Date().toISOString().slice(0, 10);
 
   await prisma.$transaction([
     ...(lectura.progressNote !== (comentario.trim() || null)
@@ -804,6 +809,16 @@ export async function actualizarProgresoLectura(
           prisma.book.update({
             where: { id: lectura.bookId },
             data: { totalPages: totalEnviado },
+          }),
+        ]
+      : []),
+    // Registrar sesión de lectura diaria para el mapa de calor
+    ...(paginasLeidas > 0
+      ? [
+          prisma.readingSession.upsert({
+            where: { userId_date: { userId: lectura.userId, date: today } },
+            create: { userId: lectura.userId, date: today, pagesRead: paginasLeidas },
+            update: { pagesRead: { increment: paginasLeidas } },
           }),
         ]
       : []),

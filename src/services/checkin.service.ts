@@ -121,13 +121,19 @@ export async function getHeatmap(userId: string, year: number) {
   const startStr = `${year}-01-01`;
   const endStr = `${year}-12-31`;
 
-  // 1. Check-ins explícitos
+  // 1. Sesiones de lectura con páginas reales (señal principal de intensidad)
+  const sessions = await prisma.readingSession.findMany({
+    where: { userId, date: { gte: startStr, lte: endStr } },
+    select: { date: true, pagesRead: true },
+  });
+
+  // 2. Check-ins explícitos (fallback cuando no se actualizó progreso)
   const checkins = await prisma.dailyCheckin.findMany({
     where: { userId, date: { gte: startStr, lte: endStr } },
     select: { date: true },
   });
 
-  // 2. Días con progreso actualizado en la biblioteca
+  // 3. Días con progreso actualizado (fallback cuando la sesión no registró páginas)
   const progressDays = await prisma.library.findMany({
     where: {
       userId,
@@ -136,35 +142,53 @@ export async function getHeatmap(userId: string, year: number) {
     select: { progressUpdatedAt: true },
   });
 
-  // 3. Libros terminados
+  // 4. Libros terminados (siempre suma +1 al nivel del día)
   const completionDays = await prisma.readingCompletion.findMany({
     where: { userId, finishedAt: { gte: start, lt: end } },
     select: { finishedAt: true },
   });
 
-  // Agrupar por fecha y calcular intensidad
-  const activityMap = new Map<string, number>();
+  // ── Construir mapa de intensidad ──────────────────────────────────────────
+  // Nivel basado en páginas leídas ese día:
+  //   ≥ 80 páginas → 4  |  40-79 → 3  |  16-39 → 2  |  1-15 → 1
+  // Si no hay datos de páginas pero hubo check-in o progreso → nivel 1
+  // Terminar un libro sube el nivel en +1 (máximo 4)
 
-  const add = (dateStr: string, weight: number) => {
-    activityMap.set(dateStr, (activityMap.get(dateStr) ?? 0) + weight);
-  };
+  const levelMap = new Map<string, number>();
 
-  for (const c of checkins) add(c.date, 1);
+  // Sesiones con páginas reales → determinan la intensidad base
+  for (const s of sessions) {
+    const level = s.pagesRead >= 80 ? 4 : s.pagesRead >= 40 ? 3 : s.pagesRead >= 16 ? 2 : 1;
+    const current = levelMap.get(s.date) ?? 0;
+    levelMap.set(s.date, Math.max(current, level));
+  }
 
-  for (const p of progressDays) {
-    if (p.progressUpdatedAt) {
-      add(p.progressUpdatedAt.toISOString().slice(0, 10), 1);
+  // Check-ins: garantizan al menos nivel 1 si no hay sesión con páginas
+  for (const c of checkins) {
+    if (!levelMap.has(c.date)) {
+      levelMap.set(c.date, 1);
     }
   }
 
-  for (const c of completionDays) {
-    add(c.finishedAt.toISOString().slice(0, 10), 2); // terminar libro vale más
+  // Actualizaciones de progreso (sin páginas conocidas): al menos nivel 1
+  for (const p of progressDays) {
+    if (p.progressUpdatedAt) {
+      const date = p.progressUpdatedAt.toISOString().slice(0, 10);
+      if (!levelMap.has(date)) {
+        levelMap.set(date, 1);
+      }
+    }
   }
 
-  // Convertir a nivel 1-4
+  // Libros terminados: sube el nivel en +1 (hasta 4); garantiza al menos nivel 1
+  for (const c of completionDays) {
+    const date = c.finishedAt.toISOString().slice(0, 10);
+    const current = levelMap.get(date) ?? 0;
+    levelMap.set(date, Math.min(4, current + 1));
+  }
+
   const days: { date: string; level: number }[] = [];
-  for (const [date, score] of activityMap.entries()) {
-    const level = score >= 4 ? 4 : score >= 2 ? 3 : score >= 1 ? 2 : 1;
+  for (const [date, level] of levelMap.entries()) {
     days.push({ date, level });
   }
   days.sort((a, b) => a.date.localeCompare(b.date));

@@ -319,6 +319,7 @@ model User {
   seriesOrders      UserSeriesOrder[]
   readingChallenges ReadingChallenge[]
   dailyCheckins     DailyCheckin[]
+  readingSessions   ReadingSession[]
 
   @@index([activeClubId])
 }
@@ -954,6 +955,28 @@ model DailyCheckin {
   note String? @db.Text
 
   createdAt DateTime @default(now())
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+/// Sesión de lectura diaria — acumula páginas leídas ese día.
+/// Se crea/actualiza cada vez que el usuario actualiza su progreso en un libro.
+/// Permite calcular la intensidad del mapa de calor basada en páginas reales.
+model ReadingSession {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Fecha en formato YYYY-MM-DD (UTC).
+  date String
+
+  /// Total de páginas leídas ese día (suma de todos los libros).
+  pagesRead Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, date])
   @@index([userId, date])
