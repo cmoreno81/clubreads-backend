@@ -59,6 +59,20 @@ export function createApp() {
 
   app.get('/health', healthRateLimiter, healthHandler);
   app.get('/ready', healthRateLimiter, readinessHandler);
+  // Endpoint temporal de diagnóstico — eliminar tras el debug
+  app.get('/debug-db', healthRateLimiter, async (_req: Request, res: Response) => {
+    try {
+      const [userCount, commentCount, firstUser, lastComment] = await Promise.all([
+        prisma.user.count(),
+        prisma.comment.count(),
+        prisma.user.findFirst({ orderBy: { id: 'asc' }, select: { id: true, name: true } }),
+        prisma.comment.findFirst({ orderBy: { createdAt: 'desc' }, select: { id: true, createdAt: true } }),
+      ]);
+      return res.json({ ok: true, userCount, commentCount, firstUserId: firstUser?.id, firstUserName: firstUser?.name, lastCommentId: lastComment?.id, lastCommentAt: lastComment?.createdAt });
+    } catch (e: unknown) {
+      return res.status(500).json({ ok: false, error: String(e) });
+    }
+  });
 
   app.use(express.json({ limit: '5mb' }));
   app.use('/api', apiRateLimiter, apiRouter);
