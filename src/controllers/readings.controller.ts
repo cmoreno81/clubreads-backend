@@ -21,6 +21,7 @@ import {
   hasExplicitPagination,
   parsePagination,
 } from '../utils/cursor-pagination.js';
+import { logger } from '../logging/logger.js';
 
 export async function handleLecturasActivas(req: Request, res: Response) {
   res.set({
@@ -89,14 +90,40 @@ export async function handleGuardarComentarioLectura(
   res: Response,
 ) {
   const body = req.body ?? {};
+  const usuario = requestUserName(req);
+  const libro = String(body.libro || '');
+  const capitulo = String(body.capitulo || '');
+  const comentarioText = String(body.comentario || body.texto || '');
+
+  logger.info({
+    event: 'comment_save_attempt',
+    usuario,
+    libro,
+    capitulo,
+    comentarioLength: comentarioText.length,
+    userId: req.auth?.userId,
+    sessionId: req.auth?.sessionId,
+    requestId: res.locals.requestId,
+  }, `[debug] guardarComentarioLectura: usuario="${usuario}" libro="${libro}" capitulo="${capitulo}"`);
+
   const data = await enviarComentarioLectura({
-    libro: String(body.libro || ''),
-    capitulo: String(body.capitulo || ''),
-    usuario: requestUserName(req),
-    comentario: String(body.comentario || body.texto || ''),
+    libro,
+    capitulo,
+    usuario,
+    comentario: comentarioText,
     tipo: String(body.tipo || 'COMMENT'),
     color: String(body.color || ''),
   });
+
+  logger.info({
+    event: 'comment_save_result',
+    ok: data.ok,
+    usuario,
+    libro,
+    capitulo,
+    commentId: data.ok ? (data as { comentario?: { id?: string } }).comentario?.id : undefined,
+    requestId: res.locals.requestId,
+  }, `[debug] guardarComentarioLectura resultado: ok=${data.ok}`);
 
   return res.json(data);
 }
