@@ -659,6 +659,7 @@ export async function getGeneralDashboard(userId: string) {
       descripcion: club.description ?? '',
       avatarUrl: club.avatarUrl ?? '',
       rol: role,
+      tipo: club.tipo,
       activo: user.activeClubId === club.id,
       miembros: club._count.members,
       lecturasActivas: club.readings.length,
