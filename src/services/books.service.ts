@@ -787,6 +787,7 @@ export async function actualizarProgresoLectura(
 
   const today = new Date().toISOString().slice(0, 10);
 
+  // Transacción principal: actualizar progreso del libro
   await prisma.$transaction([
     ...(lectura.progressNote !== (comentario.trim() || null)
       ? [
@@ -812,17 +813,21 @@ export async function actualizarProgresoLectura(
           }),
         ]
       : []),
-    // Registrar sesión de lectura diaria para el mapa de calor
-    ...(paginasLeidas > 0
-      ? [
-          prisma.readingSession.upsert({
-            where: { userId_date: { userId: lectura.userId, date: today } },
-            create: { userId: lectura.userId, date: today, pagesRead: paginasLeidas },
-            update: { pagesRead: { increment: paginasLeidas } },
-          }),
-        ]
-      : []),
   ]);
+
+  // Registrar sesión de lectura diaria (best-effort: no falla el progreso si la tabla no existe)
+  if (paginasLeidas > 0) {
+    try {
+      await prisma.readingSession.upsert({
+        where: { userId_date: { userId: lectura.userId, date: today } },
+        create: { userId: lectura.userId, date: today, pagesRead: paginasLeidas },
+        update: { pagesRead: { increment: paginasLeidas } },
+      });
+    } catch {
+      // Tabla ReadingSession aún no migrada — se ignora sin afectar el progreso
+    }
+  }
+
   return { ok: true, progreso: porcentaje, paginaActual: pagina };
 }
 

@@ -122,10 +122,17 @@ export async function getHeatmap(userId: string, year: number) {
   const endStr = `${year}-12-31`;
 
   // 1. Sesiones de lectura con páginas reales (señal principal de intensidad)
-  const sessions = await prisma.readingSession.findMany({
-    where: { userId, date: { gte: startStr, lte: endStr } },
-    select: { date: true, pagesRead: true },
-  });
+  // Wrapped en try-catch por si la migración aún no se ha aplicado en este entorno
+  let sessions: { date: string; pagesRead: number }[] = [];
+  try {
+    sessions = await prisma.readingSession.findMany({
+      where: { userId, date: { gte: startStr, lte: endStr } },
+      select: { date: true, pagesRead: true },
+    });
+  } catch {
+    // Tabla ReadingSession no existe todavía — se usa sin ella (fallback a check-ins)
+    sessions = [];
+  }
 
   // 2. Check-ins explícitos (fallback cuando no se actualizó progreso)
   const checkins = await prisma.dailyCheckin.findMany({
