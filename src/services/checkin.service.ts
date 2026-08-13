@@ -281,5 +281,10 @@ export async function getWrapped(userId: string, year: number) {
       : null,
     diffVsPrevYear,
     prevYearBooks: prevCompletions,
+    // Lista de todos los libros terminados (para la estantería visual)
+    books: completions.map((c) => ({
+      title: c.book.title,
+      coverUrl: c.book.coverUrl ?? null,
+    })),
   };
 }
