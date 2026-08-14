@@ -19,6 +19,7 @@ import {
 import { getCurrentClubContext } from './club-context.service.js';
 import {
   findBookByIdentity,
+  findSimilarBooks,
   lockBookIdentity,
   resolveCanonicalBookId,
 } from './book-identity.service.js';
@@ -1356,6 +1357,26 @@ export async function crearLibro(data: any) {
     authorName: suppliedAuthorName,
     isbn: suppliedIsbn,
   });
+
+  /*
+   * Si el cliente no ha confirmado explícitamente que quiere crear un libro nuevo,
+   * buscamos posibles duplicados por similitud de título antes de crear.
+   * El cliente confirma pasando `confirmarNuevo: true`.
+   */
+  if (!existingBook && !data.confirmarNuevo) {
+    const similares = await findSimilarBooks(prisma, title, {
+      authorName: suppliedAuthorName || null,
+      limit: 3,
+    });
+    if (similares.length > 0) {
+      return {
+        ok: false,
+        codigo: 'POSIBLES_DUPLICADOS',
+        mensaje: 'Ya existen libros similares. ¿Es alguno de estos el que buscas?',
+        candidatos: similares,
+      };
+    }
+  }
 
   if (existingBook) {
     const existingLibrary =

@@ -75,3 +75,92 @@ export function isUniqueBookIdentityError(error: unknown) {
     error && typeof error === 'object' && 'code' in error && error.code === 'P2002',
   );
 }
+
+/**
+ * Extrae el "título base" quitando subtítulos entre paréntesis o después de ':'
+ * Ej: "Hasta que caiga la luna (La Caída Lunar 1)" → "hasta que caiga la luna"
+ */
+export function baseTitleNormalized(title: string): string {
+  const stripped = title
+    .replace(/\s*[\(\[（【].*?[\)\]）】]\s*/g, '')   // quita (…) y [...]
+    .replace(/\s*:.*$/, '')                            // quita todo tras ':'
+    .trim();
+  return normalizeBookIdentityText(stripped || title);
+}
+
+/**
+ * Busca libros con título similar al dado (para detectar duplicados antes de crear).
+ * Estrategia: el título base normalizado del candidato contiene o está contenido
+ * en el título base del libro que se quiere crear, y tienen al menos 4 palabras en común.
+ *
+ * Devuelve hasta `limit` candidatos ordenados por similitud descendente.
+ */
+export async function findSimilarBooks(
+  database: Database,
+  title: string,
+  options: { authorName?: string | null; excludeBookId?: string; limit?: number } = {},
+): Promise<Array<{ id: string; title: string; authorName: string | null; coverUrl: string | null; genreName: string }>> {
+  const { authorName, excludeBookId, limit = 5 } = options;
+
+  const baseNorm = baseTitleNormalized(title);
+  if (baseNorm.length < 4) return [];
+
+  // Palabras significativas del título base (≥4 letras)
+  const words = baseNorm.split(' ').filter((w) => w.length >= 4);
+  if (words.length === 0) return [];
+
+  // Buscar libros cuyo título normalizado contenga alguna de las palabras clave
+  // Se hace en JS porque Prisma no tiene ILIKE dinámico sobre campo computado;
+  // la tabla Book no es grande, así que la consulta es manejable.
+  const candidates = await database.book.findMany({
+    where: {
+      deletedAt: null,
+      ...(excludeBookId ? { id: { not: excludeBookId } } : {}),
+      // Al menos una palabra significativa debe aparecer en el título (case-insensitive)
+      OR: words.map((w) => ({ title: { contains: w, mode: 'insensitive' as const } })),
+    },
+    select: {
+      id: true,
+      title: true,
+      coverUrl: true,
+      author: { select: { name: true } },
+      genre: { select: { name: true } },
+    },
+    take: 50, // pool amplio para luego filtrar
+  });
+
+  // Puntuar por solapamiento de palabras entre el título base de cada candidato y el buscado
+  const scored = candidates
+    .map((book) => {
+      const candBase = baseTitleNormalized(book.title);
+      const candWords = new Set(candBase.split(' ').filter((w) => w.length >= 4));
+      const queryWords = new Set(words);
+      const overlap = [...queryWords].filter((w) => candWords.has(w)).length;
+      const maxPossible = Math.max(queryWords.size, candWords.size);
+      const score = overlap / maxPossible;
+      return { book, score };
+    })
+    .filter(({ score }) => score >= 0.5) // al menos 50 % de solapamiento
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  // Si se pasa autor, dar preferencia a coincidencias de autor
+  if (authorName) {
+    const normAuthor = normalizeBookIdentityText(authorName);
+    scored.sort((a, b) => {
+      const aAuthor = normalizeBookIdentityText(a.book.author?.name ?? '');
+      const bAuthor = normalizeBookIdentityText(b.book.author?.name ?? '');
+      const aMatch = aAuthor === normAuthor ? 1 : 0;
+      const bMatch = bAuthor === normAuthor ? 1 : 0;
+      return (bMatch - aMatch) || (b.score - a.score);
+    });
+  }
+
+  return scored.map(({ book }) => ({
+    id: book.id,
+    title: book.title,
+    authorName: book.author?.name ?? null,
+    coverUrl: book.coverUrl ?? null,
+    genreName: book.genre?.name ?? '',
+  }));
+}
