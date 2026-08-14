@@ -59,6 +59,7 @@ import {
   handleActualizarAvatarPerfil,
   handleToggleFavorito,
   handleGetFavoritos,
+  handleGetFavoritosDelClub,
 } from '../controllers/perfil.controller.js';
 
 import {
@@ -540,6 +541,9 @@ export async function handleApi(
 
       case 'favoritosUsuario':
         return handleGetFavoritos(req, res);
+
+      case 'favoritosDelClub':
+        return handleGetFavoritosDelClub(req, res);
 
       case 'toggleFavorito':
         return handleToggleFavorito(req, res);

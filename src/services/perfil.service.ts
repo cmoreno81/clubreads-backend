@@ -1242,6 +1242,64 @@ export async function toggleFavorito(params: {
   return { ok: true, mensaje: 'Añadido a favoritos', isFavorite: true };
 }
 
+export async function getFavoritosDelClub(params: {
+  usuario: string;
+}): Promise<{
+  ok: boolean;
+  miembros: Array<{
+    nombre: string;
+    avatarUrl: string;
+    favoritos: Array<{ id: string; title: string; authorName: string | null; coverUrl: string | null; genreName: string }>;
+  }>;
+}> {
+  const { usuario } = params;
+
+  const user = await prisma.user.findFirst({
+    where: { name: usuario, deletedAt: null },
+    select: { id: true },
+  });
+  if (!user) return { ok: false, miembros: [] };
+
+  const ctx = await getCurrentClubContext(user.id);
+  if (!ctx?.club?.id) return { ok: true, miembros: [] };
+
+  const members = await prisma.clubMember.findMany({
+    where: { clubId: ctx.club.id, userId: { not: user.id } },
+    select: {
+      user: {
+        select: {
+          name: true,
+          avatarUrl: true,
+          library: {
+            where: { isFavorite: true },
+            include: {
+              book: { include: { author: true, genre: true } },
+            },
+            orderBy: { updatedAt: 'asc' },
+            take: 5,
+          },
+        },
+      },
+    },
+  });
+
+  const miembros = members
+    .filter((m) => m.user.library.length > 0)
+    .map((m) => ({
+      nombre: m.user.name,
+      avatarUrl: m.user.avatarUrl ?? '',
+      favoritos: m.user.library.map((e) => ({
+        id: e.book.id,
+        title: e.book.title,
+        authorName: e.book.author?.name ?? null,
+        coverUrl: e.book.coverUrl ?? null,
+        genreName: e.book.genre?.name ?? '',
+      })),
+    }));
+
+  return { ok: true, miembros };
+}
+
 export async function getFavoritosUsuario(params: {
   usuario: string;
 }): Promise<{ ok: boolean; favoritos: Array<{ id: string; title: string; authorName: string | null; coverUrl: string | null; genreName: string }> }> {

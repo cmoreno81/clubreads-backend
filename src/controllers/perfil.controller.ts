@@ -7,6 +7,7 @@ import {
   getPerfilHistorialPage,
   toggleFavorito,
   getFavoritosUsuario,
+  getFavoritosDelClub,
 } from '../services/perfil.service.js';
 import { requestUserName } from '../middleware/auth.middleware.js';
 import {
@@ -94,5 +95,10 @@ export async function handleToggleFavorito(req: Request, res: Response) {
 export async function handleGetFavoritos(req: Request, res: Response) {
   const perfil = String(req.query.perfil ?? req.query.usuario ?? req.auth?.userName ?? '');
   const data = await getFavoritosUsuario({ usuario: perfil });
+  return res.json(data);
+}
+
+export async function handleGetFavoritosDelClub(req: Request, res: Response) {
+  const data = await getFavoritosDelClub({ usuario: requestUserName(req) });
   return res.json(data);
 }
