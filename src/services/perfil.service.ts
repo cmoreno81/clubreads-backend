@@ -1264,10 +1264,11 @@ export async function getFavoritosDelClub(params: {
   if (!ctx?.club?.id) return { ok: true, miembros: [] };
 
   const members = await prisma.clubMember.findMany({
-    where: { clubId: ctx.club.id, userId: { not: user.id } },
+    where: { clubId: ctx.club.id },
     select: {
       user: {
         select: {
+          id: true,
           name: true,
           avatarUrl: true,
           library: {
@@ -1283,19 +1284,24 @@ export async function getFavoritosDelClub(params: {
     },
   });
 
+  const toMiembro = (m: (typeof members)[number]) => ({
+    nombre: m.user.name,
+    avatarUrl: m.user.avatarUrl ?? '',
+    esTu: m.user.id === user.id,
+    favoritos: m.user.library.map((e) => ({
+      id: e.book.id,
+      title: e.book.title,
+      authorName: e.book.author?.name ?? null,
+      coverUrl: e.book.coverUrl ?? null,
+      genreName: e.book.genre?.name ?? '',
+    })),
+  });
+
+  // La usuaria actual va primero; el resto sólo aparece si tiene ≥1 favorito.
   const miembros = members
-    .filter((m) => m.user.library.length > 0)
-    .map((m) => ({
-      nombre: m.user.name,
-      avatarUrl: m.user.avatarUrl ?? '',
-      favoritos: m.user.library.map((e) => ({
-        id: e.book.id,
-        title: e.book.title,
-        authorName: e.book.author?.name ?? null,
-        coverUrl: e.book.coverUrl ?? null,
-        genreName: e.book.genre?.name ?? '',
-      })),
-    }));
+    .map(toMiembro)
+    .filter((m) => m.esTu || m.favoritos.length > 0)
+    .sort((a, b) => (a.esTu ? -1 : b.esTu ? 1 : 0));
 
   return { ok: true, miembros };
 }
