@@ -85,11 +85,16 @@ export async function handleActualizarAvatarPerfil(
 
 export async function handleToggleFavorito(req: Request, res: Response) {
   const body = req.body ?? {};
-  const data = await toggleFavorito({
-    usuario: requestUserName(req),
-    bookId: String(body.bookId ?? ''),
-  });
-  return res.json(data);
+  try {
+    const data = await toggleFavorito({
+      usuario: requestUserName(req),
+      bookId: String(body.bookId ?? ''),
+    });
+    return res.json(data);
+  } catch (err) {
+    const mensaje = err instanceof Error ? err.message : 'Error interno';
+    return res.status(200).json({ ok: false, mensaje });
+  }
 }
 
 export async function handleGetFavoritos(req: Request, res: Response) {
