@@ -1260,7 +1260,12 @@ export async function getFavoritosDelClub(params: {
   });
   if (!user) return { ok: false, miembros: [] };
 
-  const ctx = await getCurrentClubContext(user.id);
+  let ctx: Awaited<ReturnType<typeof getCurrentClubContext>>;
+  try {
+    ctx = await getCurrentClubContext(usuario);
+  } catch {
+    return { ok: true, miembros: [] };
+  }
   if (!ctx?.club?.id) return { ok: true, miembros: [] };
 
   const members = await prisma.clubMember.findMany({
