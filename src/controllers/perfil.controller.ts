@@ -5,6 +5,8 @@ import {
   actualizarFechasLectura,
   getPerfilUsuario,
   getPerfilHistorialPage,
+  toggleFavorito,
+  getFavoritosUsuario,
 } from '../services/perfil.service.js';
 import { requestUserName } from '../middleware/auth.middleware.js';
 import {
@@ -77,5 +79,20 @@ export async function handleActualizarAvatarPerfil(
     avatarUrl: String(body.avatarUrl ?? ''),
   });
 
+  return res.json(data);
+}
+
+export async function handleToggleFavorito(req: Request, res: Response) {
+  const body = req.body ?? {};
+  const data = await toggleFavorito({
+    usuario: requestUserName(req),
+    bookId: String(body.bookId ?? ''),
+  });
+  return res.json(data);
+}
+
+export async function handleGetFavoritos(req: Request, res: Response) {
+  const perfil = String(req.query.perfil ?? req.query.usuario ?? req.auth?.userName ?? '');
+  const data = await getFavoritosUsuario({ usuario: perfil });
   return res.json(data);
 }

@@ -57,6 +57,8 @@ import {
   handlePerfilUsuario,
   handleActualizarFechasLectura,
   handleActualizarAvatarPerfil,
+  handleToggleFavorito,
+  handleGetFavoritos,
 } from '../controllers/perfil.controller.js';
 
 import {
@@ -534,7 +536,13 @@ export async function handleApi(
         return handleRanking(req, res);  
 
       case 'perfilUsuario':
-        return handlePerfilUsuario(req, res);  
+        return handlePerfilUsuario(req, res);
+
+      case 'favoritosUsuario':
+        return handleGetFavoritos(req, res);
+
+      case 'toggleFavorito':
+        return handleToggleFavorito(req, res);
 
       case 'achievements':
         return handleGetAchievements(req, res);

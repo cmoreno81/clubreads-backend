@@ -518,6 +518,8 @@ model Library {
 
   finishedAt DateTime?
 
+  isFavorite Boolean @default(false)
+
   lastProgress Int?
   currentPage  Int?
 

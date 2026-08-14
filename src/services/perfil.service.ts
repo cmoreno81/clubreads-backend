@@ -115,6 +115,7 @@ export async function getPerfilUsuario(
     include: {
       book: {
         include: {
+          author: true,
           genre: true,
           series: {
             include: {
@@ -636,6 +637,15 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
     generosFavoritos,
     sagas,
     historicoMeses: buildHistoricoMeses(historialTerminados),
+    favoritos: biblioteca
+      .filter((item) => item.isFavorite)
+      .map((item) => ({
+        id: item.book.id,
+        title: item.book.title,
+        authorName: item.book.author?.name ?? null,
+        coverUrl: item.book.coverUrl ?? null,
+        genreName: item.book.genre.name,
+      })),
   };
 }
 
@@ -1179,4 +1189,89 @@ export async function actualizarAvatarPerfil(params: {
           : 'No se ha podido procesar la imagen',
     };
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Favoritos
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MAX_FAVORITOS = 5;
+
+export async function toggleFavorito(params: {
+  usuario: string;
+  bookId: string;
+}): Promise<{ ok: boolean; mensaje: string; isFavorite?: boolean }> {
+  const { usuario, bookId } = params;
+
+  const user = await prisma.user.findFirst({
+    where: { name: usuario, deletedAt: null },
+    select: { id: true },
+  });
+  if (!user) return { ok: false, mensaje: 'Usuario no encontrado' };
+
+  const entry = await prisma.library.findUnique({
+    where: { userId_bookId: { userId: user.id, bookId } },
+    select: { id: true, isFavorite: true },
+  });
+  if (!entry) return { ok: false, mensaje: 'Libro no encontrado en tu biblioteca' };
+
+  // Si ya es favorito → desmarcar
+  if (entry.isFavorite) {
+    await prisma.library.update({
+      where: { id: entry.id },
+      data: { isFavorite: false },
+    });
+    return { ok: true, mensaje: 'Eliminado de favoritos', isFavorite: false };
+  }
+
+  // Si NO es favorito → comprobar límite
+  const totalFavoritos = await prisma.library.count({
+    where: { userId: user.id, isFavorite: true },
+  });
+  if (totalFavoritos >= MAX_FAVORITOS) {
+    return {
+      ok: false,
+      mensaje: `Ya tienes ${MAX_FAVORITOS} favoritos. Quita uno antes de añadir otro.`,
+    };
+  }
+
+  await prisma.library.update({
+    where: { id: entry.id },
+    data: { isFavorite: true },
+  });
+  return { ok: true, mensaje: 'Añadido a favoritos', isFavorite: true };
+}
+
+export async function getFavoritosUsuario(params: {
+  usuario: string;
+}): Promise<{ ok: boolean; favoritos: Array<{ id: string; title: string; authorName: string | null; coverUrl: string | null; genreName: string }> }> {
+  const { usuario } = params;
+
+  const user = await prisma.user.findFirst({
+    where: { name: usuario, deletedAt: null },
+    select: { id: true },
+  });
+  if (!user) return { ok: false, favoritos: [] };
+
+  const entries = await prisma.library.findMany({
+    where: { userId: user.id, isFavorite: true },
+    include: {
+      book: {
+        include: { author: true, genre: true },
+      },
+    },
+    orderBy: { updatedAt: 'asc' },
+    take: MAX_FAVORITOS,
+  });
+
+  return {
+    ok: true,
+    favoritos: entries.map((e) => ({
+      id: e.book.id,
+      title: e.book.title,
+      authorName: e.book.author?.name ?? null,
+      coverUrl: e.book.coverUrl ?? null,
+      genreName: e.book.genre?.name ?? '',
+    })),
+  };
 }
