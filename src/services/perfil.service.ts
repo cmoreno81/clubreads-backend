@@ -1204,7 +1204,7 @@ export async function toggleFavorito(params: {
   const { usuario, bookId } = params;
 
   const user = await prisma.user.findFirst({
-    where: { name: usuario, deletedAt: null },
+    where: { name: usuario },
     select: { id: true },
   });
   if (!user) return { ok: false, mensaje: 'Usuario no encontrado' };
@@ -1255,7 +1255,7 @@ export async function getFavoritosDelClub(params: {
   const { usuario } = params;
 
   const user = await prisma.user.findFirst({
-    where: { name: usuario, deletedAt: null },
+    where: { name: usuario },
     select: { id: true },
   });
   if (!user) return { ok: false, miembros: [] };
@@ -1306,7 +1306,7 @@ export async function getFavoritosUsuario(params: {
   const { usuario } = params;
 
   const user = await prisma.user.findFirst({
-    where: { name: usuario, deletedAt: null },
+    where: { name: usuario },
     select: { id: true },
   });
   if (!user) return { ok: false, favoritos: [] };
