@@ -105,7 +105,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   removeSeriesOverride: body({ seriesId: identifierSchema, posicion: positiveIntegerSchema }),
   ocultarSaga: idBody('sagaId'), mostrarSaga: idBody('sagaId'), eliminarSaga: idBody('sagaId'),
   marcarLeida: idBody(), marcarTodasLeidas: emptyBody, eliminarNotificacion: idBody(), eliminarTodasNotificaciones: emptyBody,
-  importarLibroCatalogo: body({ origen: z.enum(['CLUBREADS', 'GOOGLE', 'OPENLIBRARY']), id: identifierSchema.optional(), titulo: shortTextSchema, autores: z.array(shortTextSchema).max(20).optional(), isbn: z.string().max(32).optional(), coverUrl: urlSchema.optional(), anioPublicacion: positiveIntegerSchema.optional(), ...bookMutationFields }),
+  importarLibroCatalogo: body({ origen: z.enum(['CLUBREADS', 'GOOGLE', 'OPENLIBRARY']), id: identifierSchema.optional(), titulo: shortTextSchema.optional(), autores: z.array(shortTextSchema).max(20).optional(), isbn: z.string().max(32).optional(), coverUrl: urlSchema.optional(), anioPublicacion: positiveIntegerSchema.optional(), ...bookMutationFields }),
   previsualizarImportacionGoodreads: body({ libros: goodreadsRowsSchema, source: importSourceSchema }),
   confirmarImportacionGoodreads: body({ libros: goodreadsRowsSchema, resoluciones: importResolutionsSchema.optional(), source: importSourceSchema }),
   vincularVolumenSaga: body({ sagaId: identifierSchema, numero: compatibleNumberSchema.refine((v) => Number(v) > 0), origen: z.enum(['CLUBREADS', 'GOOGLE', 'OPENLIBRARY']), titulo: shortTextSchema, autores: z.array(shortTextSchema).max(20).optional(), id: identifierSchema.optional(), ...bookMutationFields }),

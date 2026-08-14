@@ -438,7 +438,11 @@ async function resolveCatalogBook(
   const title = String(data.titulo ?? '').trim().replace(/\s+/g, ' ');
   const authors = stringList(data.autores);
   const isbn = String(data.isbn ?? '').trim().replace(/[^0-9Xx]/g, '');
-  if (!title || !['CLUBREADS', 'GOOGLE', 'OPENLIBRARY'].includes(source)) {
+  const validSource = ['CLUBREADS', 'GOOGLE', 'OPENLIBRARY'].includes(source);
+  const hasTitle = title.length > 0;
+  const hasId = String(data.id ?? '').trim().length > 0;
+  // CLUBREADS con ID puede ir sin título (el libro se localiza por su ID interno)
+  if (!validSource || (!hasTitle && !(source === 'CLUBREADS' && hasId))) {
     return {
       ok: false as const,
       mensaje: 'El libro seleccionado no es válido',
@@ -446,14 +450,16 @@ async function resolveCatalogBook(
   }
 
   const requestedId = String(data.id ?? '');
-  const canonicalId = source === 'CLUBREADS' && requestedId
+  // Para libros CLUBREADS con ID, el título no es imprescindible (se busca por ID)
+  const isClubreadsByid = source === 'CLUBREADS' && requestedId.length > 0;
+  const canonicalId = isClubreadsByid
     ? await resolveCanonicalBookId(prisma, requestedId)
     : requestedId;
   let book = source === 'CLUBREADS'
     ? await prisma.book.findFirst({ where: { id: canonicalId, deletedAt: null } })
     : null;
 
-  if (!book) book = await findBookByIdentity(prisma, {
+  if (!book && title) book = await findBookByIdentity(prisma, {
     title,
     authorName: authors[0] || 'Autor desconocido',
     isbn,
