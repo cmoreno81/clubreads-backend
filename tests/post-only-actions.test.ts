@@ -70,6 +70,9 @@ const mutationHandlers: Record<string, string> = {
   registrarMoodClub: 'handleRegistrarMoodClub',
   saveUserSeriesOrder: 'handleSaveUserSeriesOrder',
   setReadingChallenge: 'handleSetChallenge',
+  guardarSeleccionLibroDelAnio: 'handleSaveMonthlyBookOfYear',
+  elegirDueloLibroDelAnio: 'handleChooseBookOfYearDuel',
+  elegirLibroDelAnio: 'handleChooseAnnualBookOfYear',
 };
 
 function mockRequest(method: string, action: string) {

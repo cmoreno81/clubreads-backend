@@ -141,6 +141,9 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   reemplazarFavorito: body({ bookIdActual: identifierSchema, bookIdNuevo: identifierSchema }),
   saveUserSeriesOrder: body({ seriesId: identifierSchema, order: z.array(z.object({ bookId: identifierSchema, posicion: positiveIntegerSchema }).passthrough()).max(1_000) }),
   setReadingChallenge: body({ target: integerSchema.refine((v) => Number(v) >= 0 && Number(v) <= 10_000, 'Objetivo fuera de rango') }),
+  guardarSeleccionLibroDelAnio: body({ anio: positiveIntegerSchema, mes: integerSchema.refine((v) => Number(v) >= 1 && Number(v) <= 12), bookId: identifierSchema }),
+  elegirDueloLibroDelAnio: body({ anio: positiveIntegerSchema, fase: z.enum(['MONTH_PAIR', 'SEMIFINAL']), posicion: positiveIntegerSchema, bookId: identifierSchema }),
+  elegirLibroDelAnio: body({ anio: positiveIntegerSchema, bookId: identifierSchema }),
 };
 
 export const actionQuerySchemas: Record<string, z.ZodType> = {
@@ -149,6 +152,9 @@ export const actionQuerySchemas: Record<string, z.ZodType> = {
   configuracionLectura: z.object({ action: z.literal('configuracionLectura'), libro: identifierSchema }).passthrough(),
   comentariosLectura: z.object({ action: z.literal('comentariosLectura'), libro: identifierSchema, capitulo: identifierSchema }).passthrough(),
   conversacionesLibro: z.object({ action: z.literal('conversacionesLibro'), libro: identifierSchema }).passthrough(),
+  miLibroDelAnio: z.object({ action: z.literal('miLibroDelAnio'), anio: positiveIntegerSchema }).passthrough(),
+  libroDelAnioPublico: z.object({ action: z.literal('libroDelAnioPublico'), perfil: identifierSchema, anio: positiveIntegerSchema }).passthrough(),
+  librosDelAnioClub: z.object({ action: z.literal('librosDelAnioClub'), anio: positiveIntegerSchema }).passthrough(),
 };
 
 function invalidFields(error: z.ZodError) {
