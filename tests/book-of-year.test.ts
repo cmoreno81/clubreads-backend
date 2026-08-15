@@ -35,12 +35,28 @@ test('meses futuros se bloquean con calendario Europe\/Madrid', () => {
   assert.match(service, /MONTH_LOCKED/);
 });
 
-test('avance automático e invalidación conservan solo decisiones compatibles', () => {
-  assert.deepEqual(resolveDuelWinner(undefined, ['a', undefined]), { bookId: 'a', automatic: true });
+test('ningún duelo avanza automáticamente y conserva decisiones manuales compatibles', () => {
+  assert.deepEqual(resolveDuelWinner(undefined, ['a', undefined]), { bookId: undefined, automatic: false });
   assert.deepEqual(resolveDuelWinner('a', ['a', 'b']), { bookId: 'a', automatic: false });
   assert.deepEqual(resolveDuelWinner('a', ['c', 'b']), { bookId: undefined, automatic: false });
   assert.deepEqual(resolveDuelWinner('winner-other-branch', ['winner-other-branch', 'x']), { bookId: 'winner-other-branch', automatic: false });
   assert.match(service, /bookOfYearWinner\.delete/);
+});
+
+test('ignora elecciones automáticas antiguas y solo choose guarda ganadoras', () => {
+  assert.match(service, /bookOfYearDuelWinner\.deleteMany\(\{\s*where: \{ userId, year, automatic: true \}/);
+  assert.match(service, /findMany\(\{ where: \{ userId, year, automatic: false \}/);
+  const syncBracket = service.slice(service.indexOf('async function syncBracket'), service.indexOf('async function boardForUser'));
+  assert.doesNotMatch(syncBracket, /bookOfYearDuelWinner\.upsert/);
+  assert.match(service, /chooseBookOfYearDuel[\s\S]*bookOfYearDuelWinner\.upsert/);
+});
+
+test('una ronda posterior exige las dos ganadoras manuales anteriores', () => {
+  assert.match(service, /unlocked: Boolean\(firstWinner\(position \* 2 - 1\) && firstWinner\(position \* 2\)\)/);
+});
+
+test('la ganadora anual permanece vacía sin finalistas manuales válidas', () => {
+  assert.match(service, /winner: winner && validFinalistIds\.has\(winner\.bookId\) \? serializeBook\(winner\.book\) : null/);
 });
 
 test('la final exige diciembre terminado y permite elegir entre tres finalistas', () => {
