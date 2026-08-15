@@ -1,4 +1,4 @@
-import { ReadingStatus } from '@prisma/client';
+import { ClubType, ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
 import { backgroundError } from '../logging/logger.js';
@@ -96,7 +96,9 @@ export async function getPerfilUsuario(
     },
     include: {
       _count: {
-        select: { clubMemberships: true },
+        select: {
+          clubMemberships: { where: { club: { tipo: ClubType.SOCIAL } } },
+        },
       },
     },
   });

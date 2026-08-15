@@ -56,6 +56,10 @@ test('el perfil propio es global y los perfiles ajenos respetan el club activo',
     profile,
     /clubMemberships: \{ some: \{ clubId: club\.id \} \}/,
   );
+  assert.match(
+    profile,
+    /clubMemberships: \{ where: \{ club: \{ tipo: ClubType\.SOCIAL \} \} \}/,
+  );
 });
 
 test('el dashboard general funciona sin exigir un club activo', () => {
