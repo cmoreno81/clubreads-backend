@@ -90,6 +90,11 @@ enum ClubRole {
   MEMBER
 }
 
+enum BookOfYearDuelPhase {
+  MONTH_PAIR
+  SEMIFINAL
+}
+
 enum AuthCodePurpose {
   ACTIVATE
   REGISTER
@@ -240,6 +245,10 @@ model Book {
   clubvisionResults    ClubvisionResult[]    @relation("ClubvisionWinner")
   redirectsFrom        BookRedirect[]        @relation("CanonicalBookRedirect")
   userSeriesOrders     UserSeriesOrder[]
+  bookOfYearMonthlySelections BookOfYearMonthlySelection[]
+  bookOfYearDuelWinners BookOfYearDuelWinner[]
+  bookOfYearFinalists BookOfYearFinalist[]
+  bookOfYearWinners BookOfYearWinner[]
 
   @@index([title])
   @@index([authorId])
@@ -320,6 +329,10 @@ model User {
   readingChallenges ReadingChallenge[]
   dailyCheckins     DailyCheckin[]
   readingSessions   ReadingSession[]
+  bookOfYearMonthlySelections BookOfYearMonthlySelection[]
+  bookOfYearDuelWinners BookOfYearDuelWinner[]
+  bookOfYearFinalists BookOfYearFinalist[]
+  bookOfYearWinners BookOfYearWinner[]
 
   @@index([activeClubId])
 }
@@ -578,6 +591,66 @@ model ReadingCompletion {
   @@index([userId, isReread, finishedAt])
   @@index([bookId, finishedAt])
   @@index([isReread, finishedAt])
+}
+
+model BookOfYearMonthlySelection {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year Int
+  month Int
+  bookId String
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, year, month])
+  @@index([userId, year])
+  @@index([bookId])
+}
+
+model BookOfYearDuelWinner {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year Int
+  phase BookOfYearDuelPhase
+  position Int
+  bookId String
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  automatic Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, year, phase, position])
+  @@index([userId, year, phase])
+  @@index([bookId])
+}
+
+model BookOfYearFinalist {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year Int
+  position Int
+  bookId String
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, year, position])
+  @@index([userId, year])
+  @@index([bookId])
+}
+
+model BookOfYearWinner {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year Int
+  bookId String
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, year])
+  @@index([bookId])
 }
 
 //

@@ -126,6 +126,7 @@ import {
   handleGetWrapped,
 } from '../controllers/checkin.controller.js';
 import { validateActionInput } from '../validation/api-validation.js';
+import { handleChooseAnnualBookOfYear, handleChooseBookOfYearDuel, handleGetClubBooksOfYear, handleGetMyBookOfYear, handleGetPublicBookOfYear, handleSaveMonthlyBookOfYear } from '../controllers/book-of-year.controller.js';
 import { handleReactionDetails } from '../controllers/reaction-details.controller.js';
 export const apiRouter = Router();
 
@@ -194,6 +195,9 @@ export const POST_ONLY_ACTIONS = new Set([
   'registrarMoodClub',
   'saveUserSeriesOrder',
   'setReadingChallenge',
+  'guardarSeleccionLibroDelAnio',
+  'elegirDueloLibroDelAnio',
+  'elegirLibroDelAnio',
 ]);
 
 export function enforceActionMethod(
@@ -558,6 +562,24 @@ export async function handleApi(
 
       case 'reemplazarFavorito':
         return handleReemplazarFavorito(req, res);
+
+      case 'miLibroDelAnio':
+        return handleGetMyBookOfYear(req, res);
+
+      case 'guardarSeleccionLibroDelAnio':
+        return handleSaveMonthlyBookOfYear(req, res);
+
+      case 'elegirDueloLibroDelAnio':
+        return handleChooseBookOfYearDuel(req, res);
+
+      case 'elegirLibroDelAnio':
+        return handleChooseAnnualBookOfYear(req, res);
+
+      case 'libroDelAnioPublico':
+        return handleGetPublicBookOfYear(req, res);
+
+      case 'librosDelAnioClub':
+        return handleGetClubBooksOfYear(req, res);
 
       case 'achievements':
         return handleGetAchievements(req, res);
