@@ -47,3 +47,22 @@ test('rechaza espacios personales y mantiene el aislamiento por club activo', ()
   assert.match(source, /clubId_year: \{ clubId: club\.id, year \}/);
   assert.match(source, /edition: \{ clubId: club\.id, year \}/);
 });
+
+test('combina resultados históricos y lecturas oficiales con resolución segura', () => {
+  const source = readFileSync('src/services/club-book-of-year.service.ts', 'utf8');
+  assert.match(source, /clubvisionResult\.findMany/);
+  assert.match(source, /edition: \{ startsWith: `\$\{year\}-` \}/);
+  assert.match(source, /enrichClubvisionHistoryRows/);
+  assert.match(source, /unresolvedCandidates/);
+  assert.match(source, /source: 'CLUBVISION'/);
+  assert.match(source, /source: 'OFFICIAL_READING'/);
+  assert.match(source, /if \(unique\.has\(reading\.bookId\)\) continue/);
+  assert.match(source, /sortKey\.localeCompare/);
+});
+
+test('preparación e inicio reutilizan eligible y la vinculación no altera ClubvisionResult', () => {
+  const source = readFileSync('src/services/club-book-of-year.service.ts', 'utf8');
+  assert.equal((source.match(/await eligible\(club\.id, year(?:, tx)?\)/g) ?? []).length, 2);
+  assert.match(source, /clubBookOfYearHistoricalLink\.upsert/);
+  assert.doesNotMatch(source, /clubvisionResult\.update\([\s\S]*winnerBookId/);
+});

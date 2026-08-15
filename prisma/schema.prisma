@@ -274,6 +274,7 @@ model Book {
   bookOfYearFinalists         BookOfYearFinalist[]
   bookOfYearWinners           BookOfYearWinner[]
   clubBookOfYearCandidates    ClubBookOfYearCandidate[]
+  clubBookOfYearHistoricalLinks ClubBookOfYearHistoricalLink[]
 
   @@index([title])
   @@index([authorId])
@@ -468,6 +469,7 @@ model Club {
   clubvisionResults  ClubvisionResult[]
   moodVotes          ClubMoodVote[]
   bookOfYearEditions ClubBookOfYearEdition[]
+  bookOfYearHistoricalLinks ClubBookOfYearHistoricalLink[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -731,6 +733,22 @@ model ClubBookOfYearCandidate {
   @@unique([id, editionId])
   @@index([bookId])
   @@index([editionId, seed])
+}
+
+model ClubBookOfYearHistoricalLink {
+  id       String @id @default(cuid())
+  clubId   String
+  club     Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  year     Int
+  resultId String @unique
+  result   ClubvisionResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  bookId   String
+  book     Book @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clubId, year])
+  @@index([bookId])
 }
 
 model ClubBookOfYearRound {
@@ -1034,6 +1052,7 @@ model ClubvisionResult {
   thirdTitle  String?
 
   createdAt DateTime @default(now())
+  bookOfYearHistoricalLink ClubBookOfYearHistoricalLink?
 
   @@unique([clubId, edition])
   @@index([edition])
