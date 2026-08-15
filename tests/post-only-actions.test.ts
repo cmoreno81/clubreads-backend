@@ -81,6 +81,8 @@ const mutationHandlers: Record<string, string> = {
   cerrarRondaLibroDelAnioClub: 'handleCloseClubBookOfYearRound',
   cancelarLibroDelAnioClub: 'handleCancelClubBookOfYear',
   vincularCandidataHistoricaLibroDelAnioClub: 'handleLinkClubBookOfYearHistoricalCandidate',
+  sincronizarCandidatasLibroDelAnioClub: 'handleSyncClubBookOfYear',
+  abrirVotacionLibroDelAnioClub: 'handleOpenClubBookOfYearVoting',
 };
 
 function mockRequest(method: string, action: string) {

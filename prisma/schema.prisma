@@ -698,6 +698,7 @@ model ClubBookOfYearEdition {
   winnerCandidate   ClubBookOfYearCandidate?       @relation("ClubBookOfYearWinner", fields: [winnerCandidateId], references: [id], onDelete: SetNull)
   startedAt         DateTime?
   finishedAt        DateTime?
+  candidatesSyncedAt DateTime?
   createdAt         DateTime                       @default(now())
   updatedAt         DateTime                       @updatedAt
   candidates        ClubBookOfYearCandidate[]      @relation("ClubBookOfYearCandidates")
@@ -721,6 +722,9 @@ model ClubBookOfYearCandidate {
   titleSnapshot      String
   coverUrlSnapshot   String?
   authorNameSnapshot String?
+  source             String                         @default("OFFICIAL_READING")
+  clubvisionEdition  String?
+  needsReview        Boolean                        @default(false)
   createdAt          DateTime                       @default(now())
   winnerOf           ClubBookOfYearEdition[]        @relation("ClubBookOfYearWinner")
   duelAsA            ClubBookOfYearDuel[]           @relation("ClubBookOfYearDuelA")

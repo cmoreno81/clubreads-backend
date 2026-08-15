@@ -152,6 +152,8 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   cerrarRondaLibroDelAnioClub: body({ anio: positiveIntegerSchema, roundId: identifierSchema }),
   cancelarLibroDelAnioClub: body({ anio: positiveIntegerSchema }),
   vincularCandidataHistoricaLibroDelAnioClub: body({ anio: positiveIntegerSchema, resultId: identifierSchema, bookId: identifierSchema }),
+  sincronizarCandidatasLibroDelAnioClub: body({ anio: positiveIntegerSchema }),
+  abrirVotacionLibroDelAnioClub: body({ anio: positiveIntegerSchema }),
 };
 
 export const actionQuerySchemas: Record<string, z.ZodType> = {

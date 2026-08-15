@@ -147,6 +147,9 @@ const candidateBook = (candidate: any) => ({
   coverUrl: candidate.coverUrlSnapshot ?? '',
   authorName: candidate.authorNameSnapshot ?? '',
   seed: candidate.seed,
+  source: candidate.source,
+  clubvisionEdition: candidate.clubvisionEdition,
+  needsReview: candidate.needsReview,
 });
 
 async function loadEdition(clubId: string, year: number, userId: string) {
@@ -184,6 +187,7 @@ function serialize(edition: Awaited<ReturnType<typeof loadEdition>>, canAdmin: b
     clubName: edition.club.name,
     year: edition.year,
     status: edition.status,
+    candidatesSyncedAt: edition.candidatesSyncedAt?.toISOString() ?? null,
     canAdmin,
     candidates: edition.candidates.filter((candidate) => edition.status !== ClubBookOfYearStatus.TIEBREAK || candidate.tiebreakEligible).map(candidateBook),
     myQualifyingVotes: edition.qualifyingVotes.map((vote) => vote.candidateId),
@@ -265,6 +269,53 @@ export async function prepareClubBookOfYear(usuario: string, year: number) {
   };
 }
 
+async function syncClubBookOfYearCandidates(tx: Prisma.TransactionClient, clubId: string, year: number, editionId: string) {
+  const prepared = await eligible(clubId, year, tx);
+  const existing = await tx.clubBookOfYearCandidate.findMany({ where: { editionId }, select: { id: true, bookId: true } });
+  const existingIds = new Set(existing.map(({ bookId }) => bookId));
+  const detectedIds = prepared.candidates.map(({ bookId }) => bookId);
+  await tx.clubBookOfYearCandidate.updateMany({ where: { editionId }, data: { needsReview: true } });
+  for (const [index, candidate] of prepared.candidates.entries()) {
+    await tx.clubBookOfYearCandidate.upsert({
+      where: { editionId_bookId: { editionId, bookId: candidate.bookId } },
+      create: {
+        editionId,
+        bookId: candidate.bookId,
+        seed: index + 1,
+        titleSnapshot: candidate.book.title,
+        coverUrlSnapshot: candidate.book.coverUrl,
+        authorNameSnapshot: candidate.book.author?.name ?? null,
+        source: candidate.source,
+        clubvisionEdition: candidate.clubvisionEdition,
+        needsReview: false,
+      },
+      update: {
+        titleSnapshot: candidate.book.title,
+        coverUrlSnapshot: candidate.book.coverUrl,
+        authorNameSnapshot: candidate.book.author?.name ?? null,
+        source: candidate.source,
+        clubvisionEdition: candidate.clubvisionEdition,
+        needsReview: false,
+      },
+    });
+  }
+  const syncedAt = new Date();
+  await tx.clubBookOfYearEdition.update({ where: { id: editionId }, data: { candidatesSyncedAt: syncedAt } });
+  return { added: detectedIds.filter((id) => !existingIds.has(id)).length, unresolvedCandidates: prepared.unresolvedCandidates, syncedAt };
+}
+
+export async function syncClubBookOfYear(usuario: string, year: number) {
+  const { club } = await requireSocialClubAdmin(usuario);
+  let added = 0;
+  await prisma.$transaction(async (tx) => {
+    const edition = await tx.clubBookOfYearEdition.findUnique({ where: { clubId_year: { clubId: club.id, year } } });
+    if (!edition || edition.status !== ClubBookOfYearStatus.PREPARING) throw new ClubBookOfYearError('EDITION_NOT_PREPARING', 'La edición ya no está en preparación');
+    ({ added } = await syncClubBookOfYearCandidates(tx, club.id, year, edition.id));
+  });
+  const result = await getClubBookOfYear(usuario, year);
+  return { ...result, added };
+}
+
 export async function linkClubBookOfYearHistoricalCandidate(usuario: string, year: number, resultId: string, bookId: string) {
   const { club } = await requireSocialClubAdmin(usuario);
   await prisma.$transaction(async (tx) => {
@@ -283,11 +334,15 @@ export async function linkClubBookOfYearHistoricalCandidate(usuario: string, yea
       create: { clubId: club.id, year, resultId: result.id, bookId: libraryBook.bookId },
       update: { bookId: libraryBook.bookId, year },
     });
+    const edition = await tx.clubBookOfYearEdition.findUnique({ where: { clubId_year: { clubId: club.id, year } } });
+    if (edition?.status === ClubBookOfYearStatus.PREPARING) {
+      await syncClubBookOfYearCandidates(tx, club.id, year, edition.id);
+    }
   });
   return prepareClubBookOfYear(usuario, year);
 }
 
-async function createBracket(tx: Prisma.TransactionClient, editionId: string, candidates: Array<{ id: string }>, sequence: number, status = ClubBookOfYearRoundStatus.PENDING) {
+async function createBracket(tx: Prisma.TransactionClient, editionId: string, candidates: Array<{ id: string }>, sequence: number, status: ClubBookOfYearRoundStatus = ClubBookOfYearRoundStatus.PENDING) {
   const phase = firstPhase(candidates.length);
   const round = await tx.clubBookOfYearRound.create({ data: { editionId, phase, sequence, status } });
   const ordered = [...candidates];
@@ -301,19 +356,37 @@ export async function startClubBookOfYear(usuario: string, year: number) {
   const { club } = await requireSocialClubAdmin(usuario);
   await prisma.$transaction(async (tx) => {
     const existing = await tx.clubBookOfYearEdition.findUnique({ where: { clubId_year: { clubId: club.id, year } } });
-    if (existing) return;
-    const prepared = await eligible(club.id, year, tx);
-    if (prepared.candidates.length < 2) throw new ClubBookOfYearError('NOT_ENOUGH_CANDIDATES', 'Se necesitan al menos dos candidatas para iniciar la edición.');
-    const qualifying = needsQualifying(prepared.candidates.length);
-    const edition = await tx.clubBookOfYearEdition.create({ data: { clubId: club.id, year, status: qualifying ? ClubBookOfYearStatus.QUALIFYING : ClubBookOfYearStatus.ROUND_PENDING, bracketSize: clubBookOfYearBracketSize(prepared.candidates.length), startedAt: new Date() } });
-    await tx.clubBookOfYearCandidate.createMany({ data: prepared.candidates.map((candidate, index) => ({ editionId: edition.id, bookId: candidate.bookId, seed: index + 1, titleSnapshot: candidate.book.title, coverUrlSnapshot: candidate.book.coverUrl, authorNameSnapshot: candidate.book.author?.name ?? null })) });
-    const candidates = await tx.clubBookOfYearCandidate.findMany({ where: { editionId: edition.id }, orderBy: { seed: 'asc' }, select: { id: true } });
-    if (qualifying) await tx.clubBookOfYearRound.create({ data: { editionId: edition.id, phase: ClubBookOfYearPhase.QUALIFYING, sequence: 1, status: ClubBookOfYearRoundStatus.OPEN, openedAt: new Date() } });
-    else await createBracket(tx, edition.id, candidates, 1);
+    if (existing) {
+      if (existing.status !== ClubBookOfYearStatus.PREPARING) return;
+      await syncClubBookOfYearCandidates(tx, club.id, year, existing.id);
+      return;
+    }
+    const edition = await tx.clubBookOfYearEdition.create({ data: { clubId: club.id, year, status: ClubBookOfYearStatus.PREPARING } });
+    await syncClubBookOfYearCandidates(tx, club.id, year, edition.id);
   });
-  const result = await getClubBookOfYear(usuario, year);
-  if (result.edition?.status === ClubBookOfYearStatus.QUALIFYING) await notifyClubBookOfYear(club.id, year, 'QUALIFYING_OPEN', '🗳️ Comienza la clasificación del Libro del año del club');
-  return result;
+  return getClubBookOfYear(usuario, year);
+}
+
+export async function openClubBookOfYearVoting(usuario: string, year: number) {
+  const { club } = await requireSocialClubAdmin(usuario);
+  let qualifying = false;
+  await prisma.$transaction(async (tx) => {
+    const edition = await tx.clubBookOfYearEdition.findUnique({ where: { clubId_year: { clubId: club.id, year } } });
+    if (!edition || edition.status !== ClubBookOfYearStatus.PREPARING) throw new ClubBookOfYearError('EDITION_NOT_PREPARING', 'La edición ya no está en preparación');
+    await syncClubBookOfYearCandidates(tx, club.id, year, edition.id);
+    const candidates = await tx.clubBookOfYearCandidate.findMany({ where: { editionId: edition.id }, orderBy: [{ seed: 'asc' }, { createdAt: 'asc' }] });
+    if (candidates.some(({ needsReview }) => needsReview)) throw new ClubBookOfYearError('CANDIDATES_NEED_REVIEW', 'Revisa las candidaturas que ya no coinciden con una lectura oficial');
+    if (candidates.length < 2) throw new ClubBookOfYearError('NOT_ENOUGH_CANDIDATES', 'Se necesitan al menos dos candidatas para abrir la votación.');
+    qualifying = needsQualifying(candidates.length);
+    await tx.clubBookOfYearEdition.update({ where: { id: edition.id }, data: { status: qualifying ? ClubBookOfYearStatus.QUALIFYING : ClubBookOfYearStatus.ROUND_OPEN, bracketSize: clubBookOfYearBracketSize(candidates.length), startedAt: new Date() } });
+    if (qualifying) await tx.clubBookOfYearRound.create({ data: { editionId: edition.id, phase: ClubBookOfYearPhase.QUALIFYING, sequence: 1, status: ClubBookOfYearRoundStatus.OPEN, openedAt: new Date() } });
+    else {
+      const round = await createBracket(tx, edition.id, candidates, 1, ClubBookOfYearRoundStatus.OPEN);
+      await tx.clubBookOfYearRound.update({ where: { id: round.id }, data: { openedAt: new Date() } });
+    }
+  });
+  await notifyClubBookOfYear(club.id, year, qualifying ? 'QUALIFYING_OPEN' : 'BRACKET_READY', qualifying ? '🗳️ Comienza la clasificación del Libro del año del club' : '🏆 Se abre el Libro del año del club');
+  return getClubBookOfYear(usuario, year);
 }
 
 export async function voteClubBookOfYearQualifying(usuario: string, year: number, candidateIds: string[]) {

@@ -128,7 +128,7 @@ import {
 import { validateActionInput } from '../validation/api-validation.js';
 import { handleChooseAnnualBookOfYear, handleChooseBookOfYearDuel, handleGetClubBooksOfYear, handleGetMyBookOfYear, handleGetPublicBookOfYear, handleSaveMonthlyBookOfYear } from '../controllers/book-of-year.controller.js';
 import { handleReactionDetails } from '../controllers/reaction-details.controller.js';
-import { handleCancelClubBookOfYear, handleCloseClubBookOfYearQualifying, handleCloseClubBookOfYearRound, handleGetClubBookOfYear, handleGetClubBookOfYearHistory, handleLinkClubBookOfYearHistoricalCandidate, handleOpenClubBookOfYearRound, handlePrepareClubBookOfYear, handleStartClubBookOfYear, handleVoteClubBookOfYearDuel, handleVoteClubBookOfYearQualifying } from '../controllers/club-book-of-year.controller.js';
+import { handleCancelClubBookOfYear, handleCloseClubBookOfYearQualifying, handleCloseClubBookOfYearRound, handleGetClubBookOfYear, handleGetClubBookOfYearHistory, handleLinkClubBookOfYearHistoricalCandidate, handleOpenClubBookOfYearRound, handleOpenClubBookOfYearVoting, handlePrepareClubBookOfYear, handleStartClubBookOfYear, handleSyncClubBookOfYear, handleVoteClubBookOfYearDuel, handleVoteClubBookOfYearQualifying } from '../controllers/club-book-of-year.controller.js';
 export const apiRouter = Router();
 
 const PUBLIC_AUTH_ACTIONS = new Set([
@@ -207,6 +207,8 @@ export const POST_ONLY_ACTIONS = new Set([
   'cerrarRondaLibroDelAnioClub',
   'cancelarLibroDelAnioClub',
   'vincularCandidataHistoricaLibroDelAnioClub',
+  'sincronizarCandidatasLibroDelAnioClub',
+  'abrirVotacionLibroDelAnioClub',
 ]);
 
 export function enforceActionMethod(
@@ -612,6 +614,10 @@ export async function handleApi(
         return handleCancelClubBookOfYear(req, res);
       case 'vincularCandidataHistoricaLibroDelAnioClub':
         return handleLinkClubBookOfYearHistoricalCandidate(req, res);
+      case 'sincronizarCandidatasLibroDelAnioClub':
+        return handleSyncClubBookOfYear(req, res);
+      case 'abrirVotacionLibroDelAnioClub':
+        return handleOpenClubBookOfYearVoting(req, res);
 
       case 'achievements':
         return handleGetAchievements(req, res);

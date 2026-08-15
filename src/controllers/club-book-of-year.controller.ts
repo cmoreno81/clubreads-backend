@@ -13,6 +13,8 @@ import {
   voteClubBookOfYearQualifying,
   cancelClubBookOfYear,
   linkClubBookOfYearHistoricalCandidate,
+  openClubBookOfYearVoting,
+  syncClubBookOfYear,
 } from '../services/club-book-of-year.service.js';
 
 const year = (req: Request) => Number(req.body?.anio ?? req.query.anio);
@@ -34,3 +36,5 @@ export const handleCloseClubBookOfYearRound = (req: Request, res: Response) => s
 export const handleGetClubBookOfYearHistory = (req: Request, res: Response) => send(res, () => getClubBookOfYearHistory(requestUserName(req)));
 export const handleCancelClubBookOfYear = (req: Request, res: Response) => send(res, () => cancelClubBookOfYear(requestUserName(req), year(req)));
 export const handleLinkClubBookOfYearHistoricalCandidate = (req: Request, res: Response) => send(res, () => linkClubBookOfYearHistoricalCandidate(requestUserName(req), year(req), req.body.resultId, req.body.bookId));
+export const handleSyncClubBookOfYear = (req: Request, res: Response) => send(res, () => syncClubBookOfYear(requestUserName(req), year(req)));
+export const handleOpenClubBookOfYearVoting = (req: Request, res: Response) => send(res, () => openClubBookOfYearVoting(requestUserName(req), year(req)));

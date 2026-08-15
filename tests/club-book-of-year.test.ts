@@ -60,9 +60,20 @@ test('combina resultados históricos y lecturas oficiales con resolución segura
   assert.match(source, /sortKey\.localeCompare/);
 });
 
-test('preparación e inicio reutilizan eligible y la vinculación no altera ClubvisionResult', () => {
+test('preparación y sincronización reutilizan eligible y la vinculación no altera ClubvisionResult', () => {
   const source = readFileSync('src/services/club-book-of-year.service.ts', 'utf8');
-  assert.equal((source.match(/await eligible\(club\.id, year(?:, tx)?\)/g) ?? []).length, 2);
+  assert.match(source, /syncClubBookOfYearCandidates[\s\S]*await eligible\(clubId, year, tx\)/);
   assert.match(source, /clubBookOfYearHistoricalLink\.upsert/);
   assert.doesNotMatch(source, /clubvisionResult\.update\([\s\S]*winnerBookId/);
+});
+
+test('PREPARING sincroniza sin votar y congela únicamente al abrir', () => {
+  const source = readFileSync('src/services/club-book-of-year.service.ts', 'utf8');
+  assert.match(source, /status: ClubBookOfYearStatus\.PREPARING/);
+  assert.match(source, /clubBookOfYearCandidate\.upsert/);
+  assert.match(source, /existingIds[\s\S]*added/);
+  assert.match(source, /edition\.status !== ClubBookOfYearStatus\.PREPARING/);
+  assert.match(source, /openClubBookOfYearVoting[\s\S]*syncClubBookOfYearCandidates/);
+  assert.match(source, /ROUND_OPEN/);
+  assert.match(source, /VOTING_CLOSED/);
 });
