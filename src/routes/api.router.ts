@@ -128,6 +128,7 @@ import {
 import { validateActionInput } from '../validation/api-validation.js';
 import { handleChooseAnnualBookOfYear, handleChooseBookOfYearDuel, handleGetClubBooksOfYear, handleGetMyBookOfYear, handleGetPublicBookOfYear, handleSaveMonthlyBookOfYear } from '../controllers/book-of-year.controller.js';
 import { handleReactionDetails } from '../controllers/reaction-details.controller.js';
+import { handleCancelClubBookOfYear, handleCloseClubBookOfYearQualifying, handleCloseClubBookOfYearRound, handleGetClubBookOfYear, handleGetClubBookOfYearHistory, handleOpenClubBookOfYearRound, handlePrepareClubBookOfYear, handleStartClubBookOfYear, handleVoteClubBookOfYearDuel, handleVoteClubBookOfYearQualifying } from '../controllers/club-book-of-year.controller.js';
 export const apiRouter = Router();
 
 const PUBLIC_AUTH_ACTIONS = new Set([
@@ -198,6 +199,13 @@ export const POST_ONLY_ACTIONS = new Set([
   'guardarSeleccionLibroDelAnio',
   'elegirDueloLibroDelAnio',
   'elegirLibroDelAnio',
+  'iniciarLibroDelAnioClub',
+  'votarClasificacionLibroDelAnioClub',
+  'cerrarClasificacionLibroDelAnioClub',
+  'abrirRondaLibroDelAnioClub',
+  'votarDueloLibroDelAnioClub',
+  'cerrarRondaLibroDelAnioClub',
+  'cancelarLibroDelAnioClub',
 ]);
 
 export function enforceActionMethod(
@@ -580,6 +588,27 @@ export async function handleApi(
 
       case 'librosDelAnioClub':
         return handleGetClubBooksOfYear(req, res);
+
+      case 'libroDelAnioClub':
+        return handleGetClubBookOfYear(req, res);
+      case 'prepararLibroDelAnioClub':
+        return handlePrepareClubBookOfYear(req, res);
+      case 'iniciarLibroDelAnioClub':
+        return handleStartClubBookOfYear(req, res);
+      case 'votarClasificacionLibroDelAnioClub':
+        return handleVoteClubBookOfYearQualifying(req, res);
+      case 'cerrarClasificacionLibroDelAnioClub':
+        return handleCloseClubBookOfYearQualifying(req, res);
+      case 'abrirRondaLibroDelAnioClub':
+        return handleOpenClubBookOfYearRound(req, res);
+      case 'votarDueloLibroDelAnioClub':
+        return handleVoteClubBookOfYearDuel(req, res);
+      case 'cerrarRondaLibroDelAnioClub':
+        return handleCloseClubBookOfYearRound(req, res);
+      case 'historialLibroDelAnioClub':
+        return handleGetClubBookOfYearHistory(req, res);
+      case 'cancelarLibroDelAnioClub':
+        return handleCancelClubBookOfYear(req, res);
 
       case 'achievements':
         return handleGetAchievements(req, res);

@@ -144,6 +144,13 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   guardarSeleccionLibroDelAnio: body({ anio: positiveIntegerSchema, mes: integerSchema.refine((v) => Number(v) >= 1 && Number(v) <= 12), bookId: identifierSchema }),
   elegirDueloLibroDelAnio: body({ anio: positiveIntegerSchema, fase: z.enum(['MONTH_PAIR', 'SEMIFINAL']), posicion: positiveIntegerSchema, bookId: identifierSchema }),
   elegirLibroDelAnio: body({ anio: positiveIntegerSchema, bookId: identifierSchema }),
+  iniciarLibroDelAnioClub: body({ anio: positiveIntegerSchema }),
+  votarClasificacionLibroDelAnioClub: body({ anio: positiveIntegerSchema, candidateIds: z.array(identifierSchema).min(1).max(3) }),
+  cerrarClasificacionLibroDelAnioClub: body({ anio: positiveIntegerSchema }),
+  abrirRondaLibroDelAnioClub: body({ anio: positiveIntegerSchema, roundId: identifierSchema }),
+  votarDueloLibroDelAnioClub: body({ anio: positiveIntegerSchema, duelId: identifierSchema, candidateId: identifierSchema }),
+  cerrarRondaLibroDelAnioClub: body({ anio: positiveIntegerSchema, roundId: identifierSchema }),
+  cancelarLibroDelAnioClub: body({ anio: positiveIntegerSchema }),
 };
 
 export const actionQuerySchemas: Record<string, z.ZodType> = {
@@ -155,6 +162,9 @@ export const actionQuerySchemas: Record<string, z.ZodType> = {
   miLibroDelAnio: z.object({ action: z.literal('miLibroDelAnio'), anio: positiveIntegerSchema }).passthrough(),
   libroDelAnioPublico: z.object({ action: z.literal('libroDelAnioPublico'), perfil: identifierSchema, anio: positiveIntegerSchema }).passthrough(),
   librosDelAnioClub: z.object({ action: z.literal('librosDelAnioClub'), anio: positiveIntegerSchema }).passthrough(),
+  libroDelAnioClub: z.object({ action: z.literal('libroDelAnioClub'), anio: positiveIntegerSchema }).passthrough(),
+  prepararLibroDelAnioClub: z.object({ action: z.literal('prepararLibroDelAnioClub'), anio: positiveIntegerSchema }).passthrough(),
+  historialLibroDelAnioClub: z.object({ action: z.literal('historialLibroDelAnioClub') }).passthrough(),
 };
 
 function invalidFields(error: z.ZodError) {

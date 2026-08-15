@@ -112,6 +112,27 @@ export async function notifyClubvisionResultados(clubId: string, ganador: string
   });
 }
 
+export async function notifyClubBookOfYear(
+  clubId: string,
+  year: number,
+  eventKey: string,
+  mensaje: string,
+) {
+  const extra = JSON.stringify({ destination: 'clubBookOfYear', year, eventKey });
+  const existing = await prisma.notification.findFirst({
+    where: { clubId, tipo: NotificationType.CLUB_BOOK_OF_YEAR, extra },
+    select: { id: true },
+  });
+  if (existing) return;
+  await notifyClubMembers({
+    clubId,
+    tipo: NotificationType.CLUB_BOOK_OF_YEAR,
+    titulo: 'Libro del año del club',
+    mensaje,
+    extra: { destination: 'clubBookOfYear', year, eventKey },
+  });
+}
+
 export async function notifyLecturaNueva(
   clubId: string,
   bookTitle: string,
@@ -473,4 +494,3 @@ export async function notifyLogroDesbloqueado({
     })),
   });
 }
-
