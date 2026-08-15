@@ -29,7 +29,61 @@ function currentMonthRange(now = new Date()) {
 }
 
 export function isCanonicalActiveReading(status: ReadingStatus) {
-  return status === ReadingStatus.READING;
+  return status === ReadingStatus.READING || status === ReadingStatus.REREADING;
+}
+
+type CalendarCompletion = {
+  id: string;
+  bookId: string;
+  startedAt: Date | null;
+  finishedAt: Date;
+  isReread: boolean;
+  book: { id: string; title: string; coverUrl: string | null };
+};
+
+type CalendarLibraryReading = {
+  id: string;
+  bookId: string;
+  status: ReadingStatus;
+  startedAt: Date | null;
+  book: { id: string; title: string; coverUrl: string | null };
+};
+
+export function buildCalendarReadings(
+  completions: CalendarCompletion[],
+  library: CalendarLibraryReading[],
+  now: Date,
+) {
+  const completedPeriods = new Set(
+    completions.map(({ bookId, startedAt, finishedAt, isReread }) =>
+      `${bookId}:${isReread ? ReadingStatus.REREADING : ReadingStatus.READING}:${(startedAt ?? finishedAt).toISOString()}`,
+    ),
+  );
+  return [
+    ...completions.map(({ id, book, startedAt, finishedAt }) => ({
+      id: `completion:${id}`,
+      bookId: book.id,
+      titulo: book.title,
+      coverUrl: book.coverUrl ?? '',
+      fechaInicio: (startedAt ?? finishedAt).toISOString(),
+      fechaFin: finishedAt.toISOString(),
+    })),
+    ...library
+      .filter(({ bookId, status, startedAt }) =>
+        isCanonicalActiveReading(status) &&
+        !completedPeriods.has(
+          `${bookId}:${status}:${(startedAt ?? now).toISOString()}`,
+        ),
+      )
+      .map(({ id, book, startedAt }) => ({
+        id: `library:${id}`,
+        bookId: book.id,
+        titulo: book.title,
+        coverUrl: book.coverUrl ?? '',
+        fechaInicio: (startedAt ?? now).toISOString(),
+        fechaFin: now.toISOString(),
+      })),
+  ];
 }
 
 export function completedRating(rating: number | null | undefined) {
@@ -252,7 +306,9 @@ export async function getGeneralDashboard(userId: string) {
           OR: [
             { finishedAt: { gte: start } },
             {
-              status: ReadingStatus.READING,
+              status: {
+                in: [ReadingStatus.READING, ReadingStatus.REREADING],
+              },
             },
           ],
         },
@@ -432,29 +488,11 @@ export async function getGeneralDashboard(userId: string) {
     const currentPage = monthLibraryByBookId.get(bookId)?.currentPage;
     return currentPage != null && currentPage > 0 ? currentPage : 0;
   };
-  const calendarReadings = [
-    ...monthCompletions.map(({ id, book, startedAt, finishedAt }) => ({
-      id: `completion:${id}`,
-      bookId: book.id,
-      titulo: book.title,
-      coverUrl: book.coverUrl ?? '',
-      fechaInicio: (startedAt ?? finishedAt).toISOString(),
-      fechaFin: finishedAt.toISOString(),
-    })),
-    ...monthLibrary
-      .filter(
-        ({ status }) =>
-          isCanonicalActiveReading(status),
-      )
-      .map(({ id, book, startedAt }) => ({
-        id: `library:${id}`,
-        bookId: book.id,
-        titulo: book.title,
-        coverUrl: book.coverUrl ?? '',
-        fechaInicio: (startedAt ?? now).toISOString(),
-        fechaFin: now.toISOString(),
-      })),
-  ];
+  const calendarReadings = buildCalendarReadings(
+    monthCompletions,
+    monthLibrary,
+    now,
+  );
   const months = new Set(completions.map(({ finishedAt }) => monthKey(finishedAt)));
   const libraryByBookId = new Map(
     seriesLibrary.map((item) => [item.bookId, item]),

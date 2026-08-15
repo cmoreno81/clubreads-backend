@@ -58,6 +58,7 @@ import {
   handleActualizarFechasLectura,
   handleActualizarAvatarPerfil,
   handleToggleFavorito,
+  handleReemplazarFavorito,
   handleGetFavoritos,
   handleGetFavoritosDelClub,
 } from '../controllers/perfil.controller.js';
@@ -125,6 +126,7 @@ import {
   handleGetWrapped,
 } from '../controllers/checkin.controller.js';
 import { validateActionInput } from '../validation/api-validation.js';
+import { handleReactionDetails } from '../controllers/reaction-details.controller.js';
 export const apiRouter = Router();
 
 const PUBLIC_AUTH_ACTIONS = new Set([
@@ -187,6 +189,8 @@ export const POST_ONLY_ACTIONS = new Set([
   'marcarConversacionVista',
   'actualizarFechasLectura',
   'actualizarAvatarPerfil',
+  'toggleFavorito',
+  'reemplazarFavorito',
   'registrarMoodClub',
   'saveUserSeriesOrder',
   'setReadingChallenge',
@@ -479,6 +483,10 @@ export async function handleApi(
       case 'toggleProgressReaction':
         return handleToggleProgressReaction(req, res);
 
+      case 'detalleReacciones':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleReactionDetails(req, res);
+
       case 'actualizarValoracion':
         return handleActualizarValoracion(req, res);
 
@@ -547,6 +555,9 @@ export async function handleApi(
 
       case 'toggleFavorito':
         return handleToggleFavorito(req, res);
+
+      case 'reemplazarFavorito':
+        return handleReemplazarFavorito(req, res);
 
       case 'achievements':
         return handleGetAchievements(req, res);

@@ -112,6 +112,8 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   actualizarNumeroVolumenSaga: body({ bookId: identifierSchema, numero: compatibleNumberSchema.refine((v) => Number(v) > 0) }),
   actualizarEstadoEditorialSaga: body({ sagaId: identifierSchema, estadoEditorial: z.enum(['UNKNOWN', 'ONGOING', 'COMPLETED']), totalPrevisto: positiveIntegerSchema.optional() }),
   crearClub: body({ nombre: shortTextSchema, descripcion: textSchema.optional() }),
+  crearEspacioPersonal: emptyBody,
+  doCheckin: emptyBody,
   unirseClub: body({ codigo: z.string().trim().min(1).max(100) }),
   seleccionarClub: idBody('clubId'), invitacionClub: idBody('clubId'), salirClub: idBody('clubId'),
   editarClub: body({ clubId: identifierSchema, nombre: shortTextSchema.optional(), descripcion: textSchema.optional(), avatarUrl: urlSchema.optional() }),
@@ -135,11 +137,14 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   marcarConversacionVista: body({ libro: identifierSchema, capitulo: z.union([identifierSchema, integerSchema]) }),
   actualizarFechasLectura: body({ libraryId: identifierSchema, completionId: identifierSchema.optional(), fechaInicio: optionalDateSchema, fechaFin: optionalDateSchema, valoracion: ratingSchema.optional(), resena: longTextSchema.optional() }).refine((v) => datesAreOrdered(v.fechaInicio, v.fechaFin), { path: ['fechaFin'], message: 'La fecha final no puede ser anterior a la inicial' }),
   actualizarAvatarPerfil: body({ avatarUrl: urlSchema }), registrarMoodClub: body({ mood: z.enum(['HOOKED', 'SHOCKED', 'CRYING', 'ANGRY', 'LAUGHING', 'BLOCKED']) }),
+  toggleFavorito: body({ bookId: identifierSchema }),
+  reemplazarFavorito: body({ bookIdActual: identifierSchema, bookIdNuevo: identifierSchema }),
   saveUserSeriesOrder: body({ seriesId: identifierSchema, order: z.array(z.object({ bookId: identifierSchema, posicion: positiveIntegerSchema }).passthrough()).max(1_000) }),
   setReadingChallenge: body({ target: integerSchema.refine((v) => Number(v) >= 0 && Number(v) <= 10_000, 'Objetivo fuera de rango') }),
 };
 
 export const actionQuerySchemas: Record<string, z.ZodType> = {
+  detalleReacciones: z.object({ action: z.literal('detalleReacciones'), targetType: z.enum(['COMMENT', 'PROGRESS']), targetId: identifierSchema }).passthrough(),
   libroPorId: z.object({ action: z.literal('libroPorId'), bookId: identifierSchema }).passthrough(),
   configuracionLectura: z.object({ action: z.literal('configuracionLectura'), libro: identifierSchema }).passthrough(),
   comentariosLectura: z.object({ action: z.literal('comentariosLectura'), libro: identifierSchema, capitulo: identifierSchema }).passthrough(),

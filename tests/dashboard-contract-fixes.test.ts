@@ -7,6 +7,7 @@ import {
   compareContinueSeries,
   completedRating,
   isCanonicalActiveReading,
+  buildCalendarReadings,
   shouldShowContinueSeries,
 } from '../src/services/general-dashboard.service.js';
 import { ratingToFlutter } from '../src/utils/rating.utils.js';
@@ -17,22 +18,85 @@ const dashboardService = await readFile(
   'utf8',
 );
 
-test('Leyendo ahora incluye lecturas normales y relecturas sin ampliar el calendario mensual', () => {
+test('Leyendo ahora y la consulta mensual incluyen lecturas y relecturas', () => {
   assert.match(
     dashboardService,
     /library: \{\s*where: \{\s*status: \{\s*in: \[ReadingStatus\.READING, ReadingStatus\.REREADING\]/,
   );
   assert.match(
     dashboardService,
-    /const \[\s*user,[\s\S]*?prisma\.library\.findMany\(\{\s*where: \{\s*userId,\s*startedAt: \{ lt: end \},\s*OR: \[\s*\{ finishedAt: \{ gte: start \} \},\s*\{\s*status: ReadingStatus\.READING,?\s*\}/,
+    /const \[\s*user,[\s\S]*?prisma\.library\.findMany\(\{\s*where: \{\s*userId,\s*startedAt: \{ lt: end \},\s*OR: \[\s*\{ finishedAt: \{ gte: start \} \},\s*\{\s*status: \{\s*in: \[ReadingStatus\.READING, ReadingStatus\.REREADING\]/,
   );
 });
 
-test('Mes lector incluye exclusivamente el estado canónico READING', () => {
+test('Mes lector considera READING y REREADING como tramos activos', () => {
   assert.equal(isCanonicalActiveReading(ReadingStatus.READING), true);
+  assert.equal(isCanonicalActiveReading(ReadingStatus.REREADING), true);
   assert.equal(isCanonicalActiveReading(ReadingStatus.PAUSED), false);
+  assert.equal(isCanonicalActiveReading(ReadingStatus.PENDING), false);
   assert.equal(isCanonicalActiveReading(ReadingStatus.FINISHED), false);
-  assert.equal(isCanonicalActiveReading(ReadingStatus.REREADING), false);
+  assert.equal(isCanonicalActiveReading(ReadingStatus.ABANDONED), false);
+
+  const book = { id: 'book-1', title: 'Libro', coverUrl: null };
+  const statuses = [
+    ReadingStatus.READING,
+    ReadingStatus.REREADING,
+    ReadingStatus.PAUSED,
+    ReadingStatus.PENDING,
+    ReadingStatus.FINISHED,
+    ReadingStatus.ABANDONED,
+  ];
+  const readings = buildCalendarReadings(
+    [],
+    statuses.map((status) => ({
+      id: status,
+      bookId: `${book.id}-${status}`,
+      book: { ...book, id: `${book.id}-${status}` },
+      startedAt: new Date('2026-08-01T00:00:00.000Z'),
+      status,
+    })),
+    new Date('2026-08-15T00:00:00.000Z'),
+  );
+  assert.deepEqual(readings.map(({ id }) => id), [
+    `library:${ReadingStatus.READING}`,
+    `library:${ReadingStatus.REREADING}`,
+  ]);
+});
+
+test('una relectura finalizada no se duplica como tramo activo', () => {
+  const start = new Date('2026-08-03T00:00:00.000Z');
+  const end = new Date('2026-08-10T00:00:00.000Z');
+  const now = new Date('2026-08-15T00:00:00.000Z');
+  const book = { id: 'book-1', title: 'Libro', coverUrl: 'cover.jpg' };
+  const readings = buildCalendarReadings(
+    [{ id: 'completion-1', bookId: book.id, book, startedAt: start, finishedAt: end, isReread: true }],
+    [{ id: 'library-1', bookId: book.id, book, startedAt: start, status: ReadingStatus.REREADING }],
+    now,
+  );
+  assert.equal(readings.length, 1);
+  assert.equal(readings[0]?.id, 'completion:completion-1');
+  assert.equal(readings[0]?.bookId, 'book-1');
+  assert.equal(readings[0]?.coverUrl, 'cover.jpg');
+});
+
+test('lectura original y relectura conservan periodos diferentes', () => {
+  const originalStart = new Date('2026-08-01T00:00:00.000Z');
+  const originalEnd = new Date('2026-08-05T00:00:00.000Z');
+  const rereadStart = new Date('2026-08-12T00:00:00.000Z');
+  const now = new Date('2026-08-15T00:00:00.000Z');
+  const book = { id: 'book-1', title: 'Libro', coverUrl: null };
+  const readings = buildCalendarReadings(
+    [{ id: 'original', bookId: book.id, book, startedAt: originalStart, finishedAt: originalEnd, isReread: false }],
+    [{ id: 'reread', bookId: book.id, book, startedAt: rereadStart, status: ReadingStatus.REREADING }],
+    now,
+  );
+  assert.equal(readings.length, 2);
+  assert.deepEqual(readings.map(({ fechaInicio }) => fechaInicio), [
+    originalStart.toISOString(), rereadStart.toISOString(),
+  ]);
+  assert.ok(readings.every(({ bookId }) => bookId === 'book-1'));
+  assert.ok(readings.every(({ titulo }) => titulo === 'Libro'));
+  assert.ok(readings.every(({ coverUrl }) => coverUrl === ''));
 });
 
 test('libro finalizado conserva estrellas y no inventa valoración ausente', () => {

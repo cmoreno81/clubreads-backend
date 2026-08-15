@@ -740,7 +740,13 @@ export async function actualizarProgresoLectura(
   comentario: string,
   paginaActual?: number,
   paginasTotales?: number,
+  runtime: {
+    prismaClient?: typeof prisma;
+    now?: () => Date;
+  } = {},
 ) {
+  const db = runtime.prismaClient ?? prisma;
+  const now = runtime.now?.() ?? new Date();
   let porcentaje = Math.round(Number(progreso));
   const paginaFueEnviada = paginaActual !== undefined;
   const totalFueEnviado = paginasTotales !== undefined;
@@ -758,7 +764,7 @@ export async function actualizarProgresoLectura(
     return { ok: false, mensaje: 'El progreso debe estar entre 0 y 100' };
   }
 
-  const lectura = await prisma.library.findFirst({
+  const lectura = await db.library.findFirst({
     where: {
       user: { name: usuario.trim() },
       book: { title: libro.trim() },
@@ -791,29 +797,29 @@ export async function actualizarProgresoLectura(
     paginasLeidas = Math.max(0, pagina - (lectura.currentPage ?? 0));
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = now.toISOString().slice(0, 10);
 
   // Transacción principal: actualizar progreso del libro
-  await prisma.$transaction([
+  await db.$transaction([
     ...(lectura.progressNote !== (comentario.trim() || null)
       ? [
-          prisma.progressReaction.deleteMany({
+          db.progressReaction.deleteMany({
             where: { libraryId: lectura.id },
           }),
         ]
       : []),
-    prisma.library.update({
+    db.library.update({
       where: { id: lectura.id },
       data: {
         lastProgress: porcentaje,
         currentPage: pagina,
         progressNote: comentario.trim() || null,
-        progressUpdatedAt: new Date(),
+        progressUpdatedAt: now,
       },
     }),
     ...(totalFueEnviado
       ? [
-          prisma.book.update({
+          db.book.update({
             where: { id: lectura.bookId },
             data: { totalPages: totalEnviado },
           }),
@@ -824,7 +830,7 @@ export async function actualizarProgresoLectura(
   // Registrar sesión de lectura diaria (best-effort: no falla el progreso si la tabla no existe)
   if (paginasLeidas > 0) {
     try {
-      await prisma.readingSession.upsert({
+      await db.readingSession.upsert({
         where: { userId_date: { userId: lectura.userId, date: today } },
         create: { userId: lectura.userId, date: today, pagesRead: paginasLeidas },
         update: { pagesRead: { increment: paginasLeidas } },

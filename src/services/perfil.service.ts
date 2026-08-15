@@ -1242,6 +1242,80 @@ export async function toggleFavorito(params: {
   return { ok: true, mensaje: 'Añadido a favoritos', isFavorite: true };
 }
 
+type FavoritoActualizado = {
+  id: string;
+  title: string;
+  authorName: string | null;
+  coverUrl: string | null;
+  genreName: string;
+};
+
+export async function reemplazarFavorito(params: {
+  usuario: string;
+  bookIdActual: string;
+  bookIdNuevo: string;
+}): Promise<{ ok: boolean; mensaje: string; favorito?: FavoritoActualizado }> {
+  const { usuario, bookIdActual, bookIdNuevo } = params;
+  if (bookIdActual === bookIdNuevo) {
+    return { ok: false, mensaje: 'Elige un libro diferente' };
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { name: usuario },
+    select: { id: true },
+  });
+  if (!user) return { ok: false, mensaje: 'Usuario no encontrado' };
+
+  return prisma.$transaction(async (tx) => {
+    const [actual, nuevo, totalFavoritos] = await Promise.all([
+      tx.library.findUnique({
+        where: { userId_bookId: { userId: user.id, bookId: bookIdActual } },
+        select: { id: true, isFavorite: true, updatedAt: true },
+      }),
+      tx.library.findUnique({
+        where: { userId_bookId: { userId: user.id, bookId: bookIdNuevo } },
+        select: { id: true, isFavorite: true },
+      }),
+      tx.library.count({ where: { userId: user.id, isFavorite: true } }),
+    ]);
+
+    if (!actual?.isFavorite) {
+      return { ok: false, mensaje: 'El libro actual no es favorito' };
+    }
+    if (!nuevo) {
+      return { ok: false, mensaje: 'El nuevo libro no está en tu biblioteca' };
+    }
+    if (nuevo.isFavorite) {
+      return { ok: false, mensaje: 'El nuevo libro ya es favorito' };
+    }
+    if (totalFavoritos > MAX_FAVORITOS) {
+      return { ok: false, mensaje: 'El número de favoritos no es válido' };
+    }
+
+    await tx.library.update({
+      where: { id: actual.id },
+      data: { isFavorite: false },
+    });
+    const actualizado = await tx.library.update({
+      where: { id: nuevo.id },
+      data: { isFavorite: true, updatedAt: actual.updatedAt },
+      include: { book: { include: { author: true, genre: true } } },
+    });
+
+    return {
+      ok: true,
+      mensaje: 'Favorito actualizado',
+      favorito: {
+        id: actualizado.book.id,
+        title: actualizado.book.title,
+        authorName: actualizado.book.author?.name ?? null,
+        coverUrl: actualizado.book.coverUrl ?? null,
+        genreName: actualizado.book.genre?.name ?? '',
+      },
+    };
+  });
+}
+
 export async function getFavoritosDelClub(params: {
   usuario: string;
 }): Promise<{

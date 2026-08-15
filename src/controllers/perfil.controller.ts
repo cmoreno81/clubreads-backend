@@ -6,6 +6,7 @@ import {
   getPerfilUsuario,
   getPerfilHistorialPage,
   toggleFavorito,
+  reemplazarFavorito,
   getFavoritosUsuario,
   getFavoritosDelClub,
 } from '../services/perfil.service.js';
@@ -91,6 +92,20 @@ export async function handleToggleFavorito(req: Request, res: Response) {
       bookId: String(body.bookId ?? ''),
     });
     return res.json(data);
+  } catch (err) {
+    const mensaje = err instanceof Error ? err.message : 'Error interno';
+    return res.status(200).json({ ok: false, mensaje });
+  }
+}
+
+export async function handleReemplazarFavorito(req: Request, res: Response) {
+  const body = req.body ?? {};
+  try {
+    return res.json(await reemplazarFavorito({
+      usuario: requestUserName(req),
+      bookIdActual: String(body.bookIdActual ?? ''),
+      bookIdNuevo: String(body.bookIdNuevo ?? ''),
+    }));
   } catch (err) {
     const mensaje = err instanceof Error ? err.message : 'Error interno';
     return res.status(200).json({ ok: false, mensaje });
