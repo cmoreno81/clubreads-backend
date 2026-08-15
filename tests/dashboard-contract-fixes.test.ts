@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { ReadingStatus } from '@prisma/client';
 
@@ -10,6 +11,22 @@ import {
 } from '../src/services/general-dashboard.service.js';
 import { ratingToFlutter } from '../src/utils/rating.utils.js';
 import { activityTimestamp } from '../src/utils/activity-timestamp.js';
+
+const dashboardService = await readFile(
+  new URL('../src/services/general-dashboard.service.ts', import.meta.url),
+  'utf8',
+);
+
+test('Leyendo ahora incluye lecturas normales y relecturas sin ampliar el calendario mensual', () => {
+  assert.match(
+    dashboardService,
+    /library: \{\s*where: \{\s*status: \{\s*in: \[ReadingStatus\.READING, ReadingStatus\.REREADING\]/,
+  );
+  assert.match(
+    dashboardService,
+    /const \[\s*user,[\s\S]*?prisma\.library\.findMany\(\{\s*where: \{\s*userId,\s*startedAt: \{ lt: end \},\s*OR: \[\s*\{ finishedAt: \{ gte: start \} \},\s*\{\s*status: ReadingStatus\.READING,?\s*\}/,
+  );
+});
 
 test('Mes lector incluye exclusivamente el estado canónico READING', () => {
   assert.equal(isCanonicalActiveReading(ReadingStatus.READING), true);

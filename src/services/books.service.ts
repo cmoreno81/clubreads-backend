@@ -45,6 +45,11 @@ function invalidateUserLibraryCache(usuario: string) {
   invalidatePrefix(`finalizados:${usuario}`);
 }
 
+function invalidateAllLibraryCaches() {
+  invalidatePrefix('libros:');
+  invalidatePrefix('finalizados:');
+}
+
 
 
 function statusToFlutter(status: string) {
@@ -1991,6 +1996,7 @@ if (editResult.duplicate) {
   };
 }
 const actualizado = editResult.updated!;
+invalidateAllLibraryCaches();
 
   return {
     ok: true,
@@ -2000,6 +2006,7 @@ const actualizado = editResult.updated!;
       id: actualizado.id,
       titulo: actualizado.title,
       coverUrl: actualizado.coverUrl ?? '',
+      goodreadsUrl: actualizado.goodreadsUrl ?? '',
     },
   };
 }

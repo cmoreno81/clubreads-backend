@@ -204,7 +204,9 @@ export async function getGeneralDashboard(userId: string) {
           },
           library: {
             where: {
-              status: ReadingStatus.READING,
+              status: {
+                in: [ReadingStatus.READING, ReadingStatus.REREADING],
+              },
             },
             orderBy: { updatedAt: 'desc' },
             take: 4,
