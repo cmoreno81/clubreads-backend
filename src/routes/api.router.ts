@@ -57,6 +57,7 @@ import {
   handlePerfilUsuario,
   handleActualizarFechasLectura,
   handleActualizarAvatarPerfil,
+  handleActualizarFrasePerfil,
   handleToggleFavorito,
   handleReemplazarFavorito,
   handleGetFavoritos,
@@ -191,6 +192,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'marcarConversacionVista',
   'actualizarFechasLectura',
   'actualizarAvatarPerfil',
+  'actualizarFrasePerfil',
   'toggleFavorito',
   'reemplazarFavorito',
   'registrarMoodClub',
@@ -629,7 +631,10 @@ export async function handleApi(
         return handleActualizarFechasLectura(req, res);
 
       case 'actualizarAvatarPerfil':
-        return handleActualizarAvatarPerfil(req, res);  
+        return handleActualizarAvatarPerfil(req, res);
+
+      case 'actualizarFrasePerfil':
+        return handleActualizarFrasePerfil(req, res);
 
       case 'moodClub':
         return handleMoodClub(req, res);  

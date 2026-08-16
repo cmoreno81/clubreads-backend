@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 
 import {
   actualizarAvatarPerfil,
+  actualizarFrasePerfil,
   actualizarFechasLectura,
   getPerfilUsuario,
   getPerfilHistorialPage,
@@ -81,6 +82,18 @@ export async function handleActualizarAvatarPerfil(
     avatarUrl: String(body.avatarUrl ?? ''),
   });
 
+  return res.json(data);
+}
+
+export async function handleActualizarFrasePerfil(
+  req: Request,
+  res: Response,
+) {
+  const body = req.body ?? {};
+  const data = await actualizarFrasePerfil({
+    usuario: requestUserName(req),
+    bio: String(body.bio ?? ''),
+  });
   return res.json(data);
 }
 

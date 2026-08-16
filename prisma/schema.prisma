@@ -316,6 +316,7 @@ model User {
   email String @unique
 
   avatarUrl String?
+  bio       String?
 
   passwordHash        String?
   passwordSetAt       DateTime?

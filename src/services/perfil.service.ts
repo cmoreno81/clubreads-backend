@@ -614,6 +614,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
     usuario: user.name,
     email: user.email,
     avatarUrl: user.avatarUrl ?? '',
+    bio: user.bio ?? '',
 
     resumen: {
       terminados: finalizadosIds.size,
@@ -1192,6 +1193,34 @@ export async function actualizarAvatarPerfil(params: {
           : 'No se ha podido procesar la imagen',
     };
   }
+}
+
+export async function actualizarFrasePerfil(params: {
+  usuario: string;
+  bio: string;
+}) {
+  const usuario = params.usuario.trim();
+  const bio = params.bio.slice(0, 160);
+
+  if (!usuario) {
+    return { ok: false, mensaje: 'Falta la usuaria' };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { name: usuario },
+    select: { id: true },
+  });
+
+  if (!user) {
+    return { ok: false, mensaje: 'Usuaria no encontrada' };
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { bio: bio || null },
+  });
+
+  return { ok: true, mensaje: 'Frase actualizada', bio };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
