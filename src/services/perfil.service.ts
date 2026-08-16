@@ -610,6 +610,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
 
   return {
     ok: true,
+    userId: user.id,
     usuario: user.name,
     email: user.email,
     avatarUrl: user.avatarUrl ?? '',
@@ -1366,6 +1367,7 @@ export async function getFavoritosDelClub(params: {
   });
 
   const toMiembro = (m: (typeof members)[number]) => ({
+    userId: m.user.id,
     nombre: m.user.name,
     avatarUrl: m.user.avatarUrl ?? '',
     esTu: m.user.id === user.id,

@@ -223,8 +223,17 @@ async function assertSharedVisibleClub(requesterId: string, targetId: string) {
   if (!shared) throw new BookOfYearError('FORBIDDEN', 'No compartís un club visible');
 }
 
-export async function getPublicBookOfYear(requesterId: string, profile: string, year: number, now = new Date()) {
-  const target = await prisma.user.findFirst({ where: { name: profile.trim() }, select: { id: true } });
+export async function getPublicBookOfYear(
+  requesterId: string,
+  profile: string,
+  year: number,
+  now = new Date(),
+  profileId?: string,
+) {
+  // Prefer stable ID lookup; fall back to name search.
+  const target = profileId?.trim()
+    ? await prisma.user.findUnique({ where: { id: profileId.trim() }, select: { id: true } })
+    : await prisma.user.findFirst({ where: { name: profile.trim() }, select: { id: true } });
   if (!target) throw new BookOfYearError('USER_NOT_FOUND', 'Usuaria no encontrada');
   await assertSharedVisibleClub(requesterId, target.id);
   return boardForUser(target.id, year, false, now);

@@ -29,7 +29,11 @@ export async function handleChooseAnnualBookOfYear(req: Request, res: Response) 
   try { return res.json(await chooseAnnualBookOfYear(req.auth!.userId, Number(req.body.anio), String(req.body.bookId))); } catch (error) { return fail(res, error); }
 }
 export async function handleGetPublicBookOfYear(req: Request, res: Response) {
-  try { return res.json(await getPublicBookOfYear(req.auth!.userId, String(req.query.perfil), yearFrom(req.query.anio))); } catch (error) { return fail(res, error); }
+  try {
+    const profile = req.query.perfil ? String(req.query.perfil) : '';
+    const profileId = req.query.profileUserId ? String(req.query.profileUserId) : undefined;
+    return res.json(await getPublicBookOfYear(req.auth!.userId, profile, yearFrom(req.query.anio), new Date(), profileId));
+  } catch (error) { return fail(res, error); }
 }
 export async function handleGetClubBooksOfYear(req: Request, res: Response) {
   try { return res.json(await getClubBooksOfYear(req.auth!.userId, yearFrom(req.query.anio))); } catch (error) { return fail(res, error); }

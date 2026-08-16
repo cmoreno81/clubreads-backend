@@ -163,7 +163,7 @@ export const actionQuerySchemas: Record<string, z.ZodType> = {
   comentariosLectura: z.object({ action: z.literal('comentariosLectura'), libro: identifierSchema, capitulo: identifierSchema }).passthrough(),
   conversacionesLibro: z.object({ action: z.literal('conversacionesLibro'), libro: identifierSchema }).passthrough(),
   miLibroDelAnio: z.object({ action: z.literal('miLibroDelAnio'), anio: positiveIntegerSchema }).passthrough(),
-  libroDelAnioPublico: z.object({ action: z.literal('libroDelAnioPublico'), perfil: identifierSchema, anio: positiveIntegerSchema }).passthrough(),
+  libroDelAnioPublico: z.object({ action: z.literal('libroDelAnioPublico'), perfil: identifierSchema.optional(), profileUserId: identifierSchema.optional(), anio: positiveIntegerSchema }).refine((d) => d.perfil || d.profileUserId, { message: 'Falta el identificador del perfil (perfil o profileUserId)' }).passthrough(),
   librosDelAnioClub: z.object({ action: z.literal('librosDelAnioClub'), anio: positiveIntegerSchema }).passthrough(),
   libroDelAnioClub: z.object({ action: z.literal('libroDelAnioClub'), anio: positiveIntegerSchema }).passthrough(),
   prepararLibroDelAnioClub: z.object({ action: z.literal('prepararLibroDelAnioClub'), anio: positiveIntegerSchema }).passthrough(),
