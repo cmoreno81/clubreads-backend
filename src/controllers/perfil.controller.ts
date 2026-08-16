@@ -113,8 +113,11 @@ export async function handleReemplazarFavorito(req: Request, res: Response) {
 }
 
 export async function handleGetFavoritos(req: Request, res: Response) {
-  const perfil = String(req.query.perfil ?? req.query.usuario ?? req.auth?.userName ?? '');
-  const data = await getFavoritosUsuario({ usuario: perfil });
+  // Eliminado el fallback req.auth?.userName para evitar devolver los favoritos
+  // del usuario autenticado cuando se visita un perfil ajeno sin parámetro perfil.
+  const perfil = String(req.query.perfil ?? req.query.usuario ?? '');
+  const profileId = req.query.profileUserId ? String(req.query.profileUserId) : undefined;
+  const data = await getFavoritosUsuario({ usuario: perfil, profileId });
   return res.json(data);
 }
 

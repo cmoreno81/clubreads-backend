@@ -36,5 +36,5 @@ export async function handleGetPublicBookOfYear(req: Request, res: Response) {
   } catch (error) { return fail(res, error); }
 }
 export async function handleGetClubBooksOfYear(req: Request, res: Response) {
-  try { return res.json(await getClubBooksOfYear(req.auth!.userId, yearFrom(req.query.anio))); } catch (error) { return fail(res, error); }
+  try { return res.json(await getClubBooksOfYear(req.auth!.userName, yearFrom(req.query.anio))); } catch (error) { return fail(res, error); }
 }

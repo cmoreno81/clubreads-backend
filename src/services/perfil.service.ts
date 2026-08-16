@@ -1391,13 +1391,15 @@ export async function getFavoritosDelClub(params: {
 
 export async function getFavoritosUsuario(params: {
   usuario: string;
+  /** ID estable del perfil. Si se proporciona, el lookup por nombre es secundario. */
+  profileId?: string;
 }): Promise<{ ok: boolean; favoritos: Array<{ id: string; title: string; authorName: string | null; coverUrl: string | null; genreName: string }> }> {
-  const { usuario } = params;
+  const { usuario, profileId } = params;
 
-  const user = await prisma.user.findFirst({
-    where: { name: usuario },
-    select: { id: true },
-  });
+  // Lookup preferente por ID estable; fallback por nombre si no hay ID.
+  const user = profileId?.trim()
+    ? await prisma.user.findUnique({ where: { id: profileId.trim() }, select: { id: true } })
+    : await prisma.user.findFirst({ where: { name: usuario.trim() }, select: { id: true } });
   if (!user) return { ok: false, favoritos: [] };
 
   const entries = await prisma.library.findMany({

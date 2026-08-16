@@ -1,5 +1,6 @@
 import { BookOfYearDuelPhase, Prisma } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { getCurrentClubContext } from './club-context.service.js';
 
 const MADRID = 'Europe/Madrid';
 const bookInclude = { author: { select: { name: true } } } as const;
@@ -239,11 +240,13 @@ export async function getPublicBookOfYear(
   return boardForUser(target.id, year, false, now);
 }
 
-export async function getClubBooksOfYear(userId: string, year: number, now = new Date()) {
+export async function getClubBooksOfYear(userName: string, year: number, now = new Date()) {
   validateYear(year);
-  const memberships = await prisma.clubMember.findMany({ where: { userId, club: { tipo: 'SOCIAL' } }, select: { clubId: true } });
+  // Usamos el club activo del usuario (no todos sus clubs) para evitar que miembros
+  // de otros clubs aparezcan en la vista "Elecciones de los miembros".
+  const { club } = await getCurrentClubContext(userName);
   const users = await prisma.user.findMany({
-    where: { clubMemberships: { some: { clubId: { in: memberships.map(({ clubId }) => clubId) } } }, bookOfYearMonthlySelections: { some: { year } } },
+    where: { clubMemberships: { some: { clubId: club.id } }, bookOfYearMonthlySelections: { some: { year } } },
     select: { id: true, name: true, avatarUrl: true, bookOfYearMonthlySelections: { where: { year }, orderBy: { month: 'asc' }, include: { book: { include: bookInclude } } }, bookOfYearFinalists: { where: { year }, include: { book: { include: bookInclude } } }, bookOfYearWinners: { where: { year }, include: { book: { include: bookInclude } } } },
   });
   return { ok: true, year, miembros: users.map((user) => ({ usuario: user.name, avatarUrl: user.avatarUrl ?? '', completedMonths: user.bookOfYearMonthlySelections.length, selections: user.bookOfYearMonthlySelections.map((item) => ({ month: item.month, book: serializeBook(item.book) })), finalists: user.bookOfYearFinalists.map((item) => serializeBook(item.book)), winner: user.bookOfYearWinners[0] ? serializeBook(user.bookOfYearWinners[0].book) : null })) };
