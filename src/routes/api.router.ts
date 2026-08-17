@@ -27,6 +27,7 @@ import {
   handleActualizarProgresoLectura,
   handleToggleProgressReaction,
   handleActualizarPaginaLibrary,
+  handleExportBiblioteca,
 } from '../controllers/books.controller.js';
 
 import { handleDashboard, handleAfinidadDetalle } from '../controllers/dashboard.controller.js';
@@ -472,6 +473,9 @@ export async function handleApi(
 
       case 'libroPorId':
         return handleGetLibroPorId(req, res);
+
+      case 'exportBiblioteca':
+        return handleExportBiblioteca(req, res);
 
       case 'crearLibro':
         return handleCrearLibro(req, res);

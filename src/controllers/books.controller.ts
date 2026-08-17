@@ -202,6 +202,12 @@ export async function handleLibrosFinalizadosTodos(req: Request, res: Response) 
   return res.json(data);
 }
 
+export async function handleExportBiblioteca(req: Request, res: Response) {
+  const { exportBiblioteca } = await import('../services/export-biblioteca.service.js');
+  const data = await exportBiblioteca(requestUserName(req));
+  return res.json(data);
+}
+
 export async function handleGetLibroPorId(req: Request, res: Response) {
   const { getLibroPorId } = await import('../services/libro-por-id.service.js');
   const bookId = String(req.query.bookId || req.query.id || '').trim();
