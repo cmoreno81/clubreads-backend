@@ -774,6 +774,9 @@ export async function getComentariosLecturaPage(
   capitulo: string,
   usuarioActual: string,
   pagination: PaginationRequest,
+  /** ISO timestamp del corte de novedad, proporcionado por el cliente
+   *  en las páginas 2+ para mantener el mismo corte que en la primera. */
+  cutoffOverride?: string | null,
 ) {
   const { club } = await getCurrentClubContext(usuarioActual);
   const conversation = await prisma.conversation.findFirst({
@@ -787,24 +790,34 @@ export async function getComentariosLecturaPage(
     },
     select: { id: true },
   });
-  if (!conversation) return { items: [], nextCursor: null, hasMore: false };
+  if (!conversation) return { items: [], nextCursor: null, hasMore: false, cutoffDate: null };
 
   const user = await prisma.user.findUnique({
     where: { name: usuarioActual.trim() },
     select: { id: true },
   });
   const usuarioId = user?.id ?? '';
-  if (user) {
-    await prisma.conversationRead.upsert({
+
+  // Determinar el corte de novedad.
+  // En la primera página (sin cursor) se lee el lastSeenAt actual ANTES de
+  // actualizarlo para poder marcar correctamente los comentarios nuevos.
+  // La actualización la realiza exclusivamente marcarConversacionVista.
+  // En páginas siguientes se usa el valor que el cliente devuelve (cutoffOverride).
+  let cutoffDate: Date | null = null;
+  if (cutoffOverride) {
+    const parsed = new Date(cutoffOverride);
+    if (!isNaN(parsed.getTime())) cutoffDate = parsed;
+  } else if (user && !pagination.cursor) {
+    const existing = await prisma.conversationRead.findUnique({
       where: {
         userId_conversationId: {
           userId: user.id,
           conversationId: conversation.id,
         },
       },
-      update: { lastSeenAt: new Date() },
-      create: { userId: user.id, conversationId: conversation.id },
+      select: { lastSeenAt: true },
     });
+    cutoffDate = existing?.lastSeenAt ?? null;
   }
 
   const comments = await prisma.comment.findMany({
@@ -843,8 +856,16 @@ export async function getComentariosLecturaPage(
     value: comment.createdAt.toISOString(),
     id: comment.id,
   }));
+
+  const isNew = (createdAt: Date, authorName: string) =>
+    cutoffDate !== null &&
+    createdAt > cutoffDate &&
+    authorName !== usuarioActual;
+
   return {
     ...page,
+    /** Corte de novedad ISO para que el cliente lo propague en páginas siguientes. */
+    cutoffDate: cutoffDate?.toISOString() ?? null,
     items: page.items.map((comment) => ({
       id: comment.id,
       libro,
@@ -862,6 +883,7 @@ export async function getComentariosLecturaPage(
       miLike: comment.likes.some(({ userId }) => userId === usuarioId),
       esMio: comment.user.name === usuarioActual,
       avatarUrl: comment.user.avatarUrl ?? '',
+      esNuevo: isNew(comment.createdAt, comment.user.name),
       respuestas: comment.replies.map((reply) => ({
         id: reply.id,
         comentarioId: comment.id,
@@ -876,6 +898,7 @@ export async function getComentariosLecturaPage(
         eliminado: false,
         esMia: reply.user.name === usuarioActual,
         avatarUrl: reply.user.avatarUrl ?? '',
+        esNueva: isNew(reply.createdAt, reply.user.name),
       })),
     })),
   };
