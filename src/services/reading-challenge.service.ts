@@ -4,6 +4,8 @@ export async function getClubReadingChallenges(userName: string) {
   const { club } = await import('./club-context.service.js')
     .then(m => m.getCurrentClubContext(userName));
 
+  const isPersonal = club.tipo === 'PERSONAL';
+
   const year = new Date().getFullYear();
   const yearStart = new Date(year, 0, 1);
   const yearEnd = new Date(year + 1, 0, 1);
@@ -67,9 +69,15 @@ export async function getClubReadingChallenges(userName: string) {
   return {
     ok: true,
     year,
-    clubTotal,
-    clubTarget,
-    challenges,
+    isPersonal,
+    // En cuentas personales no hay reto ni ranking colectivo
+    clubTotal: isPersonal ? 0 : clubTotal,
+    clubTarget: isPersonal ? 0 : clubTarget,
+    // En personal: solo devuelve el propio registro (para "Mi reto"),
+    // sin el resto de miembros del club
+    challenges: isPersonal
+      ? challenges.filter(c => c.isMe)
+      : challenges,
   };
 }
 
