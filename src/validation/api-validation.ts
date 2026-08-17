@@ -25,6 +25,14 @@ export const shortTextSchema = z.string().trim().min(1).max(200);
 export const textSchema = z.string().max(MAX_TEXT);
 export const longTextSchema = z.string().max(MAX_LONG_TEXT);
 export const urlSchema = z.union([z.literal(''), z.string().trim().url().max(MAX_URL)]);
+// Acepta URL normal, data:image/ (base64 de galería) o cadena vacía (eliminar foto).
+// El límite de 8 MB en base64 cubre imágenes de hasta ~6 MB antes de codificar.
+const MAX_AVATAR_BASE64 = 8 * 1024 * 1024;
+const avatarUrlSchema = z.union([
+  z.literal(''),
+  z.string().trim().url().max(MAX_URL),
+  z.string().startsWith('data:image/').max(MAX_AVATAR_BASE64),
+]);
 
 const finiteNumber = z.number().finite();
 const decimalString = z.string().trim().regex(/^-?(?:\d+|\d+\.\d+|\.\d+)$/);
@@ -116,7 +124,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   doCheckin: emptyBody,
   unirseClub: body({ codigo: z.string().trim().min(1).max(100) }),
   seleccionarClub: idBody('clubId'), invitacionClub: idBody('clubId'), salirClub: idBody('clubId'),
-  editarClub: body({ clubId: identifierSchema, nombre: shortTextSchema.optional(), descripcion: textSchema.optional(), avatarUrl: urlSchema.optional() }),
+  editarClub: body({ clubId: identifierSchema, nombre: shortTextSchema.optional(), descripcion: textSchema.optional(), avatarUrl: avatarUrlSchema.optional() }),
   crearLibro: body({ libro: shortTextSchema.optional(), titulo: shortTextSchema.optional(), title: shortTextSchema.optional(), author: shortTextSchema.optional(), isbn: z.string().max(32).optional(), totalPages: pageSchema.optional(), confirmarNuevo: z.boolean().optional(), ...bookMutationFields }).refine((v) => Boolean(v.libro || v.titulo || v.title), { path: ['titulo'], message: 'Título obligatorio' }),
   editarLibro: body({ bookId: identifierSchema.optional(), id: identifierSchema.optional(), ...bookMutationFields }).refine((v) => Boolean(v.bookId || v.id), { path: ['bookId'], message: 'Identificador obligatorio' }),
   anadirLibroExistente: body({ libro: identifierSchema, prioridad: prioritySchema, formato: formatSchema.optional() }),
@@ -136,7 +144,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   editarRespuesta: replyIdBody.and(body({ respuesta: textSchema.min(1) })), eliminarRespuesta: replyIdBody,
   marcarConversacionVista: body({ libro: identifierSchema, capitulo: z.union([identifierSchema, integerSchema]) }),
   actualizarFechasLectura: body({ libraryId: identifierSchema, completionId: identifierSchema.optional(), fechaInicio: optionalDateSchema, fechaFin: optionalDateSchema, valoracion: ratingSchema.optional(), resena: longTextSchema.optional() }).refine((v) => datesAreOrdered(v.fechaInicio, v.fechaFin), { path: ['fechaFin'], message: 'La fecha final no puede ser anterior a la inicial' }),
-  actualizarAvatarPerfil: body({ avatarUrl: urlSchema }),
+  actualizarAvatarPerfil: body({ avatarUrl: avatarUrlSchema }),
   actualizarFrasePerfil: body({ bio: z.string().max(160) }),
   registrarMoodClub: body({ mood: z.enum(['HOOKED', 'SHOCKED', 'CRYING', 'ANGRY', 'LAUGHING', 'BLOCKED']) }),
   toggleFavorito: body({ bookId: identifierSchema }),
