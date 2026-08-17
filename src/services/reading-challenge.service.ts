@@ -1,8 +1,9 @@
 import { prisma } from '../prisma.js';
 
 export async function getClubReadingChallenges(userName: string) {
+  const normalizedUserName = userName.trim();
   const { club } = await import('./club-context.service.js')
-    .then(m => m.getCurrentClubContext(userName));
+    .then(m => m.getCurrentClubContext(normalizedUserName));
 
   const isPersonal = club.tipo === 'PERSONAL';
 
@@ -56,7 +57,7 @@ export async function getClubReadingChallenges(userName: string) {
         read,
         pct: pct ?? 0,
         hasChallenge: target !== null,
-        isMe: m.user.name === userName,
+        isMe: m.user.name === normalizedUserName,
       };
     })
     .sort((a, b) => {
