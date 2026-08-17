@@ -205,6 +205,7 @@ export async function handleLibrosFinalizadosTodos(req: Request, res: Response) 
 export async function handleGetLibroPorId(req: Request, res: Response) {
   const { getLibroPorId } = await import('../services/libro-por-id.service.js');
   const bookId = String(req.query.bookId || req.query.id || '').trim();
-  const data = await getLibroPorId(bookId, requestUserName(req));
+  const global = req.query.global === 'true';
+  const data = await getLibroPorId(bookId, requestUserName(req), global);
   return res.json(data);
 }
