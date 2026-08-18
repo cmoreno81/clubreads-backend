@@ -7,6 +7,7 @@ import {
   handleMiVoto,
   handleComoVotaron,
   handleHistorialClubvision,
+  handleGetClubvisionEstadisticas,
 } from '../controllers/clubvision.controller.js';
 
 import { handleUsuarios } from '../controllers/users.controller.js';
@@ -528,6 +529,10 @@ export async function handleApi(
 
       case 'historialClubvision':
         return handleHistorialClubvision(req, res);
+
+      case 'clubvisionEstadisticas':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetClubvisionEstadisticas(req, res);
 
       case 'lecturasActivas':
         return handleLecturasActivas(req, res);
