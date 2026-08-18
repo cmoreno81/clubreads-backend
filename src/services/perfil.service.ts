@@ -1453,3 +1453,37 @@ export async function getFavoritosUsuario(params: {
     })),
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Personalidad lectora
+// ─────────────────────────────────────────────────────────────────────────────
+
+const VALID_PERSONALITIES = new Set([
+  'nocturna', 'maratonista', 'romantica', 'reflexiva', 'imparable', 'estetica',
+]);
+
+export async function guardarPersonalidadLectora(params: {
+  usuario: string;
+  arquetipo: string;
+}) {
+  const usuario = params.usuario.trim();
+  const arquetipo = params.arquetipo.trim();
+
+  if (!usuario) return { ok: false, mensaje: 'Falta la usuaria' };
+  if (!VALID_PERSONALITIES.has(arquetipo)) {
+    return { ok: false, mensaje: 'Arquetipo no válido' };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { name: usuario },
+    select: { id: true },
+  });
+  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { readerPersonality: arquetipo },
+  });
+
+  return { ok: true, arquetipo };
+}

@@ -63,6 +63,7 @@ import {
   handleReemplazarFavorito,
   handleGetFavoritos,
   handleGetFavoritosDelClub,
+  handleGuardarPersonalidadLectora,
 } from '../controllers/perfil.controller.js';
 
 import {
@@ -93,6 +94,7 @@ import {
   handleCreateClub,
   handleCrearEspacioPersonal,
   handleGetClubMembers,
+  handleGetPersonalidadesClub,
   handleJoinClub,
   handleLeaveClub,
   handleMyClubs,
@@ -194,6 +196,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'actualizarFechasLectura',
   'actualizarAvatarPerfil',
   'actualizarFrasePerfil',
+  'guardarPersonalidadLectora',
   'toggleFavorito',
   'reemplazarFavorito',
   'registrarMoodClub',
@@ -639,6 +642,14 @@ export async function handleApi(
 
       case 'actualizarFrasePerfil':
         return handleActualizarFrasePerfil(req, res);
+
+      case 'guardarPersonalidadLectora':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGuardarPersonalidadLectora(req, res);
+
+      case 'getPersonalidadesClub':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetPersonalidadesClub(req, res);
 
       case 'moodClub':
         return handleMoodClub(req, res);  

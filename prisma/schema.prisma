@@ -315,8 +315,9 @@ model User {
   name  String @unique
   email String @unique
 
-  avatarUrl String?
-  bio       String?
+  avatarUrl         String?
+  bio               String?
+  readerPersonality String? // arquetipo del quiz lector: nocturna | maratonista | romantica | reflexiva | imparable | estetica
 
   passwordHash        String?
   passwordSetAt       DateTime?

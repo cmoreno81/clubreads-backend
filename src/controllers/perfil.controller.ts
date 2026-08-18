@@ -10,6 +10,7 @@ import {
   reemplazarFavorito,
   getFavoritosUsuario,
   getFavoritosDelClub,
+  guardarPersonalidadLectora,
 } from '../services/perfil.service.js';
 import { requestUserName } from '../middleware/auth.middleware.js';
 import {
@@ -136,5 +137,12 @@ export async function handleGetFavoritos(req: Request, res: Response) {
 
 export async function handleGetFavoritosDelClub(req: Request, res: Response) {
   const data = await getFavoritosDelClub({ usuario: requestUserName(req) });
+  return res.json(data);
+}
+
+export async function handleGuardarPersonalidadLectora(req: Request, res: Response) {
+  const usuario = requestUserName(req);
+  const arquetipo = String(req.body?.arquetipo ?? req.query?.arquetipo ?? '');
+  const data = await guardarPersonalidadLectora({ usuario, arquetipo });
   return res.json(data);
 }

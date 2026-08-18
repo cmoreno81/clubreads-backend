@@ -10,6 +10,7 @@ import {
   leaveClub,
   updateClub,
   getClubMembers,
+  getPersonalidadesClub,
 } from '../services/clubs.service.js';
 
 export async function handleMyClubs(req: Request, res: Response) {
@@ -84,4 +85,8 @@ export async function handleGetClubMembers(req: Request, res: Response) {
 
 export async function handleCrearEspacioPersonal(req: Request, res: Response) {
   return res.json(await crearEspacioPersonal(req.auth!.userId));
+}
+
+export async function handleGetPersonalidadesClub(req: Request, res: Response) {
+  return res.json(await getPersonalidadesClub(req.auth!.userId));
 }
