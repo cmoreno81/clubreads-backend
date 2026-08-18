@@ -1067,16 +1067,15 @@ export async function getClubvisionEstadisticas(userId: string) {
     ratingsMap.set(c.bookId, r);
   }
 
-  // Comentarios en la lectura oficial de cada libro ganador
+  // Comentarios en cualquier lectura del club para cada libro ganador
+  // (sin filtrar por tipo para incluir lecturas creadas como FREE o CLUBVISION)
   const lecturas = await prisma.reading.findMany({
     where: {
       clubId: club.id,
       bookId: { in: bookIds },
-      type: ReadingType.CLUBVISION,
     },
     select: {
       bookId: true,
-      _count: { select: { conversations: true } },
       conversations: {
         select: { _count: { select: { comments: { where: { deletedAt: null } } } } },
       },
@@ -1084,8 +1083,9 @@ export async function getClubvisionEstadisticas(userId: string) {
   });
   const comentariosMap = new Map<string, number>();
   for (const l of lecturas) {
+    const prev = comentariosMap.get(l.bookId) ?? 0;
     const total = l.conversations.reduce((sum, c) => sum + c._count.comments, 0);
-    comentariosMap.set(l.bookId, total);
+    comentariosMap.set(l.bookId, prev + total);
   }
 
   // Participación media en votaciones (votantes únicos por edición)
