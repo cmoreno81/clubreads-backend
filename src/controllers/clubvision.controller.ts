@@ -67,6 +67,5 @@ export async function handleHistorialClubvision(req: Request, res: Response) {
 }
 
 export async function handleGetClubvisionEstadisticas(req: Request, res: Response) {
-  const userId = req.auth!.userId;
-  return res.json(await getClubvisionEstadisticas(userId));
+  return res.json(await getClubvisionEstadisticas(requestUserName(req)));
 }
