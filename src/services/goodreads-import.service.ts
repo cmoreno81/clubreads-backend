@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { prisma } from '../prisma.js';
 import { canonicalBookTitle } from './catalog.service.js';
 import { findImportedBookCover } from './book-cover.service.js';
-import { findBookByIdentity, lockBookIdentity } from './book-identity.service.js';
+import { findBookByIdentity, lockBookIdentity, findSimilarBooks } from './book-identity.service.js';
 import { logger, logAt } from '../logging/logger.js';
 
 const MAX_IMPORT_ROWS = 2_000;
@@ -278,10 +278,20 @@ export function importTitleVariants(value: string) {
   const withoutTrailingParenthetical = canonical
     .replace(/\s*\([^)]*\)\s*$/u, '')
     .trim();
+  // Variante sin subtítulo: quita todo lo que va tras ": " o " . " (separadores de subtítulo
+  // habituales en Bookmory/Goodreads, ej. "Book Lovers: Amor entre libros" → "Book Lovers",
+  // "Immortal Dark. Peligroso. Irresistible." → "Immortal Dark").
+  // Solo se aplica si el fragmento anterior al separador tiene al menos 4 caracteres,
+  // para no mutilar títulos cortos genuinos.
+  const withoutSubtitle = canonical
+    .replace(/\s*:\s+.+$/, '')
+    .replace(/\s+\.\s+.+$/, '')
+    .trim();
   return [
     ...new Set(
-      [canonical, withoutSeriesSuffix, withoutTrailingParenthetical]
-        .filter(Boolean),
+      [canonical, withoutSeriesSuffix, withoutTrailingParenthetical,
+       withoutSubtitle.length >= 4 ? withoutSubtitle : null]
+        .filter((x): x is string => typeof x === 'string' && x.length > 0),
     ),
   ];
 }
@@ -392,7 +402,7 @@ export async function buildImportPreview(
       importedAuthorsByTitle.set(title, authors);
     }
   }
-  return rows.map<ImportPreviewItem>((row) => {
+  return Promise.all(rows.map(async (row): Promise<ImportPreviewItem> => {
     if (!row.title || !row.author) {
       return {
         index: row.index,
@@ -523,6 +533,31 @@ export async function buildImportPreview(
           candidatos: uniqueTitleMatches.map(candidateFromBook),
         };
       }
+      // Antes de marcar como NUEVO, buscar libros similares por solapamiento de palabras.
+      // Si hay candidatos con ≥ 50 % de overlap, se muestra como REVISAR para que el usuario
+      // confirme si es el mismo libro o uno distinto. Esto evita duplicados cuando Bookmory/
+      // Goodreads usa subtítulos o formatos de título distintos al que ya tenemos en el catálogo.
+      const similares = await findSimilarBooks(database, row.title, {
+        authorName: row.author ?? null,
+        limit: 3,
+      });
+      if (similares.length > 0) {
+        return {
+          index: row.index,
+          titulo: row.title,
+          autor: row.author,
+          accion: 'REVISAR' as const,
+          mensaje:
+            'No se encontró una coincidencia exacta, pero hay libros parecidos en el catálogo. Revisa si es el mismo antes de crear uno nuevo.',
+          candidatos: similares.map((s) => ({
+            bookId:   s.id,
+            titulo:   s.title,
+            autor:    s.authorName ?? '',
+            isbn:     '',
+            coverUrl: s.coverUrl ?? '',
+          })),
+        };
+      }
       return {
         index: row.index,
         titulo: row.title,
@@ -551,7 +586,7 @@ export async function buildImportPreview(
       bookId: match.id,
       candidatos: candidates.map(candidateFromBook),
     };
-  });
+  }));
 }
 
 function previewSummary(items: ImportPreviewItem[], excluded = 0) {
