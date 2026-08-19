@@ -51,7 +51,8 @@ const GENRES: { name: string; icon: string }[] = [
   { name: 'Novela Negra',          icon: '🕵️' },
   { name: 'Cómic',                 icon: '💬' },
   { name: 'No ficción',            icon: '🧠' },
-  { name: 'Infantil',              icon: '🎈' }, // ← nuevo género añadido
+  { name: 'Infantil',              icon: '🎈' },
+  { name: 'Mafia Romance',         icon: '🌹🔫' },
 ];
 
 async function main() {
