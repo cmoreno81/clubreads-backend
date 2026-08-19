@@ -133,6 +133,7 @@ import {
 import { validateActionInput } from '../validation/api-validation.js';
 import { handleChooseAnnualBookOfYear, handleChooseBookOfYearDuel, handleGetClubBooksOfYear, handleGetMyBookOfYear, handleGetPublicBookOfYear, handleSaveMonthlyBookOfYear } from '../controllers/book-of-year.controller.js';
 import { handleReactionDetails } from '../controllers/reaction-details.controller.js';
+import { handleEnviarFeedback } from '../controllers/feedback.controller.js';
 import { handleCancelClubBookOfYear, handleCloseClubBookOfYearQualifying, handleCloseClubBookOfYearRound, handleGetClubBookOfYear, handleGetClubBookOfYearHistory, handleLinkClubBookOfYearHistoricalCandidate, handleOpenClubBookOfYearRound, handleOpenClubBookOfYearVoting, handlePrepareClubBookOfYear, handleStartClubBookOfYear, handleSyncClubBookOfYear, handleVoteClubBookOfYearDuel, handleVoteClubBookOfYearQualifying } from '../controllers/club-book-of-year.controller.js';
 export const apiRouter = Router();
 
@@ -197,6 +198,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'actualizarFechasLectura',
   'actualizarAvatarPerfil',
   'actualizarFrasePerfil',
+  'enviarFeedback',
   'guardarPersonalidadLectora',
   'toggleFavorito',
   'reemplazarFavorito',
@@ -651,6 +653,9 @@ export async function handleApi(
       case 'guardarPersonalidadLectora':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGuardarPersonalidadLectora(req, res);
+
+      case 'enviarFeedback':
+        return handleEnviarFeedback(req, res);
 
       case 'getPersonalidadesClub':
         if (!req.auth) return requireAuthentication(req, res, () => {});
