@@ -10,6 +10,10 @@ export interface FeedbackParams {
   category: FeedbackCategory;
   titulo: string;
   descripcion: string;
+  /** Imagen adjunta en base64 (opcional) */
+  imageBase64?: string;
+  /** Nombre del fichero de imagen (ej: "screenshot.jpg") */
+  imageFileName?: string;
 }
 
 export interface FeedbackResult {
@@ -121,6 +125,44 @@ async function createJiraIssue(params: FeedbackParams): Promise<string | null> {
   return data.key ?? null;
 }
 
+async function attachImageToJiraIssue(
+  ticketKey: string,
+  imageBase64: string,
+  fileName: string,
+): Promise<void> {
+  const cfg = jiraConfig();
+  if (!cfg) return;
+
+  const credentials = Buffer.from(`${cfg.email}:${cfg.token}`).toString('base64');
+  const imageBuffer = Buffer.from(imageBase64, 'base64');
+
+  // Construimos el FormData manualmente con boundary para evitar dependencias externas
+  const boundary = `----FormBoundary${Date.now()}`;
+  const nl = '\r\n';
+  const dispositionHeader = `Content-Disposition: form-data; name="file"; filename="${fileName}"${nl}Content-Type: application/octet-stream${nl}${nl}`;
+  const header = Buffer.from(`--${boundary}${nl}${dispositionHeader}`);
+  const footer = Buffer.from(`${nl}--${boundary}--${nl}`);
+  const body = Buffer.concat([header, imageBuffer, footer]);
+
+  const response = await observeExternalCall('jira', 'attach_image', () =>
+    fetch(`https://${cfg.domain}/rest/api/3/issue/${ticketKey}/attachments`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        'X-Atlassian-Token': 'no-check',
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        Accept: 'application/json',
+      },
+      body,
+    }),
+  );
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    logger.warn({ status: response.status, body: text }, 'No se pudo adjuntar imagen al ticket Jira');
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Email de confirmación (Brevo)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -205,6 +247,14 @@ export async function enviarFeedback(params: FeedbackParams): Promise<FeedbackRe
     logger.error(err, 'Error inesperado creando ticket Jira');
     return null;
   });
+
+  // Adjunta imagen al ticket si se proporcionó
+  if (ticketKey && params.imageBase64) {
+    const fileName = params.imageFileName || 'evidencia.jpg';
+    await attachImageToJiraIssue(ticketKey, params.imageBase64, fileName).catch((err) => {
+      logger.warn(err, 'Error al adjuntar imagen al ticket Jira');
+    });
+  }
 
   // Envía email de confirmación (no lanza error si falla)
   await sendConfirmationEmail(params, ticketKey).catch((err) => {

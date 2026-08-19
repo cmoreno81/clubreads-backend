@@ -10,6 +10,8 @@ export async function handleEnviarFeedback(req: Request, res: Response) {
   const descripcion = String(req.body?.descripcion || '').trim();
   const reporterEmail = String(req.body?.email || '').trim();
   const reporterName = String(req.body?.nombre || '').trim() || 'Lectora';
+  const imageBase64 = typeof req.body?.imageBase64 === 'string' ? req.body.imageBase64 : undefined;
+  const imageFileName = typeof req.body?.imageFileName === 'string' ? req.body.imageFileName : undefined;
 
   if (!VALID_CATEGORIES.has(category)) {
     return res.status(400).json({ ok: false, error: 'VALIDATION_ERROR', mensaje: 'Categoría no válida' });
@@ -30,6 +32,8 @@ export async function handleEnviarFeedback(req: Request, res: Response) {
     category,
     titulo,
     descripcion,
+    imageBase64,
+    imageFileName,
   });
 
   return res.json(result);
