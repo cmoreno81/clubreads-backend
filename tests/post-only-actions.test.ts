@@ -73,6 +73,16 @@ const mutationHandlers: Record<string, string> = {
   guardarSeleccionLibroDelAnio: 'handleSaveMonthlyBookOfYear',
   elegirDueloLibroDelAnio: 'handleChooseBookOfYearDuel',
   elegirLibroDelAnio: 'handleChooseAnnualBookOfYear',
+  iniciarLibroDelAnioClub: 'handleStartClubBookOfYear',
+  votarClasificacionLibroDelAnioClub: 'handleVoteClubBookOfYearQualifying',
+  cerrarClasificacionLibroDelAnioClub: 'handleCloseClubBookOfYearQualifying',
+  abrirRondaLibroDelAnioClub: 'handleOpenClubBookOfYearRound',
+  votarDueloLibroDelAnioClub: 'handleVoteClubBookOfYearDuel',
+  cerrarRondaLibroDelAnioClub: 'handleCloseClubBookOfYearRound',
+  cancelarLibroDelAnioClub: 'handleCancelClubBookOfYear',
+  vincularCandidataHistoricaLibroDelAnioClub: 'handleLinkClubBookOfYearHistoricalCandidate',
+  sincronizarCandidatasLibroDelAnioClub: 'handleSyncClubBookOfYear',
+  abrirVotacionLibroDelAnioClub: 'handleOpenClubBookOfYearVoting',
 };
 
 function mockRequest(method: string, action: string) {

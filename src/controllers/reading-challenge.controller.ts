@@ -6,9 +6,12 @@ import {
 } from '../services/reading-challenge.service.js';
 
 export async function handleGetClubChallenges(req: Request, res: Response) {
-  return res.json(
-    await getClubReadingChallenges(req.auth!.userName),
-  );
+  try {
+    return res.json(await getClubReadingChallenges(req.auth!.userName));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error inesperado';
+    return res.status(500).json({ ok: false, mensaje: message });
+  }
 }
 
 export async function handleSetChallenge(req: Request, res: Response) {

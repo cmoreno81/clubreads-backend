@@ -6,6 +6,7 @@ import {
   getComoVotaron,
   getHistorialClubvision,
   getHistorialClubvisionPage,
+  getClubvisionEstadisticas,
 } from '../services/clubvision.service.js';
 import { requestUserName } from '../middleware/auth.middleware.js';
 import {
@@ -63,4 +64,8 @@ export async function handleHistorialClubvision(req: Request, res: Response) {
     requestUserName(req),
   );
   return res.json(data);
+}
+
+export async function handleGetClubvisionEstadisticas(req: Request, res: Response) {
+  return res.json(await getClubvisionEstadisticas(requestUserName(req)));
 }

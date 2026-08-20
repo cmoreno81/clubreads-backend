@@ -1,8 +1,11 @@
 import { prisma } from '../prisma.js';
 
 export async function getClubReadingChallenges(userName: string) {
+  const normalizedUserName = userName.trim();
   const { club } = await import('./club-context.service.js')
-    .then(m => m.getCurrentClubContext(userName));
+    .then(m => m.getCurrentClubContext(normalizedUserName));
+
+  const isPersonal = club.tipo === 'PERSONAL';
 
   const year = new Date().getFullYear();
   const yearStart = new Date(year, 0, 1);
@@ -54,7 +57,7 @@ export async function getClubReadingChallenges(userName: string) {
         read,
         pct: pct ?? 0,
         hasChallenge: target !== null,
-        isMe: m.user.name === userName,
+        isMe: m.user.name === normalizedUserName,
       };
     })
     .sort((a, b) => {
@@ -67,9 +70,15 @@ export async function getClubReadingChallenges(userName: string) {
   return {
     ok: true,
     year,
-    clubTotal,
-    clubTarget,
-    challenges,
+    isPersonal,
+    // En cuentas personales no hay reto ni ranking colectivo
+    clubTotal: isPersonal ? 0 : clubTotal,
+    clubTarget: isPersonal ? 0 : clubTarget,
+    // En personal: solo devuelve el propio registro (para "Mi reto"),
+    // sin el resto de miembros del club
+    challenges: isPersonal
+      ? challenges.filter(c => c.isMe)
+      : challenges,
   };
 }
 

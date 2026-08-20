@@ -7,6 +7,7 @@ import {
   handleMiVoto,
   handleComoVotaron,
   handleHistorialClubvision,
+  handleGetClubvisionEstadisticas,
 } from '../controllers/clubvision.controller.js';
 
 import { handleUsuarios } from '../controllers/users.controller.js';
@@ -27,6 +28,8 @@ import {
   handleActualizarProgresoLectura,
   handleToggleProgressReaction,
   handleActualizarPaginaLibrary,
+  handleExportBiblioteca,
+  handleEditarFechaInicioLectura,
 } from '../controllers/books.controller.js';
 
 import { handleDashboard, handleAfinidadDetalle } from '../controllers/dashboard.controller.js';
@@ -57,10 +60,12 @@ import {
   handlePerfilUsuario,
   handleActualizarFechasLectura,
   handleActualizarAvatarPerfil,
+  handleActualizarFrasePerfil,
   handleToggleFavorito,
   handleReemplazarFavorito,
   handleGetFavoritos,
   handleGetFavoritosDelClub,
+  handleGuardarPersonalidadLectora,
 } from '../controllers/perfil.controller.js';
 
 import {
@@ -91,6 +96,7 @@ import {
   handleCreateClub,
   handleCrearEspacioPersonal,
   handleGetClubMembers,
+  handleGetPersonalidadesClub,
   handleJoinClub,
   handleLeaveClub,
   handleMyClubs,
@@ -128,6 +134,8 @@ import {
 import { validateActionInput } from '../validation/api-validation.js';
 import { handleChooseAnnualBookOfYear, handleChooseBookOfYearDuel, handleGetClubBooksOfYear, handleGetMyBookOfYear, handleGetPublicBookOfYear, handleSaveMonthlyBookOfYear } from '../controllers/book-of-year.controller.js';
 import { handleReactionDetails } from '../controllers/reaction-details.controller.js';
+import { handleEnviarFeedback } from '../controllers/feedback.controller.js';
+import { handleCancelClubBookOfYear, handleCloseClubBookOfYearQualifying, handleCloseClubBookOfYearRound, handleGetClubBookOfYear, handleGetClubBookOfYearHistory, handleLinkClubBookOfYearHistoricalCandidate, handleOpenClubBookOfYearRound, handleOpenClubBookOfYearVoting, handlePrepareClubBookOfYear, handleStartClubBookOfYear, handleSyncClubBookOfYear, handleVoteClubBookOfYearDuel, handleVoteClubBookOfYearQualifying } from '../controllers/club-book-of-year.controller.js';
 export const apiRouter = Router();
 
 const PUBLIC_AUTH_ACTIONS = new Set([
@@ -190,6 +198,9 @@ export const POST_ONLY_ACTIONS = new Set([
   'marcarConversacionVista',
   'actualizarFechasLectura',
   'actualizarAvatarPerfil',
+  'actualizarFrasePerfil',
+  'enviarFeedback',
+  'guardarPersonalidadLectora',
   'toggleFavorito',
   'reemplazarFavorito',
   'registrarMoodClub',
@@ -198,6 +209,16 @@ export const POST_ONLY_ACTIONS = new Set([
   'guardarSeleccionLibroDelAnio',
   'elegirDueloLibroDelAnio',
   'elegirLibroDelAnio',
+  'iniciarLibroDelAnioClub',
+  'votarClasificacionLibroDelAnioClub',
+  'cerrarClasificacionLibroDelAnioClub',
+  'abrirRondaLibroDelAnioClub',
+  'votarDueloLibroDelAnioClub',
+  'cerrarRondaLibroDelAnioClub',
+  'cancelarLibroDelAnioClub',
+  'vincularCandidataHistoricaLibroDelAnioClub',
+  'sincronizarCandidatasLibroDelAnioClub',
+  'abrirVotacionLibroDelAnioClub',
 ]);
 
 export function enforceActionMethod(
@@ -460,6 +481,9 @@ export async function handleApi(
       case 'libroPorId':
         return handleGetLibroPorId(req, res);
 
+      case 'exportBiblioteca':
+        return handleExportBiblioteca(req, res);
+
       case 'crearLibro':
         return handleCrearLibro(req, res);
 
@@ -480,6 +504,9 @@ export async function handleApi(
 
       case 'actualizarEstado':
         return handleActualizarEstado(req, res);
+
+      case 'editarFechaInicioLectura':
+        return handleEditarFechaInicioLectura(req, res);
 
       case 'actualizarProgresoLectura':
         return handleActualizarProgresoLectura(req, res);
@@ -508,6 +535,10 @@ export async function handleApi(
 
       case 'historialClubvision':
         return handleHistorialClubvision(req, res);
+
+      case 'clubvisionEstadisticas':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetClubvisionEstadisticas(req, res);
 
       case 'lecturasActivas':
         return handleLecturasActivas(req, res);
@@ -581,6 +612,33 @@ export async function handleApi(
       case 'librosDelAnioClub':
         return handleGetClubBooksOfYear(req, res);
 
+      case 'libroDelAnioClub':
+        return handleGetClubBookOfYear(req, res);
+      case 'prepararLibroDelAnioClub':
+        return handlePrepareClubBookOfYear(req, res);
+      case 'iniciarLibroDelAnioClub':
+        return handleStartClubBookOfYear(req, res);
+      case 'votarClasificacionLibroDelAnioClub':
+        return handleVoteClubBookOfYearQualifying(req, res);
+      case 'cerrarClasificacionLibroDelAnioClub':
+        return handleCloseClubBookOfYearQualifying(req, res);
+      case 'abrirRondaLibroDelAnioClub':
+        return handleOpenClubBookOfYearRound(req, res);
+      case 'votarDueloLibroDelAnioClub':
+        return handleVoteClubBookOfYearDuel(req, res);
+      case 'cerrarRondaLibroDelAnioClub':
+        return handleCloseClubBookOfYearRound(req, res);
+      case 'historialLibroDelAnioClub':
+        return handleGetClubBookOfYearHistory(req, res);
+      case 'cancelarLibroDelAnioClub':
+        return handleCancelClubBookOfYear(req, res);
+      case 'vincularCandidataHistoricaLibroDelAnioClub':
+        return handleLinkClubBookOfYearHistoricalCandidate(req, res);
+      case 'sincronizarCandidatasLibroDelAnioClub':
+        return handleSyncClubBookOfYear(req, res);
+      case 'abrirVotacionLibroDelAnioClub':
+        return handleOpenClubBookOfYearVoting(req, res);
+
       case 'achievements':
         return handleGetAchievements(req, res);
 
@@ -591,7 +649,21 @@ export async function handleApi(
         return handleActualizarFechasLectura(req, res);
 
       case 'actualizarAvatarPerfil':
-        return handleActualizarAvatarPerfil(req, res);  
+        return handleActualizarAvatarPerfil(req, res);
+
+      case 'actualizarFrasePerfil':
+        return handleActualizarFrasePerfil(req, res);
+
+      case 'guardarPersonalidadLectora':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGuardarPersonalidadLectora(req, res);
+
+      case 'enviarFeedback':
+        return handleEnviarFeedback(req, res);
+
+      case 'getPersonalidadesClub':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetPersonalidadesClub(req, res);
 
       case 'moodClub':
         return handleMoodClub(req, res);  

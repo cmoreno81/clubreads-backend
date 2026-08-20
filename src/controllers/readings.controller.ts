@@ -67,12 +67,14 @@ export async function handleConfiguracionLectura(
 
 export async function handleComentariosLectura(req: Request, res: Response) {
   if (hasExplicitPagination(req.query)) {
+    const cutoff = req.query.cutoff ? String(req.query.cutoff) : null;
     return res.json(
       await getComentariosLecturaPage(
         String(req.query.libro || ''),
         String(req.query.capitulo || ''),
         requestUserName(req),
         parsePagination(req.query),
+        cutoff,
       ),
     );
   }

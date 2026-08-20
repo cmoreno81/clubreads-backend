@@ -1007,3 +1007,130 @@ export async function getHistorialClubvisionPage(
     items: await enrichClubvisionHistoryRows(page.items),
   };
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// Estadísticas de Clubvisión
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getClubvisionEstadisticas(userId: string) {
+  const { club } = await requireClubMember(userId);
+
+  // Total miembros actuales del club
+  const totalMiembros = await prisma.clubMember.count({ where: { clubId: club.id } });
+
+  // Todas las ediciones con ganador
+  const resultados = await prisma.clubvisionResult.findMany({
+    where: { clubId: club.id, winnerBookId: { not: null } },
+    select: {
+      edition: true,
+      winnerTitle: true,
+      winnerBookId: true,
+      points: true,
+      winnerBook: { select: { id: true, coverUrl: true } },
+    },
+    orderBy: { edition: 'desc' },
+  });
+
+  if (resultados.length === 0) {
+    return { ok: true, totalEdiciones: 0, participacionMedia: 0, totalMiembros, ganadores: [] };
+  }
+
+  const bookIds = resultados
+    .map((r) => r.winnerBookId)
+    .filter((id): id is string => id !== null);
+
+  // Lectoras que terminaron cada libro ganador
+  const lecturasPorLibro = await prisma.library.groupBy({
+    by: ['bookId'],
+    where: {
+      bookId: { in: bookIds },
+      status: ReadingStatus.FINISHED,
+      user: { clubMemberships: { some: { clubId: club.id } } },
+    },
+    _count: { userId: true },
+  });
+  const lecturasMap = new Map(lecturasPorLibro.map((l) => [l.bookId, l._count.userId]));
+
+  // Valoración media por libro (de completions de miembros del club)
+  const completions = await prisma.readingCompletion.findMany({
+    where: {
+      bookId: { in: bookIds },
+      rating: { not: null },
+      user: { clubMemberships: { some: { clubId: club.id } } },
+    },
+    select: { bookId: true, rating: true },
+  });
+  const ratingsMap = new Map<string, { sum: number; count: number }>();
+  for (const c of completions) {
+    const r = ratingsMap.get(c.bookId) ?? { sum: 0, count: 0 };
+    r.sum += c.rating!;
+    r.count += 1;
+    ratingsMap.set(c.bookId, r);
+  }
+
+  // Comentarios en cualquier lectura del club para cada libro ganador
+  // (sin filtrar por tipo para incluir lecturas creadas como FREE o CLUBVISION)
+  const lecturas = await prisma.reading.findMany({
+    where: {
+      clubId: club.id,
+      bookId: { in: bookIds },
+    },
+    select: {
+      bookId: true,
+      conversations: {
+        select: { _count: { select: { comments: { where: { deletedAt: null } } } } },
+      },
+    },
+  });
+  const comentariosMap = new Map<string, number>();
+  for (const l of lecturas) {
+    const prev = comentariosMap.get(l.bookId) ?? 0;
+    const total = l.conversations.reduce((sum, c) => sum + c._count.comments, 0);
+    comentariosMap.set(l.bookId, prev + total);
+  }
+
+  // Participación media en votaciones (votantes únicos por edición)
+  const ediciones = resultados.map((r) => r.edition);
+  const votaciones = await prisma.clubvision.findMany({
+    where: { clubId: club.id, edition: { in: ediciones } },
+    select: {
+      edition: true,
+      _count: { select: { votes: true } },
+      votes: { select: { userId: true }, distinct: ['userId'] },
+    },
+  });
+  const votantesMap = new Map<string, number>();
+  for (const v of votaciones) {
+    votantesMap.set(v.edition, v.votes.length);
+  }
+  const totalVotantes = [...votantesMap.values()].reduce((s, n) => s + n, 0);
+  const participacionMedia = votantesMap.size > 0
+    ? Math.round(totalVotantes / votantesMap.size)
+    : 0;
+
+  const ganadores = resultados.map((r) => {
+    const bookId = r.winnerBookId!;
+    const ratings = ratingsMap.get(bookId);
+    return {
+      titulo: r.winnerTitle,
+      bookId,
+      coverUrl: r.winnerBook?.coverUrl ?? '',
+      edition: r.edition,
+      puntos: r.points,
+      lectoras: lecturasMap.get(bookId) ?? 0,
+      totalMiembros,
+      valoracionMedia: ratings
+        ? Math.round((ratings.sum / ratings.count) * 10) / 10
+        : null,
+      totalComentarios: comentariosMap.get(bookId) ?? 0,
+      votantes: votantesMap.get(r.edition) ?? 0,
+    };
+  });
+
+  return {
+    ok: true,
+    totalEdiciones: resultados.length,
+    participacionMedia,
+    totalMiembros,
+    ganadores,
+  };
+}

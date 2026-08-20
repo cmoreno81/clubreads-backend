@@ -16,11 +16,11 @@ function mockResponse() {
   return { res, state: () => ({ statusCode, body }) };
 }
 
-test('start no ejecuta migraciones y migrate:deploy queda separado', async () => {
+test('start aplica migraciones antes de arrancar y migrate:deploy sigue disponible', async () => {
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-  assert.equal(pkg.scripts.start, 'node dist/server.js');
+  assert.equal(pkg.scripts.start, 'prisma migrate deploy && node dist/server.js');
   assert.equal(pkg.scripts['migrate:deploy'], 'prisma migrate deploy');
-  assert.doesNotMatch(pkg.scripts.start, /prisma|migrate/);
+  assert.match(pkg.scripts.start, /^prisma migrate deploy && node dist\/server\.js$/);
 });
 
 test('health es público y no revela configuración', async () => {

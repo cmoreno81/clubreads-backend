@@ -30,7 +30,7 @@ test('dashboardGeneral entrega sagas completas, limitadas y sin cargar perfilUsu
 });
 
 test('las consultas masivas principales tienen límites e índices adecuados', () => {
-  assert.match(dashboard, /orderBy: \{ createdAt: 'desc' \},\s*take: 100/);
+  assert.match(dashboard, /orderBy: \{ createdAt: 'desc' \},\s*take: 20/);
   assert.match(schema, /@@index\(\[bookId, status\]\)/);
   assert.match(schema, /@@index\(\[clubId, type, status\]\)/);
   assert.match(migration, /Library_bookId_status_idx/);

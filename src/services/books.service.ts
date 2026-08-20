@@ -180,6 +180,12 @@ function buildGoodreadsSearchUrl(title: string) {
   return `https://www.goodreads.com/search?q=${encodeURIComponent(title)}`;
 }
 
+export function normalizeGoodreadsUrl(value: unknown) {
+  return String(value ?? '')
+    .replace(/\s+/g, '')
+    .replace(/[,.;:!?]+$/g, '');
+}
+
 /**
  * Permite considerar iguales títulos con:
  * - mayúsculas diferentes;
@@ -1479,9 +1485,9 @@ export async function crearLibro(data: any) {
     data.autoconclusivo,
   );
 
-  const goodreadsUrl = String(
+  const goodreadsUrl = normalizeGoodreadsUrl(
     data.goodreads || data.goodreadsUrl || '',
-  ).trim();
+  );
 
   const genre = await prisma.genre.upsert({
     where: {
@@ -1910,9 +1916,9 @@ if (duplicado) {
   const seriesOrder = String(data.numSaga || '').trim();
   const standalone = boolFromFlutter(data.autoconclusivo);
 
-  const goodreadsUrl = String(
+  const goodreadsUrl = normalizeGoodreadsUrl(
     data.goodreads || data.goodreadsUrl || '',
-  ).trim();
+  );
 
   const coverUrl = String(data.coverUrl || '').trim();
 

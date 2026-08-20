@@ -20,6 +20,23 @@ function yearEnd(year: number): Date {
   return new Date(`${year + 1}-01-01T00:00:00.000Z`);
 }
 
+export type WrappedBookOfYearStatus =
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'FINALISTS'
+  | 'COMPLETED';
+
+export function getWrappedBookOfYearStatus(
+  completedMonths: number,
+  finalistCount: number,
+  hasWinner: boolean,
+): WrappedBookOfYearStatus {
+  if (hasWinner) return 'COMPLETED';
+  if (finalistCount > 0) return 'FINALISTS';
+  if (completedMonths > 0) return 'IN_PROGRESS';
+  return 'NOT_STARTED';
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Check-in
 // ─────────────────────────────────────────────────────────────────────────────
@@ -289,6 +306,48 @@ export async function getWrapped(userId: string, year: number) {
   });
   const diffVsPrevYear = totalBooks - prevCompletions;
 
+  // Los favoritos reflejan la selección actual de la biblioteca. No son una
+  // instantánea histórica del año solicitado.
+  const [favoriteEntries, monthlySelections, finalists, annualWinner] =
+    await Promise.all([
+      prisma.library.findMany({
+        where: { userId, isFavorite: true },
+        take: 5,
+        orderBy: { updatedAt: 'asc' },
+        include: { book: { include: { author: true } } },
+      }),
+      prisma.bookOfYearMonthlySelection.findMany({
+        where: { userId, year },
+        select: { bookId: true },
+      }),
+      prisma.bookOfYearFinalist.findMany({
+        where: { userId, year },
+        orderBy: { position: 'asc' },
+        include: { book: { include: { author: true } } },
+      }),
+      prisma.bookOfYearWinner.findUnique({
+        where: { userId_year: { userId, year } },
+        include: { book: { include: { author: true } } },
+      }),
+    ]);
+
+  const serializeWrappedBook = (book: {
+    id: string;
+    title: string;
+    coverUrl: string | null;
+    author: { name: string } | null;
+  }) => ({
+    id: book.id,
+    title: book.title,
+    coverUrl: book.coverUrl ?? '',
+    authorName: book.author?.name ?? '',
+  });
+  const bookOfYearStatus = getWrappedBookOfYearStatus(
+    monthlySelections.length,
+    finalists.length,
+    annualWinner != null,
+  );
+
   return {
     ok: true,
     year,
@@ -317,5 +376,14 @@ export async function getWrapped(userId: string, year: number) {
       title: c.book.title,
       coverUrl: c.book.coverUrl ?? null,
     })),
+    favoriteBooks: favoriteEntries.map((entry) =>
+      serializeWrappedBook(entry.book),
+    ),
+    bookOfYear: {
+      status: bookOfYearStatus,
+      completedMonths: monthlySelections.length,
+      finalists: finalists.map((entry) => serializeWrappedBook(entry.book)),
+      winner: annualWinner ? serializeWrappedBook(annualWinner.book) : null,
+    },
   };
 }

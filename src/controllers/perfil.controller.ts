@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 
 import {
   actualizarAvatarPerfil,
+  actualizarFrasePerfil,
   actualizarFechasLectura,
   getPerfilUsuario,
   getPerfilHistorialPage,
@@ -9,6 +10,7 @@ import {
   reemplazarFavorito,
   getFavoritosUsuario,
   getFavoritosDelClub,
+  guardarPersonalidadLectora,
 } from '../services/perfil.service.js';
 import { requestUserName } from '../middleware/auth.middleware.js';
 import {
@@ -84,6 +86,18 @@ export async function handleActualizarAvatarPerfil(
   return res.json(data);
 }
 
+export async function handleActualizarFrasePerfil(
+  req: Request,
+  res: Response,
+) {
+  const body = req.body ?? {};
+  const data = await actualizarFrasePerfil({
+    usuario: requestUserName(req),
+    bio: String(body.bio ?? ''),
+  });
+  return res.json(data);
+}
+
 export async function handleToggleFavorito(req: Request, res: Response) {
   const body = req.body ?? {};
   try {
@@ -113,12 +127,22 @@ export async function handleReemplazarFavorito(req: Request, res: Response) {
 }
 
 export async function handleGetFavoritos(req: Request, res: Response) {
-  const perfil = String(req.query.perfil ?? req.query.usuario ?? req.auth?.userName ?? '');
-  const data = await getFavoritosUsuario({ usuario: perfil });
+  // Eliminado el fallback req.auth?.userName para evitar devolver los favoritos
+  // del usuario autenticado cuando se visita un perfil ajeno sin parámetro perfil.
+  const perfil = String(req.query.perfil ?? req.query.usuario ?? '');
+  const profileId = req.query.profileUserId ? String(req.query.profileUserId) : undefined;
+  const data = await getFavoritosUsuario({ usuario: perfil, profileId });
   return res.json(data);
 }
 
 export async function handleGetFavoritosDelClub(req: Request, res: Response) {
   const data = await getFavoritosDelClub({ usuario: requestUserName(req) });
+  return res.json(data);
+}
+
+export async function handleGuardarPersonalidadLectora(req: Request, res: Response) {
+  const usuario = requestUserName(req);
+  const arquetipo = String(req.body?.arquetipo ?? req.query?.arquetipo ?? '');
+  const data = await guardarPersonalidadLectora({ usuario, arquetipo });
   return res.json(data);
 }

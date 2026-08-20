@@ -440,3 +440,37 @@ export async function getClubMembers(userId: string, clubId: string) {
     })),
   };
 }
+
+export async function getPersonalidadesClub(userId: string) {
+  // Usar el club activo del usuario
+  const userRecord = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { activeClubId: true },
+  });
+  const clubId = userRecord?.activeClubId;
+  if (!clubId) {
+    throw new ClubContextError('No tienes un club activo', 400, 'NO_ACTIVE_CLUB');
+  }
+
+  const members = await prisma.clubMember.findMany({
+    where: { clubId },
+    include: {
+      user: {
+        select: { id: true, name: true, avatarUrl: true, readerPersonality: true },
+      },
+    },
+    orderBy: { joinedAt: 'asc' },
+  });
+
+  return {
+    ok: true,
+    personalidades: members
+      .filter((m) => m.user.readerPersonality !== null)
+      .map((m) => ({
+        usuario: m.user.name,
+        avatarUrl: m.user.avatarUrl ?? '',
+        arquetipo: m.user.readerPersonality!,
+      })),
+    totalMiembros: members.length,
+  };
+}

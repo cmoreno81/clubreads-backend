@@ -80,7 +80,7 @@ enum ClubVisibility {
 }
 
 enum ClubType {
-  SOCIAL   // club normal con varios miembros
+  SOCIAL // club normal con varios miembros
   PERSONAL // espacio lector individual (sin funciones sociales)
 }
 
@@ -93,6 +93,30 @@ enum ClubRole {
 enum BookOfYearDuelPhase {
   MONTH_PAIR
   SEMIFINAL
+}
+
+enum ClubBookOfYearStatus {
+  PREPARING
+  QUALIFYING
+  ROUND_PENDING
+  ROUND_OPEN
+  TIEBREAK
+  FINISHED
+  CANCELLED
+}
+
+enum ClubBookOfYearPhase {
+  QUALIFYING
+  QUARTERFINAL
+  SEMIFINAL
+  FINAL
+  TIEBREAK
+}
+
+enum ClubBookOfYearRoundStatus {
+  PENDING
+  OPEN
+  CLOSED
 }
 
 enum AuthCodePurpose {
@@ -237,18 +261,20 @@ model Book {
 
   updatedAt DateTime @updatedAt
 
-  deletedAt            DateTime?
-  readings             Reading[]
-  reviews              Review[]
-  wonClubvisions       Clubvision[]
-  clubvisionCandidates ClubvisionCandidate[]
-  clubvisionResults    ClubvisionResult[]    @relation("ClubvisionWinner")
-  redirectsFrom        BookRedirect[]        @relation("CanonicalBookRedirect")
-  userSeriesOrders     UserSeriesOrder[]
+  deletedAt                   DateTime?
+  readings                    Reading[]
+  reviews                     Review[]
+  wonClubvisions              Clubvision[]
+  clubvisionCandidates        ClubvisionCandidate[]
+  clubvisionResults           ClubvisionResult[]           @relation("ClubvisionWinner")
+  redirectsFrom               BookRedirect[]               @relation("CanonicalBookRedirect")
+  userSeriesOrders            UserSeriesOrder[]
   bookOfYearMonthlySelections BookOfYearMonthlySelection[]
-  bookOfYearDuelWinners BookOfYearDuelWinner[]
-  bookOfYearFinalists BookOfYearFinalist[]
-  bookOfYearWinners BookOfYearWinner[]
+  bookOfYearDuelWinners       BookOfYearDuelWinner[]
+  bookOfYearFinalists         BookOfYearFinalist[]
+  bookOfYearWinners           BookOfYearWinner[]
+  clubBookOfYearCandidates    ClubBookOfYearCandidate[]
+  clubBookOfYearHistoricalLinks ClubBookOfYearHistoricalLink[]
 
   @@index([title])
   @@index([authorId])
@@ -289,7 +315,9 @@ model User {
   name  String @unique
   email String @unique
 
-  avatarUrl String?
+  avatarUrl         String?
+  bio               String?
+  readerPersonality String? // arquetipo del quiz lector: nocturna | maratonista | romantica | reflexiva | imparable | estetica
 
   passwordHash        String?
   passwordSetAt       DateTime?
@@ -321,18 +349,20 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  clubvisionVotes   ClubvisionVote[]
-  moodVotes         ClubMoodVote[]
-  authCodes         AuthCode[]
-  authSessions      AuthSession[]
-  seriesOrders      UserSeriesOrder[]
-  readingChallenges ReadingChallenge[]
-  dailyCheckins     DailyCheckin[]
-  readingSessions   ReadingSession[]
-  bookOfYearMonthlySelections BookOfYearMonthlySelection[]
-  bookOfYearDuelWinners BookOfYearDuelWinner[]
-  bookOfYearFinalists BookOfYearFinalist[]
-  bookOfYearWinners BookOfYearWinner[]
+  clubvisionVotes               ClubvisionVote[]
+  moodVotes                     ClubMoodVote[]
+  authCodes                     AuthCode[]
+  authSessions                  AuthSession[]
+  seriesOrders                  UserSeriesOrder[]
+  readingChallenges             ReadingChallenge[]
+  dailyCheckins                 DailyCheckin[]
+  readingSessions               ReadingSession[]
+  bookOfYearMonthlySelections   BookOfYearMonthlySelection[]
+  bookOfYearDuelWinners         BookOfYearDuelWinner[]
+  bookOfYearFinalists           BookOfYearFinalist[]
+  bookOfYearWinners             BookOfYearWinner[]
+  clubBookOfYearQualifyingVotes ClubBookOfYearQualifyingVote[]
+  clubBookOfYearDuelVotes       ClubBookOfYearDuelVote[]
 
   @@index([activeClubId])
 }
@@ -436,10 +466,12 @@ model Club {
 
   activeUsers User[] @relation("ActiveClub")
 
-  readings          Reading[]
-  clubvisions       Clubvision[]
-  clubvisionResults ClubvisionResult[]
-  moodVotes         ClubMoodVote[]
+  readings           Reading[]
+  clubvisions        Clubvision[]
+  clubvisionResults  ClubvisionResult[]
+  moodVotes          ClubMoodVote[]
+  bookOfYearEditions ClubBookOfYearEdition[]
+  bookOfYearHistoricalLinks ClubBookOfYearHistoricalLink[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -594,63 +626,200 @@ model ReadingCompletion {
 }
 
 model BookOfYearMonthlySelection {
-  id String @id @default(cuid())
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  year Int
-  month Int
-  bookId String
-  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year      Int
+  month     Int
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   @@unique([userId, year, month])
   @@index([userId, year])
   @@index([bookId])
 }
 
 model BookOfYearDuelWinner {
-  id String @id @default(cuid())
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  year Int
-  phase BookOfYearDuelPhase
-  position Int
-  bookId String
-  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  automatic Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String              @id @default(cuid())
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year      Int
+  phase     BookOfYearDuelPhase
+  position  Int
+  bookId    String
+  book      Book                @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  automatic Boolean             @default(false)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
   @@unique([userId, year, phase, position])
   @@index([userId, year, phase])
   @@index([bookId])
 }
 
 model BookOfYearFinalist {
-  id String @id @default(cuid())
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  year Int
-  position Int
-  bookId String
-  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year      Int
+  position  Int
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   @@unique([userId, year, position])
   @@index([userId, year])
   @@index([bookId])
 }
 
 model BookOfYearWinner {
-  id String @id @default(cuid())
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  year Int
-  bookId String
-  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year      Int
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   @@unique([userId, year])
   @@index([bookId])
+}
+
+model ClubBookOfYearEdition {
+  id                String                         @id @default(cuid())
+  clubId            String
+  club              Club                           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  year              Int
+  status            ClubBookOfYearStatus           @default(PREPARING)
+  bracketSize       Int?
+  winnerCandidateId String?
+  winnerCandidate   ClubBookOfYearCandidate?       @relation("ClubBookOfYearWinner", fields: [winnerCandidateId], references: [id], onDelete: SetNull)
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  candidatesSyncedAt DateTime?
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
+  candidates        ClubBookOfYearCandidate[]      @relation("ClubBookOfYearCandidates")
+  rounds            ClubBookOfYearRound[]
+  qualifyingVotes   ClubBookOfYearQualifyingVote[]
+
+  @@unique([clubId, year])
+  @@index([clubId, status])
+  @@index([year])
+}
+
+model ClubBookOfYearCandidate {
+  id                 String                         @id @default(cuid())
+  editionId          String
+  edition            ClubBookOfYearEdition          @relation("ClubBookOfYearCandidates", fields: [editionId], references: [id], onDelete: Cascade)
+  bookId             String
+  book               Book                           @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  seed               Int?
+  qualified          Boolean                        @default(false)
+  tiebreakEligible   Boolean                        @default(false)
+  titleSnapshot      String
+  coverUrlSnapshot   String?
+  authorNameSnapshot String?
+  source             String                         @default("OFFICIAL_READING")
+  clubvisionEdition  String?
+  needsReview        Boolean                        @default(false)
+  createdAt          DateTime                       @default(now())
+  winnerOf           ClubBookOfYearEdition[]        @relation("ClubBookOfYearWinner")
+  duelAsA            ClubBookOfYearDuel[]           @relation("ClubBookOfYearDuelA")
+  duelAsB            ClubBookOfYearDuel[]           @relation("ClubBookOfYearDuelB")
+  wonDuels           ClubBookOfYearDuel[]           @relation("ClubBookOfYearDuelWinner")
+  qualifyingVotes    ClubBookOfYearQualifyingVote[]
+  duelVotes          ClubBookOfYearDuelVote[]
+
+  @@unique([editionId, bookId])
+  @@unique([id, editionId])
+  @@index([bookId])
+  @@index([editionId, seed])
+}
+
+model ClubBookOfYearHistoricalLink {
+  id       String @id @default(cuid())
+  clubId   String
+  club     Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  year     Int
+  resultId String @unique
+  result   ClubvisionResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  bookId   String
+  book     Book @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clubId, year])
+  @@index([bookId])
+}
+
+model ClubBookOfYearRound {
+  id        String                    @id @default(cuid())
+  editionId String
+  edition   ClubBookOfYearEdition     @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  phase     ClubBookOfYearPhase
+  sequence  Int
+  status    ClubBookOfYearRoundStatus @default(PENDING)
+  openedAt  DateTime?
+  closedAt  DateTime?
+  createdAt DateTime                  @default(now())
+  duels     ClubBookOfYearDuel[]
+
+  @@unique([editionId, sequence])
+  @@index([editionId, phase, status])
+}
+
+model ClubBookOfYearDuel {
+  id                String                   @id @default(cuid())
+  roundId           String
+  round             ClubBookOfYearRound      @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  position          Int
+  candidateAId      String
+  candidateA        ClubBookOfYearCandidate  @relation("ClubBookOfYearDuelA", fields: [candidateAId], references: [id], onDelete: Restrict)
+  candidateBId      String
+  candidateB        ClubBookOfYearCandidate  @relation("ClubBookOfYearDuelB", fields: [candidateBId], references: [id], onDelete: Restrict)
+  winnerCandidateId String?
+  winnerCandidate   ClubBookOfYearCandidate? @relation("ClubBookOfYearDuelWinner", fields: [winnerCandidateId], references: [id], onDelete: SetNull)
+  tied              Boolean                  @default(false)
+  votes             ClubBookOfYearDuelVote[]
+
+  @@unique([roundId, position])
+  @@index([roundId])
+}
+
+model ClubBookOfYearQualifyingVote {
+  id          String                  @id @default(cuid())
+  editionId   String
+  edition     ClubBookOfYearEdition   @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   ClubBookOfYearCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdAt   DateTime                @default(now())
+
+  @@unique([editionId, userId, candidateId])
+  @@index([editionId, candidateId])
+  @@index([userId])
+}
+
+model ClubBookOfYearDuelVote {
+  id          String                  @id @default(cuid())
+  duelId      String
+  duel        ClubBookOfYearDuel      @relation(fields: [duelId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   ClubBookOfYearCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  @@unique([duelId, userId])
+  @@index([duelId, candidateId])
+  @@index([userId])
 }
 
 //
@@ -889,6 +1058,7 @@ model ClubvisionResult {
   thirdTitle  String?
 
   createdAt DateTime @default(now())
+  bookOfYearHistoricalLink ClubBookOfYearHistoricalLink?
 
   @@unique([clubId, edition])
   @@index([edition])
@@ -921,6 +1091,7 @@ enum NotificationType {
   LIBRO_NUEVO_BIBLIOTECA
   NUEVA_MIEMBRO
   LOGRO_DESBLOQUEADO
+  CLUB_BOOK_OF_YEAR
 }
 
 model Notification {

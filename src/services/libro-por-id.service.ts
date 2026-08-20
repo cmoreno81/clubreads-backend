@@ -10,18 +10,24 @@ import { ratingToFlutter } from '../utils/rating.utils.js';
  * equivalente a lo que getLibrosData() filtra por bookId pero
  * sin cargar toda la biblioteca del club.
  */
-export async function getLibroPorId(bookId: string, usuario: string) {
+export async function getLibroPorId(bookId: string, usuario: string, global = false) {
   const { club, user } = await getCurrentClubContext(usuario.trim());
 
   if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
   if (!bookId?.trim()) return { ok: false, mensaje: 'Falta el bookId' };
 
+  // Filtro de club: cuando global=true se devuelven datos de todos los clubes
+  // y cuentas personales; cuando false (por defecto) solo el club activo.
+  const clubFilter = global
+    ? {}
+    : { user: { clubMemberships: { some: { clubId: club.id } } } };
+
   const [libraryEntries, completions, book] = await Promise.all([
-    // Entradas activas en Library del club (no finalizadas)
+    // Entradas activas en Library (no finalizadas)
     prisma.library.findMany({
       where: {
         bookId,
-        user: { clubMemberships: { some: { clubId: club.id } } },
+        ...clubFilter,
         status: { not: ReadingStatus.FINISHED },
       },
       select: {
@@ -53,11 +59,11 @@ export async function getLibroPorId(bookId: string, usuario: string) {
       },
     }),
 
-    // Finalizaciones del libro en el club
+    // Finalizaciones del libro
     prisma.library.findMany({
       where: {
         bookId,
-        user: { clubMemberships: { some: { clubId: club.id } } },
+        ...clubFilter,
         status: ReadingStatus.FINISHED,
       },
       select: {

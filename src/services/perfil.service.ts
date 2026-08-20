@@ -1,4 +1,4 @@
-import { ReadingStatus } from '@prisma/client';
+import { ClubType, ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
 import { backgroundError } from '../logging/logger.js';
@@ -96,7 +96,9 @@ export async function getPerfilUsuario(
     },
     include: {
       _count: {
-        select: { clubMemberships: true },
+        select: {
+          clubMemberships: { where: { club: { tipo: ClubType.SOCIAL } } },
+        },
       },
     },
   });
@@ -608,9 +610,11 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
 
   return {
     ok: true,
+    userId: user.id,
     usuario: user.name,
     email: user.email,
     avatarUrl: user.avatarUrl ?? '',
+    bio: user.bio ?? '',
 
     resumen: {
       terminados: finalizadosIds.size,
@@ -1191,6 +1195,34 @@ export async function actualizarAvatarPerfil(params: {
   }
 }
 
+export async function actualizarFrasePerfil(params: {
+  usuario: string;
+  bio: string;
+}) {
+  const usuario = params.usuario.trim();
+  const bio = params.bio.slice(0, 160);
+
+  if (!usuario) {
+    return { ok: false, mensaje: 'Falta la usuaria' };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { name: usuario },
+    select: { id: true },
+  });
+
+  if (!user) {
+    return { ok: false, mensaje: 'Usuaria no encontrada' };
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { bio: bio || null },
+  });
+
+  return { ok: true, mensaje: 'Frase actualizada', bio };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Favoritos
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1364,6 +1396,7 @@ export async function getFavoritosDelClub(params: {
   });
 
   const toMiembro = (m: (typeof members)[number]) => ({
+    userId: m.user.id,
     nombre: m.user.name,
     avatarUrl: m.user.avatarUrl ?? '',
     esTu: m.user.id === user.id,
@@ -1387,13 +1420,15 @@ export async function getFavoritosDelClub(params: {
 
 export async function getFavoritosUsuario(params: {
   usuario: string;
+  /** ID estable del perfil. Si se proporciona, el lookup por nombre es secundario. */
+  profileId?: string;
 }): Promise<{ ok: boolean; favoritos: Array<{ id: string; title: string; authorName: string | null; coverUrl: string | null; genreName: string }> }> {
-  const { usuario } = params;
+  const { usuario, profileId } = params;
 
-  const user = await prisma.user.findFirst({
-    where: { name: usuario },
-    select: { id: true },
-  });
+  // Lookup preferente por ID estable; fallback por nombre si no hay ID.
+  const user = profileId?.trim()
+    ? await prisma.user.findUnique({ where: { id: profileId.trim() }, select: { id: true } })
+    : await prisma.user.findFirst({ where: { name: usuario.trim() }, select: { id: true } });
   if (!user) return { ok: false, favoritos: [] };
 
   const entries = await prisma.library.findMany({
@@ -1417,4 +1452,38 @@ export async function getFavoritosUsuario(params: {
       genreName: e.book.genre?.name ?? '',
     })),
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Personalidad lectora
+// ─────────────────────────────────────────────────────────────────────────────
+
+const VALID_PERSONALITIES = new Set([
+  'nocturna', 'maratonista', 'romantica', 'reflexiva', 'imparable', 'estetica',
+]);
+
+export async function guardarPersonalidadLectora(params: {
+  usuario: string;
+  arquetipo: string;
+}) {
+  const usuario = params.usuario.trim();
+  const arquetipo = params.arquetipo.trim();
+
+  if (!usuario) return { ok: false, mensaje: 'Falta la usuaria' };
+  if (!VALID_PERSONALITIES.has(arquetipo)) {
+    return { ok: false, mensaje: 'Arquetipo no válido' };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { name: usuario },
+    select: { id: true },
+  });
+  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { readerPersonality: arquetipo },
+  });
+
+  return { ok: true, arquetipo };
 }
