@@ -59,9 +59,12 @@ export function buildCalendarReadings(
       `${bookId}:${isReread ? ReadingStatus.REREADING : ReadingStatus.READING}:${(startedAt ?? finishedAt).toISOString()}`,
     ),
   );
+  // libraryId por bookId — sirve para que Flutter pueda editar fechas de completions
+  const libraryIdByBookId = new Map(library.map((item) => [item.bookId, item.id]));
   return [
     ...completions.map(({ id, book, startedAt, finishedAt }) => ({
       id: `completion:${id}`,
+      libraryId: libraryIdByBookId.get(book.id) ?? '',
       bookId: book.id,
       titulo: book.title,
       coverUrl: book.coverUrl ?? '',
@@ -77,6 +80,7 @@ export function buildCalendarReadings(
       )
       .map(({ id, book, startedAt }) => ({
         id: `library:${id}`,
+        libraryId: id,
         bookId: book.id,
         titulo: book.title,
         coverUrl: book.coverUrl ?? '',
