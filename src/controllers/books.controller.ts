@@ -174,6 +174,50 @@ export async function handleEditarLibro(
   return res.json(data);
 }
 
+export async function handleEditarFechaInicioLectura(req: Request, res: Response) {
+  const usuario = requestUserName(req);
+  const libro = String(req.body?.libro ?? '').trim();
+  const fechaInicio = String(req.body?.fechaInicio ?? '').trim();
+
+  if (!libro || !fechaInicio) {
+    return res.status(400).json({ ok: false, mensaje: 'Faltan datos obligatorios.' });
+  }
+
+  const fecha = new Date(fechaInicio);
+  if (isNaN(fecha.getTime())) {
+    return res.status(400).json({ ok: false, mensaje: 'Fecha no válida.' });
+  }
+
+  const user = await prisma.user.findUnique({ where: { name: usuario } });
+  if (!user) return res.status(401).json({ ok: false, mensaje: 'Usuaria no encontrada.' });
+
+  const book = await prisma.book.findFirst({
+    where: { title: { equals: libro.trim(), mode: 'insensitive' }, deletedAt: null },
+    select: { id: true },
+  });
+  if (!book) return res.status(404).json({ ok: false, mensaje: 'Libro no encontrado.' });
+
+  const library = await prisma.library.findUnique({
+    where: { userId_bookId: { userId: user.id, bookId: book.id } },
+    select: { status: true },
+  });
+
+  const editableStatuses = ['READING', 'REREADING', 'PAUSED'];
+  if (!library || !editableStatuses.includes(library.status)) {
+    return res.status(409).json({
+      ok: false,
+      mensaje: 'Solo se puede editar la fecha de inicio de lecturas en curso o pausadas.',
+    });
+  }
+
+  await prisma.library.update({
+    where: { userId_bookId: { userId: user.id, bookId: book.id } },
+    data: { startedAt: fecha },
+  });
+
+  return res.json({ ok: true });
+}
+
 export async function handleActualizarPaginaLibrary(req: Request, res: Response) {
   const userName = requestUserName(req);
   const bookId = String(req.body?.bookId ?? '').trim();
