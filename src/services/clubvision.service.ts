@@ -101,6 +101,23 @@ async function getOrCreateCurrentClubvision(
     const excludedBookIds = previousWinners.flatMap((result) =>
       result.winnerBookId ? [result.winnerBookId] : [],
     );
+    // Libros que ya han terminado MÁS de 3 miembros del club → excluir
+    const tooManyFinished = await tx.library.groupBy({
+      by: ['bookId'],
+      where: {
+        status: ReadingStatus.FINISHED,
+        user: { clubMemberships: { some: { clubId: club.id } } },
+      },
+      _count: { userId: true },
+      having: { userId: { _count: { gt: 3 } } },
+    });
+    const tooManyFinishedBookIds = tooManyFinished.map((r) => r.bookId);
+
+    // Candidatas base: PENDING, >= 3 miembros, sin ganadores previos ni muy leídas
+    const allExcluded = [
+      ...excludedBookIds,
+      ...tooManyFinishedBookIds,
+    ];
     const eligibleCandidates = await tx.library.groupBy({
       by: ['bookId'],
       where: {
@@ -110,33 +127,49 @@ async function getOrCreateCurrentClubvision(
             some: { clubId: club.id },
           },
         },
-        ...(excludedBookIds.length > 0
-          ? { bookId: { notIn: excludedBookIds } }
+        ...(allExcluded.length > 0
+          ? { bookId: { notIn: allExcluded } }
           : {}),
       },
       _count: { userId: true },
       having: {
         userId: {
-          _count: { gte: 2 },
-        },
-      },
-      orderBy: {
-        _count: {
-          userId: 'desc',
+          _count: { gte: 3 },
         },
       },
     });
 
-    // Si no hay candidatas elegibles, no tiene sentido abrir la votación
-    if (eligibleCandidates.length === 0) {
-      // Cancelar la transacción devolviendo null — no se crea la edición
-      return null;
-    }
+    if (eligibleCandidates.length === 0) return null;
+
+    // Ordenar por prioridad alta (cuántos miembros la tienen en HIGH) desc,
+    // luego por total de pendientes desc
+    const eligibleBookIds = eligibleCandidates.map((c) => c.bookId);
+    const highPriorityCounts = await tx.library.groupBy({
+      by: ['bookId'],
+      where: {
+        bookId: { in: eligibleBookIds },
+        status: ReadingStatus.PENDING,
+        priority: 'HIGH',
+        user: { clubMemberships: { some: { clubId: club.id } } },
+      },
+      _count: { userId: true },
+    });
+    const highMap = new Map(
+      highPriorityCounts.map((r) => [r.bookId, r._count.userId]),
+    );
+    const pendientesMap = new Map(
+      eligibleCandidates.map((c) => [c.bookId, c._count.userId]),
+    );
+    const sortedCandidates = eligibleBookIds.sort((a, b) => {
+      const highDiff = (highMap.get(b) ?? 0) - (highMap.get(a) ?? 0);
+      if (highDiff !== 0) return highDiff;
+      return (pendientesMap.get(b) ?? 0) - (pendientesMap.get(a) ?? 0);
+    });
 
     await tx.clubvisionCandidate.createMany({
-      data: eligibleCandidates.map((candidate) => ({
+      data: sortedCandidates.map((bookId) => ({
         clubvisionId: clubvision.id,
-        bookId: candidate.bookId,
+        bookId,
       })),
       skipDuplicates: true,
     });
