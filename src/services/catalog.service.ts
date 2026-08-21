@@ -149,6 +149,7 @@ function localBook(book: {
   title: string;
   isbn: string | null;
   coverUrl: string | null;
+  goodreadsUrl: string | null;
   publicationYear: number | null;
   totalPages: number | null;
   author: { name: string } | null;
@@ -161,6 +162,8 @@ function localBook(book: {
   }>;
 }, userId: string) {
   const own = book.library.find((item) => item.userId === userId);
+  const goodreadsUrl = book.goodreadsUrl?.trim() ||
+    `https://www.goodreads.com/search?q=${encodeURIComponent(book.title)}`;
   return {
     id: book.id,
     origen: 'CLUBREADS',
@@ -171,6 +174,7 @@ function localBook(book: {
     isbn: book.isbn ?? '',
     paginas: book.totalPages,
     anioPublicacion: book.publicationYear,
+    goodreadsUrl,
     enMiBiblioteca: Boolean(own),
     estado: statusToFlutter(own?.status),
     fechaInicio: own?.startedAt?.toISOString() ?? null,
@@ -297,6 +301,7 @@ export async function getGeneralCatalogPage(
       title: true,
       isbn: true,
       coverUrl: true,
+      goodreadsUrl: true,
       publicationYear: true,
       totalPages: true,
       createdAt: true,
