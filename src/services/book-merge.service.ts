@@ -2,6 +2,7 @@ import { Prisma, ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
 import { resolveCanonicalBookId } from './book-identity.service.js';
+import { invalidatePrefix } from '../utils/simple-cache.js';
 
 const statusRank: Record<ReadingStatus, number> = {
   PENDING: 0,
@@ -85,10 +86,10 @@ export async function consolidateEquivalentCompletions(
 }
 
 export async function mergeBooks(sourceIdValue: string, canonicalIdValue: string, reason?: string) {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const sourceId = await resolveCanonicalBookId(tx, sourceIdValue);
     const canonicalId = await resolveCanonicalBookId(tx, canonicalIdValue);
-    if (sourceId === canonicalId) return { canonicalBookId: canonicalId, alreadyMerged: true };
+    if (sourceId === canonicalId) return { canonicalBookId: canonicalId, sourceBookId: sourceId, alreadyMerged: true as const };
 
     const orderedIds = [sourceId, canonicalId].sort();
     await tx.$queryRaw`
@@ -261,4 +262,11 @@ export async function mergeBooks(sourceIdValue: string, canonicalIdValue: string
     });
     return { canonicalBookId: merged.id, sourceBookId: sourceId, alreadyMerged: false };
   }, { maxWait: 10_000, timeout: 120_000, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+  // Invalidar cachés de biblioteca para que todos los usuarios vean
+  // el estado correcto sin necesidad de reiniciar el servidor.
+  invalidatePrefix('libros:');
+  invalidatePrefix('finalizados:');
+
+  return result;
 }
