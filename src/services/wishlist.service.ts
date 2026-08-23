@@ -97,16 +97,10 @@ async function recoverCatalogBook<
 > {
   if (item.coverUrl?.trim() || item.book?.coverUrl?.trim()) return item;
 
-  const catalogCandidates = await prisma.book.findMany({
+  const exactTitleCandidates = await prisma.book.findMany({
     where: {
       deletedAt: null,
-      ...(item.author?.trim()
-        ? {
-            author: {
-              name: { equals: item.author.trim(), mode: 'insensitive' },
-            },
-          }
-        : { title: { equals: item.title.trim(), mode: 'insensitive' } }),
+      title: { equals: item.title.trim(), mode: 'insensitive' },
     },
     select: {
       id: true,
@@ -114,12 +108,33 @@ async function recoverCatalogBook<
       coverUrl: true,
       author: { select: { name: true } },
     },
-    take: item.author?.trim() ? 100 : 1,
+    take: 10,
   });
   const normalizedTitle = canonicalBookTitle(item.title);
-  const catalogBook = catalogCandidates.find(
+  let catalogBook = exactTitleCandidates.find(
     (candidate) => canonicalBookTitle(candidate.title) === normalizedTitle,
   );
+
+  if (!catalogBook?.coverUrl?.trim() && item.author?.trim()) {
+    const authorCandidates = await prisma.book.findMany({
+      where: {
+        deletedAt: null,
+        author: {
+          name: { equals: item.author.trim(), mode: 'insensitive' },
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+        coverUrl: true,
+        author: { select: { name: true } },
+      },
+      take: 100,
+    });
+    catalogBook = authorCandidates.find(
+      (candidate) => canonicalBookTitle(candidate.title) === normalizedTitle,
+    );
+  }
 
   if (!catalogBook?.coverUrl?.trim()) return item;
   return {
@@ -152,7 +167,6 @@ export async function getWishlist(userName: string) {
     },
     orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
   });
-
   // Separar lista activa (pendientes de comprar) de historial de compras
   const recoveredItems = await Promise.all(allItems.map(recoverCatalogBook));
   const pending = recoveredItems.filter((i) => i.purchasedAt === null);
@@ -420,6 +434,7 @@ export async function getClubWishlist(userName: string) {
     },
     orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
   });
+  const recoveredItems = await Promise.all(allItems.map(recoverCatalogBook));
 
   // Agrupar por libro (por bookId si existe, sino por title normalizado)
   type GroupKey = string;
@@ -444,7 +459,7 @@ export async function getClubWishlist(userName: string) {
     }
   >();
 
-  for (const item of allItems) {
+  for (const item of recoveredItems) {
     const key: GroupKey = item.bookId ?? item.title.toLowerCase().trim();
     const existing = groups.get(key);
     const memberInfo = memberMap.get(item.userId);

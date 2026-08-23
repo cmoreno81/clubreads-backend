@@ -13,6 +13,11 @@ test('la wishlist del club recupera la portada del catálogo vinculado', () => {
     source,
     /item\.coverUrl\?\.trim\(\)\s*\|\|\s*item\.book\?\.coverUrl\?\.trim\(\)/,
   );
+  assert.match(
+    source,
+    /const recoveredItems = await Promise\.all\(allItems\.map\(recoverCatalogBook\)\)/,
+  );
+  assert.match(source, /for \(const item of recoveredItems\)/);
 });
 
 test('la wishlist personal también completa portada y autora desde el catálogo', () => {
@@ -23,6 +28,10 @@ test('la wishlist personal también completa portada y autora desde el catálogo
   assert.match(
     source,
     /author:\s*item\.author\?\.trim\(\)\s*\|\|\s*item\.book\?\.author\?\.name\.trim\(\)/,
+  );
+  assert.match(
+    source,
+    /title:\s*\{ equals: item\.title\.trim\(\), mode: 'insensitive' \}/,
   );
 });
 
