@@ -1,5 +1,6 @@
 import { WishlistFormat, WishlistPriority } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { canonicalBookTitle } from './catalog.service.js';
 import { getCurrentClubContext } from './club-context.service.js';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -42,13 +43,18 @@ function formatItem(item: {
   note: string | null;
   createdAt: Date;
   updatedAt: Date;
+  book?: {
+    title: string;
+    coverUrl: string | null;
+    author: { name: string } | null;
+  } | null;
 }) {
   return {
     id: item.id,
     bookId: item.bookId,
-    title: item.title,
-    author: item.author,
-    coverUrl: item.coverUrl,
+    title: item.title.trim() || item.book?.title.trim() || item.title,
+    author: item.author?.trim() || item.book?.author?.name.trim() || null,
+    coverUrl: item.coverUrl?.trim() || item.book?.coverUrl?.trim() || null,
     isbn: item.isbn,
     format: item.format,
     priority: item.priority,
@@ -64,6 +70,65 @@ function formatItem(item: {
   };
 }
 
+async function recoverCatalogBook<
+  T extends {
+    title: string;
+    author: string | null;
+    coverUrl: string | null;
+    bookId: string | null;
+    book?: {
+      id?: string;
+      title: string;
+      coverUrl: string | null;
+      author: { name: string } | null;
+    } | null;
+  },
+>(
+  item: T,
+): Promise<
+  Omit<T, 'book'> & {
+    book?: {
+      id?: string;
+      title: string;
+      coverUrl: string | null;
+      author: { name: string } | null;
+    } | null;
+  }
+> {
+  if (item.coverUrl?.trim() || item.book?.coverUrl?.trim()) return item;
+
+  const catalogCandidates = await prisma.book.findMany({
+    where: {
+      deletedAt: null,
+      ...(item.author?.trim()
+        ? {
+            author: {
+              name: { equals: item.author.trim(), mode: 'insensitive' },
+            },
+          }
+        : { title: { equals: item.title.trim(), mode: 'insensitive' } }),
+    },
+    select: {
+      id: true,
+      title: true,
+      coverUrl: true,
+      author: { select: { name: true } },
+    },
+    take: item.author?.trim() ? 100 : 1,
+  });
+  const normalizedTitle = canonicalBookTitle(item.title);
+  const catalogBook = catalogCandidates.find(
+    (candidate) => canonicalBookTitle(candidate.title) === normalizedTitle,
+  );
+
+  if (!catalogBook?.coverUrl?.trim()) return item;
+  return {
+    ...item,
+    bookId: item.bookId ?? catalogBook.id,
+    book: catalogBook,
+  };
+}
+
 // ─── Servicio ─────────────────────────────────────────────────────────────────
 
 /** Devuelve la wishlist del usuario actual. */
@@ -76,15 +141,23 @@ export async function getWishlist(userName: string) {
 
   const allItems = await prisma.wishlistItem.findMany({
     where: { userId: user.id },
-    orderBy: [
-      { priority: 'asc' },
-      { createdAt: 'asc' },
-    ],
+    include: {
+      book: {
+        select: {
+          title: true,
+          coverUrl: true,
+          author: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
   });
 
   // Separar lista activa (pendientes de comprar) de historial de compras
-  const pending = allItems.filter((i) => i.purchasedAt === null);
-  const purchased = allItems.filter((i) => i.purchasedAt !== null)
+  const recoveredItems = await Promise.all(allItems.map(recoverCatalogBook));
+  const pending = recoveredItems.filter((i) => i.purchasedAt === null);
+  const purchased = recoveredItems
+    .filter((i) => i.purchasedAt !== null)
     .sort((a, b) => b.purchasedAt!.getTime() - a.purchasedAt!.getTime()); // más reciente primero
 
   const formatted = pending.map(formatItem);
@@ -114,7 +187,10 @@ export async function getWishlist(userName: string) {
           if (!i.plannedMonth) return false;
           const now = new Date();
           const pm = new Date(i.plannedMonth);
-          return pm.getFullYear() === now.getFullYear() && pm.getMonth() === now.getMonth();
+          return (
+            pm.getFullYear() === now.getFullYear() &&
+            pm.getMonth() === now.getMonth()
+          );
         })
         .reduce((sum, i) => sum + (i.price ?? 0), 0),
     },
@@ -122,7 +198,10 @@ export async function getWishlist(userName: string) {
 }
 
 /** Añade un ítem a la wishlist. */
-export async function addWishlistItem(userName: string, input: WishlistItemInput) {
+export async function addWishlistItem(
+  userName: string,
+  input: WishlistItemInput,
+) {
   const user = await prisma.user.findUnique({
     where: { name: userName },
     select: { id: true },
@@ -133,24 +212,52 @@ export async function addWishlistItem(userName: string, input: WishlistItemInput
     return { ok: false as const, mensaje: 'El título es obligatorio.' };
   }
 
-  // Si se proporciona bookId, verificar que existe y no está borrado
+  let catalogBook: {
+    id: string;
+    title: string;
+    coverUrl: string | null;
+    deletedAt: Date | null;
+    author: { name: string } | null;
+  } | null = null;
+
+  // Si se proporciona bookId, verificar que existe y recuperar sus metadatos.
   if (input.bookId) {
-    const book = await prisma.book.findUnique({
+    catalogBook = await prisma.book.findUnique({
       where: { id: input.bookId },
-      select: { id: true, deletedAt: true },
+      select: {
+        id: true,
+        title: true,
+        coverUrl: true,
+        deletedAt: true,
+        author: { select: { name: true } },
+      },
     });
-    if (!book || book.deletedAt) {
-      return { ok: false as const, mensaje: 'Libro no encontrado en el catálogo.' };
+    if (!catalogBook || catalogBook.deletedAt) {
+      return {
+        ok: false as const,
+        mensaje: 'Libro no encontrado en el catálogo.',
+      };
     }
+  } else if (!input.coverUrl?.trim()) {
+    const recovered = await recoverCatalogBook({
+      title: input.title,
+      author: input.author?.trim() ?? null,
+      coverUrl: null,
+      bookId: null,
+      book: null,
+    });
+    catalogBook = recovered.book
+      ? { ...recovered.book, id: recovered.bookId!, deletedAt: null }
+      : null;
   }
 
   const item = await prisma.wishlistItem.create({
     data: {
       userId: user.id,
-      bookId: input.bookId ?? null,
-      title: input.title.trim(),
-      author: input.author?.trim() ?? null,
-      coverUrl: input.coverUrl?.trim() ?? null,
+      bookId: input.bookId ?? catalogBook?.id ?? null,
+      title: input.title.trim() || catalogBook?.title || input.title,
+      author: input.author?.trim() || catalogBook?.author?.name.trim() || null,
+      coverUrl: input.coverUrl?.trim() || catalogBook?.coverUrl?.trim() || null,
       isbn: input.isbn?.trim() ?? null,
       format: input.format ?? 'PHYSICAL',
       priority: input.priority ?? 'MEDIUM',
@@ -176,7 +283,9 @@ export async function updateWishlistItem(
   });
   if (!user) return { ok: false as const, mensaje: 'Usuario no encontrado' };
 
-  const existing = await prisma.wishlistItem.findUnique({ where: { id: itemId } });
+  const existing = await prisma.wishlistItem.findUnique({
+    where: { id: itemId },
+  });
   if (!existing || existing.userId !== user.id) {
     return { ok: false as const, mensaje: 'Ítem no encontrado.' };
   }
@@ -185,14 +294,22 @@ export async function updateWishlistItem(
     where: { id: itemId },
     data: {
       ...(input.title !== undefined && { title: input.title.trim() }),
-      ...(input.author !== undefined && { author: input.author?.trim() ?? null }),
-      ...(input.coverUrl !== undefined && { coverUrl: input.coverUrl?.trim() ?? null }),
+      ...(input.author !== undefined && {
+        author: input.author?.trim() ?? null,
+      }),
+      ...(input.coverUrl !== undefined && {
+        coverUrl: input.coverUrl?.trim() ?? null,
+      }),
       ...(input.isbn !== undefined && { isbn: input.isbn?.trim() ?? null }),
       ...(input.format !== undefined && { format: input.format }),
       ...(input.priority !== undefined && { priority: input.priority }),
       ...(input.price !== undefined && { price: input.price }),
-      ...(input.releaseDate !== undefined && { releaseDate: parseDate(input.releaseDate) }),
-      ...(input.plannedMonth !== undefined && { plannedMonth: parseDate(input.plannedMonth) }),
+      ...(input.releaseDate !== undefined && {
+        releaseDate: parseDate(input.releaseDate),
+      }),
+      ...(input.plannedMonth !== undefined && {
+        plannedMonth: parseDate(input.plannedMonth),
+      }),
       ...(input.note !== undefined && { note: input.note?.trim() ?? null }),
     },
   });
@@ -201,19 +318,27 @@ export async function updateWishlistItem(
 }
 
 /** Marca un ítem como comprado (purchasedAt = ahora). */
-export async function markWishlistItemPurchased(userName: string, itemId: string, purchasedAt?: string) {
+export async function markWishlistItemPurchased(
+  userName: string,
+  itemId: string,
+  purchasedAt?: string,
+) {
   const user = await prisma.user.findUnique({
     where: { name: userName },
     select: { id: true },
   });
   if (!user) return { ok: false as const, mensaje: 'Usuario no encontrado' };
 
-  const existing = await prisma.wishlistItem.findUnique({ where: { id: itemId } });
+  const existing = await prisma.wishlistItem.findUnique({
+    where: { id: itemId },
+  });
   if (!existing || existing.userId !== user.id) {
     return { ok: false as const, mensaje: 'Ítem no encontrado.' };
   }
 
-  const date = purchasedAt ? parseDate(purchasedAt) ?? new Date() : new Date();
+  const date = purchasedAt
+    ? (parseDate(purchasedAt) ?? new Date())
+    : new Date();
   const updated = await prisma.wishlistItem.update({
     where: { id: itemId },
     data: { purchasedAt: date },
@@ -223,14 +348,19 @@ export async function markWishlistItemPurchased(userName: string, itemId: string
 }
 
 /** Desmarca un ítem comprado (vuelve a la lista activa). */
-export async function unmarkWishlistItemPurchased(userName: string, itemId: string) {
+export async function unmarkWishlistItemPurchased(
+  userName: string,
+  itemId: string,
+) {
   const user = await prisma.user.findUnique({
     where: { name: userName },
     select: { id: true },
   });
   if (!user) return { ok: false as const, mensaje: 'Usuario no encontrado' };
 
-  const existing = await prisma.wishlistItem.findUnique({ where: { id: itemId } });
+  const existing = await prisma.wishlistItem.findUnique({
+    where: { id: itemId },
+  });
   if (!existing || existing.userId !== user.id) {
     return { ok: false as const, mensaje: 'Ítem no encontrado.' };
   }
@@ -251,7 +381,9 @@ export async function deleteWishlistItem(userName: string, itemId: string) {
   });
   if (!user) return { ok: false as const, mensaje: 'Usuario no encontrado' };
 
-  const existing = await prisma.wishlistItem.findUnique({ where: { id: itemId } });
+  const existing = await prisma.wishlistItem.findUnique({
+    where: { id: itemId },
+  });
   if (!existing || existing.userId !== user.id) {
     return { ok: false as const, mensaje: 'Ítem no encontrado.' };
   }
@@ -301,7 +433,13 @@ export async function getClubWishlist(userName: string) {
       coverUrl: string | null;
       releaseDate: Date | null;
       isUpcoming: boolean;
-      members: { userId: string; name: string; avatarUrl: string | null; price: number | null; format: WishlistFormat }[];
+      members: {
+        userId: string;
+        name: string;
+        avatarUrl: string | null;
+        price: number | null;
+        format: WishlistFormat;
+      }[];
     }
   >();
 
@@ -312,8 +450,10 @@ export async function getClubWishlist(userName: string) {
     if (!memberInfo) continue;
 
     const title = item.title.trim() || item.book?.title.trim() || item.title;
-    const author = item.author?.trim() || item.book?.author?.name.trim() || null;
-    const coverUrl = item.coverUrl?.trim() || item.book?.coverUrl?.trim() || null;
+    const author =
+      item.author?.trim() || item.book?.author?.name.trim() || null;
+    const coverUrl =
+      item.coverUrl?.trim() || item.book?.coverUrl?.trim() || null;
 
     if (!existing) {
       groups.set(key, {
@@ -324,12 +464,26 @@ export async function getClubWishlist(userName: string) {
         coverUrl,
         releaseDate: item.releaseDate,
         isUpcoming: item.releaseDate != null && item.releaseDate > new Date(),
-        members: [{ userId: item.userId, name: memberInfo.name, avatarUrl: memberInfo.avatarUrl, price: item.price, format: item.format }],
+        members: [
+          {
+            userId: item.userId,
+            name: memberInfo.name,
+            avatarUrl: memberInfo.avatarUrl,
+            price: item.price,
+            format: item.format,
+          },
+        ],
       });
     } else {
       if (!existing.author && author) existing.author = author;
       if (!existing.coverUrl && coverUrl) existing.coverUrl = coverUrl;
-      existing.members.push({ userId: item.userId, name: memberInfo.name, avatarUrl: memberInfo.avatarUrl, price: item.price, format: item.format });
+      existing.members.push({
+        userId: item.userId,
+        name: memberInfo.name,
+        avatarUrl: memberInfo.avatarUrl,
+        price: item.price,
+        format: item.format,
+      });
     }
   }
 

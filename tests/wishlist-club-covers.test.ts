@@ -15,10 +15,20 @@ test('la wishlist del club recupera la portada del catálogo vinculado', () => {
   );
 });
 
+test('la wishlist personal también completa portada y autora desde el catálogo', () => {
+  assert.match(
+    source,
+    /coverUrl:\s*item\.coverUrl\?\.trim\(\)\s*\|\|\s*item\.book\?\.coverUrl\?\.trim\(\)/,
+  );
+  assert.match(
+    source,
+    /author:\s*item\.author\?\.trim\(\)\s*\|\|\s*item\.book\?\.author\?\.name\.trim\(\)/,
+  );
+});
+
 test('la wishlist pública muestra solo compras todavía pendientes', () => {
   assert.match(
     source,
     /userId:\s*\{\s*in:\s*memberUserIds\s*\},\s*purchasedAt:\s*null/,
   );
 });
-
