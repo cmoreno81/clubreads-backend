@@ -273,7 +273,19 @@ export async function getClubWishlist(userName: string) {
   const memberMap = new Map(members.map((m) => [m.user.id, m.user]));
 
   const allItems = await prisma.wishlistItem.findMany({
-    where: { userId: { in: memberUserIds } },
+    where: {
+      userId: { in: memberUserIds },
+      purchasedAt: null,
+    },
+    include: {
+      book: {
+        select: {
+          title: true,
+          coverUrl: true,
+          author: { select: { name: true } },
+        },
+      },
+    },
     orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
   });
 
@@ -299,18 +311,24 @@ export async function getClubWishlist(userName: string) {
     const memberInfo = memberMap.get(item.userId);
     if (!memberInfo) continue;
 
+    const title = item.title.trim() || item.book?.title.trim() || item.title;
+    const author = item.author?.trim() || item.book?.author?.name.trim() || null;
+    const coverUrl = item.coverUrl?.trim() || item.book?.coverUrl?.trim() || null;
+
     if (!existing) {
       groups.set(key, {
         key,
         bookId: item.bookId,
-        title: item.title,
-        author: item.author,
-        coverUrl: item.coverUrl,
+        title,
+        author,
+        coverUrl,
         releaseDate: item.releaseDate,
         isUpcoming: item.releaseDate != null && item.releaseDate > new Date(),
         members: [{ userId: item.userId, name: memberInfo.name, avatarUrl: memberInfo.avatarUrl, price: item.price, format: item.format }],
       });
     } else {
+      if (!existing.author && author) existing.author = author;
+      if (!existing.coverUrl && coverUrl) existing.coverUrl = coverUrl;
       existing.members.push({ userId: item.userId, name: memberInfo.name, avatarUrl: memberInfo.avatarUrl, price: item.price, format: item.format });
     }
   }
