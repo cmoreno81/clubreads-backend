@@ -275,6 +275,7 @@ model Book {
   bookOfYearWinners           BookOfYearWinner[]
   clubBookOfYearCandidates    ClubBookOfYearCandidate[]
   clubBookOfYearHistoricalLinks ClubBookOfYearHistoricalLink[]
+  wishlistItems               WishlistItem[]
 
   @@index([title])
   @@index([authorId])
@@ -357,6 +358,7 @@ model User {
   readingChallenges             ReadingChallenge[]
   dailyCheckins                 DailyCheckin[]
   readingSessions               ReadingSession[]
+  wishlistItems                 WishlistItem[]
   bookOfYearMonthlySelections   BookOfYearMonthlySelection[]
   bookOfYearDuelWinners         BookOfYearDuelWinner[]
   bookOfYearFinalists           BookOfYearFinalist[]
@@ -1226,4 +1228,59 @@ model ReadingSession {
 
   @@unique([userId, date])
   @@index([userId, date])
+}
+
+// ─── Lista de adquisición (wishlist) ──────────────────────────────────────────
+
+enum WishlistFormat {
+  PHYSICAL
+  DIGITAL
+  AUDIOBOOK
+}
+
+enum WishlistPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+/// Libro que un usuario quiere comprar/adquirir.
+/// Puede estar vinculado a un libro del catálogo (bookId) o ser entrada manual.
+model WishlistItem {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Libro del catálogo — opcional: puede ser un libro no catalogado todavía.
+  bookId String?
+  book   Book?   @relation(fields: [bookId], references: [id], onDelete: SetNull)
+
+  /// Título visible (copiado del libro o introducido manualmente).
+  title    String
+  author   String?
+  coverUrl String?
+  isbn     String?
+
+  format   WishlistFormat   @default(PHYSICAL)
+  priority WishlistPriority @default(MEDIUM)
+
+  /// Precio estimado en la moneda local del usuario (sin símbolo).
+  price Float?
+
+  /// Si tiene fecha futura → es una novedad; null → ya disponible.
+  releaseDate DateTime?
+
+  /// Mes planificado para la compra (solo año+mes, sin día significativo).
+  plannedMonth DateTime?
+
+  /// Nota personal libre.
+  note String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, releaseDate])
+  @@index([bookId])
 }

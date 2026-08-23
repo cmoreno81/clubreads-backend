@@ -136,6 +136,13 @@ import { handleChooseAnnualBookOfYear, handleChooseBookOfYearDuel, handleGetClub
 import { handleReactionDetails } from '../controllers/reaction-details.controller.js';
 import { handleEnviarFeedback } from '../controllers/feedback.controller.js';
 import { handleCancelClubBookOfYear, handleCloseClubBookOfYearQualifying, handleCloseClubBookOfYearRound, handleGetClubBookOfYear, handleGetClubBookOfYearHistory, handleLinkClubBookOfYearHistoricalCandidate, handleOpenClubBookOfYearRound, handleOpenClubBookOfYearVoting, handlePrepareClubBookOfYear, handleStartClubBookOfYear, handleSyncClubBookOfYear, handleVoteClubBookOfYearDuel, handleVoteClubBookOfYearQualifying } from '../controllers/club-book-of-year.controller.js';
+import {
+  handleGetWishlist,
+  handleAddWishlistItem,
+  handleUpdateWishlistItem,
+  handleDeleteWishlistItem,
+  handleGetClubWishlist,
+} from '../controllers/wishlist.controller.js';
 export const apiRouter = Router();
 
 const PUBLIC_AUTH_ACTIONS = new Set([
@@ -728,6 +735,13 @@ apiRouter.get(
   requireAuthentication,
   handleGetRecentClubAchievements,
 );
+
+// ── Wishlist (lista de adquisición) ──────────────────────────────────────────
+apiRouter.get('/wishlist', requireAuthentication, handleGetWishlist);
+apiRouter.post('/wishlist', requireAuthentication, handleAddWishlistItem);
+apiRouter.patch('/wishlist/:id', requireAuthentication, handleUpdateWishlistItem);
+apiRouter.delete('/wishlist/:id', requireAuthentication, handleDeleteWishlistItem);
+apiRouter.get('/club/wishlist', requireAuthentication, handleGetClubWishlist);
 apiRouter.get('/', handleApi);
 apiRouter.post('/', handleApi);
 apiRouter.post(
