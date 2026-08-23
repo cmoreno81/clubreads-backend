@@ -32,3 +32,15 @@ test('la wishlist pública muestra solo compras todavía pendientes', () => {
     /userId:\s*\{\s*in:\s*memberUserIds\s*\},\s*purchasedAt:\s*null/,
   );
 });
+
+test('la wishlist del club identifica los libros de la persona conectada', () => {
+  assert.match(source, /const \{ club, user \} = await getCurrentClubContext/);
+  assert.match(
+    source,
+    /isInMyWishlist:\s*item\.userId === user\?\.id/,
+  );
+  assert.match(
+    source,
+    /item\.userId === user\?\.id\) existing\.isInMyWishlist = true/,
+  );
+});

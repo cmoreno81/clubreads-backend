@@ -394,7 +394,7 @@ export async function deleteWishlistItem(userName: string, itemId: string) {
 
 /** Vista de club: wishlist pública de todos los miembros del club activo. */
 export async function getClubWishlist(userName: string) {
-  const { club } = await getCurrentClubContext(userName);
+  const { club, user } = await getCurrentClubContext(userName);
 
   // Obtener todos los miembros del club
   const members = await prisma.clubMember.findMany({
@@ -433,6 +433,7 @@ export async function getClubWishlist(userName: string) {
       coverUrl: string | null;
       releaseDate: Date | null;
       isUpcoming: boolean;
+      isInMyWishlist: boolean;
       members: {
         userId: string;
         name: string;
@@ -464,6 +465,7 @@ export async function getClubWishlist(userName: string) {
         coverUrl,
         releaseDate: item.releaseDate,
         isUpcoming: item.releaseDate != null && item.releaseDate > new Date(),
+        isInMyWishlist: item.userId === user?.id,
         members: [
           {
             userId: item.userId,
@@ -477,6 +479,7 @@ export async function getClubWishlist(userName: string) {
     } else {
       if (!existing.author && author) existing.author = author;
       if (!existing.coverUrl && coverUrl) existing.coverUrl = coverUrl;
+      if (item.userId === user?.id) existing.isInMyWishlist = true;
       existing.members.push({
         userId: item.userId,
         name: memberInfo.name,
