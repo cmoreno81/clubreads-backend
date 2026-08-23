@@ -107,14 +107,12 @@ export async function getMoodClub(usuarioActual = '') {
       }),
       prisma.readingCompletion.count({
         where: {
-          isReread: false,
           finishedAt: { gte: desde },
           user: { clubMemberships: { some: { clubId: club.id } } },
         },
       }),
       prisma.readingCompletion.findMany({
         where: {
-          isReread: false,
           user: { clubMemberships: { some: { clubId: club.id } } },
         },
         include: { user: true, book: true },

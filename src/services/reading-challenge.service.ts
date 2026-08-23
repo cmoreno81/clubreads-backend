@@ -27,7 +27,6 @@ export async function getClubReadingChallenges(userName: string) {
           readingCompletions: {
             where: {
               finishedAt: { gte: yearStart, lt: yearEnd },
-              isReread: false,
             },
             select: { id: true },
           },

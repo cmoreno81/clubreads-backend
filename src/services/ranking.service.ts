@@ -36,7 +36,6 @@ export async function getRanking(
 
   const finalizaciones = await prisma.readingCompletion.findMany({
     where: {
-      isReread: false,
       finishedAt: { gte: desde, lt: hasta },
       user: { clubMemberships: { some: { clubId: club.id } } },
     },

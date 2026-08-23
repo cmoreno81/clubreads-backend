@@ -125,7 +125,6 @@ export async function getAnnualAffinityRanking(
     where: {
       userId,
       finishedAt: { gte: yearStart, lt: nextYearStart },
-      isReread: false,
     },
     select: { bookId: true },
   });
@@ -150,7 +149,6 @@ export async function getAnnualAffinityRanking(
     where: {
       userId: { in: memberIds },
       finishedAt: { gte: yearStart, lt: nextYearStart },
-      isReread: false,
       bookId: { in: myBookIds },
     },
     select: { userId: true, bookId: true },
@@ -201,7 +199,6 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
     dashboardBlock('monthly_completions', () => client.readingCompletion.groupBy({
       by: ['userId'],
       where: {
-        isReread: false,
         finishedAt: { gte: monthStart, lt: monthEnd },
         user: { clubMemberships: { some: { clubId: club.id } } },
       },
@@ -504,11 +501,11 @@ export async function getAfinidadDetalle(userId: string, miembroId: string) {
 
   const [misLibros, susLibros, miembro] = await Promise.all([
     prisma.readingCompletion.findMany({
-      where: { userId, finishedAt: { gte: yearStart }, isReread: false },
+      where: { userId, finishedAt: { gte: yearStart } },
       select: { bookId: true },
     }),
     prisma.readingCompletion.findMany({
-      where: { userId: miembroId, finishedAt: { gte: yearStart }, isReread: false },
+      where: { userId: miembroId, finishedAt: { gte: yearStart } },
       select: { bookId: true },
     }),
     prisma.user.findUnique({
