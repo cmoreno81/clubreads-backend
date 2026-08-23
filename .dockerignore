@@ -20,6 +20,7 @@ npm-debug.log*
 **/*.backup
 **/*.backup.age
 **/*.sql
+!prisma/migrations/**/migration.sql
 **/*.dump.gz
 **/*.tar
 **/*pgdata*

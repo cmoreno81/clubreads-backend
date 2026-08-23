@@ -70,6 +70,11 @@ test('Docker excluye secretos y usa una imagen final no root', async () => {
   for (const pattern of ['.git', '.env', 'data', '**/*.csv', 'node_modules', 'tests']) {
     assert.match(dockerignore, new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
   }
+  assert.match(
+    dockerignore,
+    /^!prisma\/migrations\/\*\*\/migration\.sql$/m,
+    'Los migration.sql de Prisma deben incluirse en la imagen de despliegue',
+  );
   assert.match(compose, /127\.0\.0\.1:\$\{POSTGRES_PORT:-5433\}:5432/);
   assert.match(compose, /profiles: \["tools"\]/);
   assert.match(compose, /condition: service_healthy/);
