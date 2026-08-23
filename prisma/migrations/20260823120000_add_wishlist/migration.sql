@@ -1,8 +1,20 @@
--- CreateEnum
-CREATE TYPE "WishlistFormat" AS ENUM ('PHYSICAL', 'DIGITAL', 'AUDIOBOOK');
+-- Un intento anterior puede haber dejado creado el enum antes de que Prisma
+-- registrase la migración completa. Se conserva ese tipo y sus datos.
+DO $$
+BEGIN
+    CREATE TYPE "WishlistFormat" AS ENUM ('PHYSICAL', 'DIGITAL', 'AUDIOBOOK');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END
+$$;
 
--- CreateEnum
-CREATE TYPE "WishlistPriority" AS ENUM ('HIGH', 'MEDIUM', 'LOW');
+DO $$
+BEGIN
+    CREATE TYPE "WishlistPriority" AS ENUM ('HIGH', 'MEDIUM', 'LOW');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END
+$$;
 
 -- CreateTable
 CREATE TABLE "WishlistItem" (
