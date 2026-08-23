@@ -17,7 +17,7 @@ END
 $$;
 
 -- CreateTable
-CREATE TABLE "WishlistItem" (
+CREATE TABLE IF NOT EXISTS "WishlistItem" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "bookId" TEXT,
@@ -38,22 +38,38 @@ CREATE TABLE "WishlistItem" (
     CONSTRAINT "WishlistItem_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE INDEX "WishlistItem_userId_idx" ON "WishlistItem"("userId");
+-- La tabla pudo quedar creada parcialmente por un despliegue anterior.
+ALTER TABLE "WishlistItem"
+ADD COLUMN IF NOT EXISTS "purchasedAt" TIMESTAMP(3);
 
 -- CreateIndex
-CREATE INDEX "WishlistItem_userId_releaseDate_idx" ON "WishlistItem"("userId", "releaseDate");
+CREATE INDEX IF NOT EXISTS "WishlistItem_userId_idx" ON "WishlistItem"("userId");
 
 -- CreateIndex
-CREATE INDEX "WishlistItem_userId_purchasedAt_idx" ON "WishlistItem"("userId", "purchasedAt");
+CREATE INDEX IF NOT EXISTS "WishlistItem_userId_releaseDate_idx" ON "WishlistItem"("userId", "releaseDate");
 
 -- CreateIndex
-CREATE INDEX "WishlistItem_bookId_idx" ON "WishlistItem"("bookId");
+CREATE INDEX IF NOT EXISTS "WishlistItem_userId_purchasedAt_idx" ON "WishlistItem"("userId", "purchasedAt");
+
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "WishlistItem_bookId_idx" ON "WishlistItem"("bookId");
 
 -- AddForeignKey
-ALTER TABLE "WishlistItem" ADD CONSTRAINT "WishlistItem_userId_fkey"
-FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$
+BEGIN
+    ALTER TABLE "WishlistItem" ADD CONSTRAINT "WishlistItem_userId_fkey"
+    FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END
+$$;
 
 -- AddForeignKey
-ALTER TABLE "WishlistItem" ADD CONSTRAINT "WishlistItem_bookId_fkey"
-FOREIGN KEY ("bookId") REFERENCES "Book"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$
+BEGIN
+    ALTER TABLE "WishlistItem" ADD CONSTRAINT "WishlistItem_bookId_fkey"
+    FOREIGN KEY ("bookId") REFERENCES "Book"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END
+$$;
