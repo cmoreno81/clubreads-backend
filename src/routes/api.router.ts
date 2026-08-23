@@ -738,7 +738,7 @@ apiRouter.get(
   handleGetRecentClubAchievements,
 );
 
-// ── Wishlist (lista de adquisición) ──────────────────────────────────────────
+// ── Wishlist (lista de adquisición) ──────────────────────────────────────
 apiRouter.get('/wishlist', requireAuthentication, handleGetWishlist);
 apiRouter.post('/wishlist', requireAuthentication, handleAddWishlistItem);
 apiRouter.patch('/wishlist/:id', requireAuthentication, handleUpdateWishlistItem);
