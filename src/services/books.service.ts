@@ -1331,6 +1331,9 @@ export async function crearLibro(data: any) {
     data.autor || data.author || '',
   ).trim().replace(/\s+/g, ' ');
   const suppliedIsbn = String(data.isbn || '').trim();
+  const suppliedCoverUrl = String(
+    data.coverUrl || data.portadaUrl || data.portada || '',
+  ).trim();
   const paginas = Number(data.paginas || data.totalPages || 0);
 
   if (paginas < 0 || !Number.isInteger(paginas)) {
@@ -1396,6 +1399,14 @@ export async function crearLibro(data: any) {
   }
 
   if (existingBook) {
+    if (!existingBook.coverUrl?.trim() && suppliedCoverUrl) {
+      await prisma.book.update({
+        where: { id: existingBook.id },
+        data: { coverUrl: suppliedCoverUrl },
+      });
+      existingBook.coverUrl = suppliedCoverUrl;
+    }
+
     const existingLibrary =
       await prisma.library.findUnique({
         where: {
@@ -1586,7 +1597,7 @@ logger.info({
           createdById: user.id,
 
           coverUrl:
-            automaticCover?.coverUrl ?? null,
+            suppliedCoverUrl || automaticCover?.coverUrl || null,
 
           isbn: suppliedIsbn || automaticCover?.isbn || null,
 
