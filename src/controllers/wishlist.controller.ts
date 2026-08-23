@@ -4,6 +4,8 @@ import {
   deleteWishlistItem,
   getClubWishlist,
   getWishlist,
+  markWishlistItemPurchased,
+  unmarkWishlistItemPurchased,
   updateWishlistItem,
 } from '../services/wishlist.service.js';
 import { WishlistFormat, WishlistPriority } from '@prisma/client';
@@ -82,6 +84,37 @@ export async function handleUpdateWishlistItem(req: Request, res: Response) {
       ...(body.plannedMonth !== undefined && { plannedMonth: body.plannedMonth ? String(body.plannedMonth) : null }),
       ...(body.note !== undefined && { note: body.note ? String(body.note) : null }),
     });
+    if (!result.ok) return res.status(404).json(result);
+    return res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error inesperado';
+    return res.status(500).json({ ok: false, mensaje: message });
+  }
+}
+
+export async function handleMarkPurchased(req: Request, res: Response) {
+  try {
+    const id = req.params['id'] as string;
+    if (!id) return res.status(400).json({ ok: false, mensaje: 'ID requerido.' });
+    const body = req.body ?? {};
+    const result = await markWishlistItemPurchased(
+      req.auth!.userName,
+      id,
+      body.purchasedAt ? String(body.purchasedAt) : undefined,
+    );
+    if (!result.ok) return res.status(404).json(result);
+    return res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error inesperado';
+    return res.status(500).json({ ok: false, mensaje: message });
+  }
+}
+
+export async function handleUnmarkPurchased(req: Request, res: Response) {
+  try {
+    const id = req.params['id'] as string;
+    if (!id) return res.status(400).json({ ok: false, mensaje: 'ID requerido.' });
+    const result = await unmarkWishlistItemPurchased(req.auth!.userName, id);
     if (!result.ok) return res.status(404).json(result);
     return res.json(result);
   } catch (error) {

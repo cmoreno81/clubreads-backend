@@ -141,6 +141,8 @@ import {
   handleAddWishlistItem,
   handleUpdateWishlistItem,
   handleDeleteWishlistItem,
+  handleMarkPurchased,
+  handleUnmarkPurchased,
   handleGetClubWishlist,
 } from '../controllers/wishlist.controller.js';
 export const apiRouter = Router();
@@ -741,6 +743,8 @@ apiRouter.get('/wishlist', requireAuthentication, handleGetWishlist);
 apiRouter.post('/wishlist', requireAuthentication, handleAddWishlistItem);
 apiRouter.patch('/wishlist/:id', requireAuthentication, handleUpdateWishlistItem);
 apiRouter.delete('/wishlist/:id', requireAuthentication, handleDeleteWishlistItem);
+apiRouter.post('/wishlist/:id/purchased', requireAuthentication, handleMarkPurchased);
+apiRouter.delete('/wishlist/:id/purchased', requireAuthentication, handleUnmarkPurchased);
 apiRouter.get('/club/wishlist', requireAuthentication, handleGetClubWishlist);
 apiRouter.get('/', handleApi);
 apiRouter.post('/', handleApi);

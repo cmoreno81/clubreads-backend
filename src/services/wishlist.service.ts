@@ -38,6 +38,7 @@ function formatItem(item: {
   price: number | null;
   releaseDate: Date | null;
   plannedMonth: Date | null;
+  purchasedAt: Date | null;
   note: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -54,6 +55,7 @@ function formatItem(item: {
     price: item.price,
     releaseDate: item.releaseDate?.toISOString() ?? null,
     plannedMonth: item.plannedMonth?.toISOString() ?? null,
+    purchasedAt: item.purchasedAt?.toISOString() ?? null,
     note: item.note,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
@@ -72,17 +74,21 @@ export async function getWishlist(userName: string) {
   });
   if (!user) return { ok: false as const, mensaje: 'Usuario no encontrado' };
 
-  const items = await prisma.wishlistItem.findMany({
+  const allItems = await prisma.wishlistItem.findMany({
     where: { userId: user.id },
     orderBy: [
-      // Primero por prioridad (HIGH antes que MEDIUM antes que LOW)
       { priority: 'asc' },
       { createdAt: 'asc' },
     ],
   });
 
-  const formatted = items.map(formatItem);
-  const totalPrice = items.reduce((sum, i) => sum + (i.price ?? 0), 0);
+  // Separar lista activa (pendientes de comprar) de historial de compras
+  const pending = allItems.filter((i) => i.purchasedAt === null);
+  const purchased = allItems.filter((i) => i.purchasedAt !== null)
+    .sort((a, b) => b.purchasedAt!.getTime() - a.purchasedAt!.getTime()); // más reciente primero
+
+  const formatted = pending.map(formatItem);
+  const totalPrice = pending.reduce((sum, i) => sum + (i.price ?? 0), 0);
   const upcoming = formatted.filter((i) => i.isUpcoming);
   const available = formatted.filter((i) => !i.isUpcoming);
 
@@ -91,19 +97,19 @@ export async function getWishlist(userName: string) {
     items: formatted,
     upcoming,
     available,
-    totalItems: items.length,
+    totalItems: pending.length,
     totalPrice: Math.round(totalPrice * 100) / 100,
+    purchased: purchased.map(formatItem),
     // Resumen para los widgets compactos
     summary: {
-      totalItems: items.length,
+      totalItems: pending.length,
       totalPrice: Math.round(totalPrice * 100) / 100,
       upcomingCount: upcoming.length,
       availableCount: available.length,
-      physicalCount: items.filter((i) => i.format === 'PHYSICAL').length,
-      digitalCount: items.filter((i) => i.format === 'DIGITAL').length,
-      audiobookCount: items.filter((i) => i.format === 'AUDIOBOOK').length,
-      // Precio del mes planificado actual
-      thisMonthPrice: items
+      physicalCount: pending.filter((i) => i.format === 'PHYSICAL').length,
+      digitalCount: pending.filter((i) => i.format === 'DIGITAL').length,
+      audiobookCount: pending.filter((i) => i.format === 'AUDIOBOOK').length,
+      thisMonthPrice: pending
         .filter((i) => {
           if (!i.plannedMonth) return false;
           const now = new Date();
@@ -189,6 +195,49 @@ export async function updateWishlistItem(
       ...(input.plannedMonth !== undefined && { plannedMonth: parseDate(input.plannedMonth) }),
       ...(input.note !== undefined && { note: input.note?.trim() ?? null }),
     },
+  });
+
+  return { ok: true as const, item: formatItem(updated) };
+}
+
+/** Marca un ítem como comprado (purchasedAt = ahora). */
+export async function markWishlistItemPurchased(userName: string, itemId: string, purchasedAt?: string) {
+  const user = await prisma.user.findUnique({
+    where: { name: userName },
+    select: { id: true },
+  });
+  if (!user) return { ok: false as const, mensaje: 'Usuario no encontrado' };
+
+  const existing = await prisma.wishlistItem.findUnique({ where: { id: itemId } });
+  if (!existing || existing.userId !== user.id) {
+    return { ok: false as const, mensaje: 'Ítem no encontrado.' };
+  }
+
+  const date = purchasedAt ? parseDate(purchasedAt) ?? new Date() : new Date();
+  const updated = await prisma.wishlistItem.update({
+    where: { id: itemId },
+    data: { purchasedAt: date },
+  });
+
+  return { ok: true as const, item: formatItem(updated) };
+}
+
+/** Desmarca un ítem comprado (vuelve a la lista activa). */
+export async function unmarkWishlistItemPurchased(userName: string, itemId: string) {
+  const user = await prisma.user.findUnique({
+    where: { name: userName },
+    select: { id: true },
+  });
+  if (!user) return { ok: false as const, mensaje: 'Usuario no encontrado' };
+
+  const existing = await prisma.wishlistItem.findUnique({ where: { id: itemId } });
+  if (!existing || existing.userId !== user.id) {
+    return { ok: false as const, mensaje: 'Ítem no encontrado.' };
+  }
+
+  const updated = await prisma.wishlistItem.update({
+    where: { id: itemId },
+    data: { purchasedAt: null },
   });
 
   return { ok: true as const, item: formatItem(updated) };

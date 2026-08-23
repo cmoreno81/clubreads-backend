@@ -1277,10 +1277,14 @@ model WishlistItem {
   /// Nota personal libre.
   note String? @db.Text
 
+  /// Fecha en que se compró el libro. Si no es null → está en el historial de compras.
+  purchasedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([userId, releaseDate])
+  @@index([userId, purchasedAt])
   @@index([bookId])
 }
