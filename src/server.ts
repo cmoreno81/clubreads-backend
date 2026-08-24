@@ -117,9 +117,36 @@ export function startServer() {
   const port = Number(process.env.PORT) || 3000;
   const server = app.listen(port, () => {
     logger.info({ event: 'server_started', port }, 'server started');
+    void installUpcomingReleaseSync();
   });
   installGracefulShutdown(server);
   return server;
+}
+
+async function installUpcomingReleaseSync() {
+  const { hasConfiguredUpcomingSources, runConfiguredUpcomingReleaseSync } =
+    await import('./jobs/sync-upcoming-releases.job.js');
+  if (!hasConfiguredUpcomingSources()) return;
+
+  const sync = async () => {
+    try {
+      const summary = await runConfiguredUpcomingReleaseSync();
+      logger.info(
+        { event: 'upcoming_releases_synced', ...summary },
+        'upcoming releases synced',
+      );
+    } catch (error) {
+      logger.error(
+        { event: 'upcoming_releases_sync_failed', error },
+        'upcoming releases sync failed',
+      );
+    }
+  };
+
+  // El servidor ya está disponible mientras se consultan las fuentes.
+  await sync();
+  const interval = setInterval(sync, 24 * 60 * 60 * 1000);
+  interval.unref();
 }
 
 const entrypoint = process.argv[1]
