@@ -3,6 +3,7 @@ import {
   fetchGoogleBooksUpcoming,
   fetchUpcomingFeed,
   fetchUpcomingSource,
+  reconcileUpcomingBookSource,
   saveUpcomingBooks,
 } from '../services/upcoming-release-sync.service.js';
 
@@ -47,6 +48,10 @@ export async function runConfiguredUpcomingReleaseSync(): Promise<UpcomingSyncSu
   const configuredSources =
     configuredHtmlSources.length + configuredFeeds.length + configuredQueries.length;
   const settled: PromiseSettledResult<ExternalUpcomingBook[]>[] = [];
+  const successfulHtmlSources: Array<{
+    name: string;
+    items: ExternalUpcomingBook[];
+  }> = [];
 
   for (const query of configuredQueries) {
     try {
@@ -57,10 +62,12 @@ export async function runConfiguredUpcomingReleaseSync(): Promise<UpcomingSyncSu
   }
   for (const source of configuredHtmlSources) {
     try {
+      const items = await fetchUpcomingSource(source.name, source.url);
       settled.push({
         status: 'fulfilled',
-        value: await fetchUpcomingSource(source.name, source.url),
+        value: items,
       });
+      successfulHtmlSources.push({ name: source.name, items });
     } catch (reason) {
       settled.push({ status: 'rejected', reason });
     }
@@ -92,5 +99,8 @@ export async function runConfiguredUpcomingReleaseSync(): Promise<UpcomingSyncSu
   }
 
   const summary = await saveUpcomingBooks([...booksByKey.values()]);
+  for (const { name, items } of successfulHtmlSources) {
+    await reconcileUpcomingBookSource(name, items);
+  }
   return { ...summary, configuredSources, errors };
 }

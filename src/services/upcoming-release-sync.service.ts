@@ -140,6 +140,50 @@ export function extractCasaDelLibroProductUrls(html: string, pageUrl: string) {
   return [...urls];
 }
 
+function casaDelLibroGenreUrl(html: string) {
+  const nodes = jsonLdBlocks(html).flatMap(flattenJsonLd);
+  for (const node of nodes) {
+    const type = strings(node["@type"]).join(" ").toLowerCase();
+    if (!type.includes("book") && !type.includes("product")) continue;
+    const genre = strings(node.genre)[0];
+    if (genre) return genre;
+  }
+  return null;
+}
+
+/**
+ * Casa del Libro mezcla ficción y no ficción en su página general de
+ * lanzamientos. Usamos una lista positiva: una categoría desconocida no se
+ * publica hasta poder clasificarla con seguridad.
+ */
+export function classifyCasaDelLibroFictionGenre(genreUrl: string | null) {
+  if (!genreUrl) return null;
+  const path = (() => {
+    try {
+      return new URL(genreUrl, "https://www.casadellibro.com").pathname.toLowerCase();
+    } catch (_) {
+      return genreUrl.toLowerCase();
+    }
+  })();
+  const isFiction =
+    path.startsWith("/libros/literatura/") ||
+    path.startsWith("/libros/juvenil/") ||
+    path.startsWith("/libros/comics/") ||
+    path.startsWith("/libros/comics-y-manga-infantil-y-juvenil/");
+  if (!isFiction) return null;
+
+  if (/romantica|romantica-y-erotica|romance/.test(path)) return "Romance";
+  if (/fantasia|fantastica|fantasy|magia/.test(path)) {
+    return path.includes("/juvenil/") ? "Fantasía juvenil" : "Fantasía";
+  }
+  if (/novela-negra|thriller|policiaca|misterio/.test(path)) return "Thriller";
+  if (/historica/.test(path)) return "Novela histórica";
+  if (/terror/.test(path)) return "Terror";
+  if (/comic|manga|novela-grafica/.test(path)) return "Cómic";
+  if (/juvenil/.test(path)) return "Juvenil";
+  return "Narrativa";
+}
+
 export function parseCasaDelLibroDetail(
   html: string,
   source: string,
@@ -161,6 +205,8 @@ export function parseCasaDelLibroDetail(
   const publisherPart = titleParts.find((value) =>
     /^editorial\s+/i.test(value),
   );
+  const genre = classifyCasaDelLibroFictionGenre(casaDelLibroGenreUrl(html));
+  if (!genre) return null;
   return {
     title,
     author: metaContent(html, "book:author"),
@@ -168,7 +214,7 @@ export function parseCasaDelLibroDetail(
     coverUrl: metaContent(html, "og:image"),
     publicationDate,
     publisher: publisherPart?.replace(/^editorial\s+/i, "") ?? null,
-    genre: null,
+    genre,
     source,
     sourceUrl,
     externalId: sourceUrl.split("/").filter(Boolean).at(-1) ?? null,
@@ -397,6 +443,7 @@ export async function saveUpcomingBooks(items: ExternalUpcomingBook[]) {
       coverUrl: item.coverUrl?.trim() || undefined,
       isbn: item.isbn?.trim() || undefined,
       normalizedIsbn: normalizedIsbn ?? undefined,
+      genreId: genre.id,
     };
     const book = existing
       ? await prisma.book.update({ where: { id: existing.id }, data })
@@ -404,7 +451,6 @@ export async function saveUpcomingBooks(items: ExternalUpcomingBook[]) {
           data: {
             title: item.title.trim(),
             authorId: author?.id,
-            genreId: genre.id,
             canonicalKey: canonicalBookKey(item.title, author?.name ?? ""),
             ...data,
           },
@@ -428,4 +474,16 @@ export async function saveUpcomingBooks(items: ExternalUpcomingBook[]) {
     });
   }
   return { created, updated, total: items.length };
+}
+
+export async function reconcileUpcomingBookSource(
+  source: string,
+  activeItems: ExternalUpcomingBook[],
+) {
+  if (activeItems.length === 0) return 0;
+  const activeUrls = activeItems.map(({ sourceUrl }) => sourceUrl);
+  const result = await prisma.bookSource.deleteMany({
+    where: { source, sourceUrl: { notIn: activeUrls } },
+  });
+  return result.count;
 }

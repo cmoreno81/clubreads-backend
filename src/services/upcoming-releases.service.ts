@@ -24,6 +24,10 @@ export async function getUpcomingReleases(
   const books = await prisma.book.findMany({
     where: {
       deletedAt: null,
+      // Solo fuentes que siguen presentes en una sincronización válida. Esto
+      // evita que antiguos registros descartados (por ejemplo, no ficción de
+      // Casa del Libro) continúen apareciendo como lanzamientos.
+      sources: { some: {} },
       publicationDate: {
         not: null,
         gte: from,

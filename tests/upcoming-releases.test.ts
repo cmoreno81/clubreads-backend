@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  classifyCasaDelLibroFictionGenre,
   extractCasaDelLibroProductUrls,
   parseCasaDelLibroDetail,
   parseGoogleBooksUpcoming,
@@ -20,7 +21,8 @@ test("extracts Casa del Libro product links and their future metadata", () => {
   ]);
 
   const book = parseCasaDelLibroDetail(
-    `<meta content="https://example.com/cover.jpg" property="og:image">
+    `<script type="application/ld+json">{"@type":"Book","genre":"https://www.casadellibro.com/libros/literatura/novela-romantica-y-erotica/novela-romantica/121015002"}</script>
+     <meta content="https://example.com/cover.jpg" property="og:image">
      <meta content="Una historia | R.F. Kuang | Editorial Hidra | Casa del Libro" property="og:title">
      <meta content="9791388204081" property="book:isbn">
      <meta content="R.F. Kuang" property="book:author">
@@ -34,6 +36,40 @@ test("extracts Casa del Libro product links and their future metadata", () => {
   assert.equal(book?.publisher, "Hidra");
   assert.equal(book?.isbn, "9791388204081");
   assert.equal(book?.coverUrl, "https://example.com/cover.jpg");
+  assert.equal(book?.genre, "Romance");
+});
+
+test("Casa del Libro keeps fiction families and rejects non-fiction", () => {
+  assert.equal(
+    classifyCasaDelLibroFictionGenre(
+      "https://www.casadellibro.com/libros/literatura/narrativa-fantastica/121019000",
+    ),
+    "Fantasía",
+  );
+  assert.equal(
+    classifyCasaDelLibroFictionGenre(
+      "https://www.casadellibro.com/libros/juvenil/fantasia-y-magia/117001000",
+    ),
+    "Fantasía juvenil",
+  );
+  assert.equal(
+    classifyCasaDelLibroFictionGenre(
+      "https://www.casadellibro.com/libros/literatura/novela-negra/121017000",
+    ),
+    "Thriller",
+  );
+  assert.equal(
+    classifyCasaDelLibroFictionGenre(
+      "https://www.casadellibro.com/libros/historia/historia-de-espana/115004000",
+    ),
+    null,
+  );
+  assert.equal(
+    classifyCasaDelLibroFictionGenre(
+      "https://www.casadellibro.com/libros/salud-y-dietas/dietetica/110001000",
+    ),
+    null,
+  );
 });
 
 test("extracts future releases with their editorial metadata and ignores past books", () => {
