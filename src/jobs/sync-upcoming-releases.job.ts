@@ -3,6 +3,7 @@ import {
   fetchGoogleBooksUpcoming,
   fetchUpcomingFeed,
   fetchUpcomingSource,
+  fetchCasaDelLibroUpcoming,
   reconcileUpcomingBookSource,
   saveUpcomingBooks,
 } from '../services/upcoming-release-sync.service.js';
@@ -24,6 +25,19 @@ const htmlSources = () => [
     : []),
 ];
 
+const noveltySources = () => [
+  {
+    name: 'Casa del Libro · Novedades ficción',
+    url: process.env.NEW_RELEASES_CASA_DEL_LIBRO_URL ??
+      'https://www.casadellibro.com/novedades-libros',
+  },
+  {
+    name: 'Casa del Libro · Novedades juvenil',
+    url: process.env.NEW_RELEASES_CASA_DEL_LIBRO_JUVENILE_URL ??
+      'https://www.casadellibro.com/libros/juvenil/473000000/ordenar11?idioma=7',
+  },
+];
+
 const feeds = () =>
   (process.env.UPCOMING_FEED_URLS ?? process.env.UPCOMING_FEED_URL ?? '')
     .split(',')
@@ -38,15 +52,16 @@ const googleQueries = () =>
     .filter(Boolean);
 
 export function hasConfiguredUpcomingSources() {
-  return htmlSources().length + feeds().length + googleQueries().length > 0;
+  return htmlSources().length + noveltySources().length + feeds().length + googleQueries().length > 0;
 }
 
 export async function runConfiguredUpcomingReleaseSync(): Promise<UpcomingSyncSummary> {
   const configuredHtmlSources = htmlSources();
+  const configuredNoveltySources = noveltySources();
   const configuredFeeds = feeds();
   const configuredQueries = googleQueries();
   const configuredSources =
-    configuredHtmlSources.length + configuredFeeds.length + configuredQueries.length;
+    configuredHtmlSources.length + configuredNoveltySources.length + configuredFeeds.length + configuredQueries.length;
   const settled: PromiseSettledResult<ExternalUpcomingBook[]>[] = [];
   const successfulHtmlSources: Array<{
     name: string;
@@ -67,6 +82,15 @@ export async function runConfiguredUpcomingReleaseSync(): Promise<UpcomingSyncSu
         status: 'fulfilled',
         value: items,
       });
+      successfulHtmlSources.push({ name: source.name, items });
+    } catch (reason) {
+      settled.push({ status: 'rejected', reason });
+    }
+  }
+  for (const source of configuredNoveltySources) {
+    try {
+      const items = await fetchCasaDelLibroUpcoming(source.name, source.url, 'available');
+      settled.push({ status: 'fulfilled', value: items });
       successfulHtmlSources.push({ name: source.name, items });
     } catch (reason) {
       settled.push({ status: 'rejected', reason });

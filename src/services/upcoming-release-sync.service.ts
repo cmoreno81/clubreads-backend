@@ -18,6 +18,8 @@ export type ExternalUpcomingBook = {
   externalId?: string | null;
 };
 
+export type ReleaseWindow = "upcoming" | "available";
+
 function strings(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(strings);
   if (typeof value === "string") return [value.trim()].filter(Boolean);
@@ -151,6 +153,20 @@ function casaDelLibroGenreUrl(html: string) {
   return null;
 }
 
+function casaDelLibroLanguage(html: string) {
+  const nodes = jsonLdBlocks(html).flatMap(flattenJsonLd);
+  for (const node of nodes) {
+    const type = strings(node["@type"]).join(" ").toLowerCase();
+    if (!type.includes("book") && !type.includes("product")) continue;
+    const language = strings(node.inLanguage)[0]?.toLowerCase();
+    if (language) return language.split(/[-_]/)[0];
+  }
+  const embeddedLanguage = html.match(
+    /["']inLanguage["']\s*:\s*["']([a-z]{2}(?:[-_][a-z]{2})?)["']/i,
+  )?.[1];
+  return embeddedLanguage?.toLowerCase().split(/[-_]/)[0] ?? null;
+}
+
 /**
  * Casa del Libro mezcla ficción y no ficción en su página general de
  * lanzamientos. Usamos una lista positiva: una categoría desconocida no se
@@ -189,6 +205,7 @@ export function parseCasaDelLibroDetail(
   source: string,
   sourceUrl: string,
   now = new Date(),
+  window: ReleaseWindow = "upcoming",
 ): ExternalUpcomingBook | null {
   const rawDate = metaContent(html, "book:release_date");
   const titleParts = (metaContent(html, "og:title") ?? "")
@@ -198,13 +215,20 @@ export function parseCasaDelLibroDetail(
   const title = titleParts[0];
   if (!title || !rawDate || !/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) return null;
   const publicationDate = new Date(`${rawDate}T12:00:00.000Z`);
-  if (Number.isNaN(publicationDate.getTime()) || publicationDate <= now) {
+  const oldestNovelty = new Date(now);
+  oldestNovelty.setMonth(oldestNovelty.getMonth() - 9);
+  const outsideWindow = window === "upcoming"
+    ? publicationDate <= now
+    : publicationDate > now || publicationDate < oldestNovelty;
+  if (Number.isNaN(publicationDate.getTime()) || outsideWindow) {
     return null;
   }
   const isbn = metaContent(html, "book:isbn");
   const publisherPart = titleParts.find((value) =>
     /^editorial\s+/i.test(value),
   );
+  const language = casaDelLibroLanguage(html);
+  if (language && language !== "es") return null;
   const genre = classifyCasaDelLibroFictionGenre(casaDelLibroGenreUrl(html));
   if (!genre) return null;
   return {
@@ -234,7 +258,11 @@ async function fetchText(source: string, url: string) {
   return response.text();
 }
 
-export async function fetchCasaDelLibroUpcoming(source: string, pageUrl: string) {
+export async function fetchCasaDelLibroUpcoming(
+  source: string,
+  pageUrl: string,
+  window: ReleaseWindow = "upcoming",
+) {
   const listingHtml = await fetchText(source, pageUrl);
   const productUrls = extractCasaDelLibroProductUrls(listingHtml, pageUrl);
   const results: ExternalUpcomingBook[] = [];
@@ -248,6 +276,8 @@ export async function fetchCasaDelLibroUpcoming(source: string, pageUrl: string)
           await fetchText(source, productUrl),
           source,
           productUrl,
+          new Date(),
+          window,
         ),
       ),
     );

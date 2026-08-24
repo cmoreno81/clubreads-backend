@@ -72,6 +72,65 @@ test("Casa del Libro keeps fiction families and rejects non-fiction", () => {
   );
 });
 
+test("Casa del Libro separates recent available books from future releases", () => {
+  const detail = (date: string, genre: string) =>
+    `<script type="application/ld+json">{"@type":"Book","genre":"${genre}","inLanguage":"es"}</script>
+     <meta content="https://example.com/cover.jpg" property="og:image">
+     <meta content="Novedad disponible | Autora | Editorial ClubReads | Casa del Libro" property="og:title">
+     <meta content="9781234567890" property="book:isbn">
+     <meta content="Autora" property="book:author">
+     <meta content="${date}" property="book:release_date">`;
+  const fiction =
+    "https://www.casadellibro.com/libros/literatura/narrativa-fantastica/121019000";
+  const nonFiction =
+    "https://www.casadellibro.com/libros/salud-y-dietas/dietetica/110001000";
+  const now = new Date("2026-08-24T12:00:00.000Z");
+
+  assert.equal(
+    parseCasaDelLibroDetail(
+      detail("2026-08-01", fiction),
+      "Casa del Libro · Novedades ficción",
+      "https://example.com/recent",
+      now,
+      "available",
+    )?.genre,
+    "Fantasía",
+  );
+  assert.equal(
+    parseCasaDelLibroDetail(
+      detail("2026-09-01", fiction),
+      "Casa del Libro · Novedades ficción",
+      "https://example.com/future",
+      now,
+      "available",
+    ),
+    null,
+  );
+  assert.equal(
+    parseCasaDelLibroDetail(
+      detail("2026-08-01", nonFiction),
+      "Casa del Libro · Novedades ficción",
+      "https://example.com/non-fiction",
+      now,
+      "available",
+    ),
+    null,
+  );
+  assert.equal(
+    parseCasaDelLibroDetail(
+      detail("2026-08-01", fiction).replace(
+        '"inLanguage":"es"',
+        '"inLanguage":"en"',
+      ),
+      "Casa del Libro · Novedades juvenil",
+      "https://example.com/english-edition",
+      now,
+      "available",
+    ),
+    null,
+  );
+});
+
 test("extracts future releases with their editorial metadata and ignores past books", () => {
   const html = `
     <script type="application/ld+json">
