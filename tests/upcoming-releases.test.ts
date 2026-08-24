@@ -66,6 +66,38 @@ test("extracts Casa del Libro product links and their future metadata", () => {
   assert.equal(book?.genre, "Romance");
 });
 
+test("prioritizes Casa del Libro's visible technical release date", () => {
+  const book = parseCasaDelLibroDetail(
+    `
+      <script type="application/ld+json">
+        {
+          "@type": "Book",
+          "genre": "https://www.casadellibro.com/libros/literatura/narrativa-fantastica/121019000",
+          "inLanguage": "es"
+        }
+      </script>
+      <meta property="og:image" content="https://example.com/cover.jpg">
+      <meta property="og:title" content="Un escenario para villanos | Shannon J. Spann | Editorial Hidra | Casa del Libro">
+      <meta property="book:isbn" content="9791387711665">
+      <meta property="book:author" content="Shannon J. Spann">
+      <meta property="book:release_date" content="2026-04-06">
+      <section>
+        <strong>Fecha de lanzamiento:</strong>
+        <span>01/06/2026</span>
+      </section>
+    `,
+    "Casa del Libro · Novedades ficción",
+    "https://www.casadellibro.com/libro-un-escenario-para-villanos/9791387711665/1",
+    new Date("2026-08-24T12:00:00.000Z"),
+    "available",
+  );
+
+  assert.equal(
+    book?.publicationDate.toISOString().slice(0, 10),
+    "2026-06-01",
+  );
+});
+
 test("Casa del Libro keeps fiction families and rejects non-fiction", () => {
   assert.equal(
     classifyCasaDelLibroFictionGenre(

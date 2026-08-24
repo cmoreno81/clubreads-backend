@@ -234,6 +234,34 @@ function casaDelLibroLanguage(html: string) {
   return embeddedLanguage?.toLowerCase().split(/[-_]/)[0] ?? null;
 }
 
+function casaDelLibroVisibleReleaseDate(html: string) {
+  const visibleText = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#x2f;|&#47;/gi, "/")
+    .replace(/\s+/g, " ");
+  const match = visibleText.match(
+    /fecha\s+de\s+lanzamiento\s*:?\s*(\d{1,2})\s*[/.\-]\s*(\d{1,2})\s*[/.\-]\s*(\d{4})/i,
+  );
+  if (!match) return null;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 /**
  * Casa del Libro mezcla ficción y no ficción en su página general de
  * lanzamientos. Usamos una lista positiva: una categoría desconocida no se
@@ -292,7 +320,9 @@ export function parseCasaDelLibroDetail(
   now = new Date(),
   window: ReleaseWindow = "upcoming",
 ): ExternalUpcomingBook | null {
-  const rawDate = metaContent(html, "book:release_date");
+  const rawDate =
+    casaDelLibroVisibleReleaseDate(html) ??
+    metaContent(html, "book:release_date");
   const titleParts = (metaContent(html, "og:title") ?? "")
     .split("|")
     .map((value) => value.trim())
@@ -555,6 +585,7 @@ export async function saveUpcomingBooks(items: ExternalUpcomingBook[]) {
       authorName: author?.name,
       isbn: item.isbn,
     });
+    const previousPublicationDate = existing?.publicationDate ?? null;
     const normalizedIsbn = normalizeBookIsbn(item.isbn);
     const data = {
       publicationDate: item.publicationDate,
@@ -576,6 +607,18 @@ export async function saveUpcomingBooks(items: ExternalUpcomingBook[]) {
           },
         });
     existing ? updated++ : created++;
+    if (
+      previousPublicationDate &&
+      previousPublicationDate.getTime() !== item.publicationDate.getTime()
+    ) {
+      await prisma.wishlistItem.updateMany({
+        where: {
+          bookId: book.id,
+          releaseDate: previousPublicationDate,
+        },
+        data: { releaseDate: item.publicationDate },
+      });
+    }
     await prisma.bookSource.upsert({
       where: {
         source_sourceUrl: { source: item.source, sourceUrl: item.sourceUrl },
