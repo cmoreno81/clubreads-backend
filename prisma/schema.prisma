@@ -243,6 +243,12 @@ model Book {
 
   publicationYear Int?
 
+  /// Fecha editorial exacta cuando está disponible. Puede ser futura.
+  publicationDate DateTime?
+
+  /// Editorial responsable de esta edición.
+  publisher String?
+
   totalPages Int?
 
   goodreadsUrl String?
@@ -276,6 +282,7 @@ model Book {
   clubBookOfYearCandidates    ClubBookOfYearCandidate[]
   clubBookOfYearHistoricalLinks ClubBookOfYearHistoricalLink[]
   wishlistItems               WishlistItem[]
+  sources                     BookSource[]
 
   @@index([title])
   @@index([authorId])
@@ -283,6 +290,26 @@ model Book {
   @@index([seriesId])
   @@index([canonicalKey])
   @@index([normalizedIsbn])
+  @@index([publicationDate])
+}
+
+/// Procedencia de los metadatos editoriales de un libro. No duplica el catálogo.
+model BookSource {
+  id String @id @default(cuid())
+
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  source        String
+  sourceUrl     String
+  externalId    String?
+  lastCheckedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([source, sourceUrl])
+  @@index([bookId])
+  @@index([source, externalId])
 }
 
 model BookRedirect {

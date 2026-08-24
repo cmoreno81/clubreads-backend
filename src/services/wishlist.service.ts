@@ -48,7 +48,7 @@ function formatItem(item: {
     coverUrl: string | null;
     author: { name: string } | null;
   } | null;
-}) {
+}, options: { isInLibrary?: boolean } = {}) {
   return {
     id: item.id,
     bookId: item.bookId,
@@ -67,6 +67,7 @@ function formatItem(item: {
     updatedAt: item.updatedAt.toISOString(),
     // Si tiene fecha de salida futura → es novedad
     isUpcoming: item.releaseDate != null && item.releaseDate > new Date(),
+    isInLibrary: options.isInLibrary ?? false,
   };
 }
 
@@ -167,6 +168,11 @@ export async function getWishlist(userName: string) {
     },
     orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
   });
+  const libraryEntries = await prisma.library.findMany({
+    where: { userId: user.id },
+    select: { bookId: true },
+  });
+  const libraryBookIds = new Set(libraryEntries.map((entry) => entry.bookId));
   // Separar lista activa (pendientes de comprar) de historial de compras
   const recoveredItems = await Promise.all(allItems.map(recoverCatalogBook));
   const pending = recoveredItems.filter((i) => i.purchasedAt === null);
@@ -174,7 +180,11 @@ export async function getWishlist(userName: string) {
     .filter((i) => i.purchasedAt !== null)
     .sort((a, b) => b.purchasedAt!.getTime() - a.purchasedAt!.getTime()); // más reciente primero
 
-  const formatted = pending.map(formatItem);
+  const withLibraryState = (item: (typeof recoveredItems)[number]) =>
+    formatItem(item, {
+      isInLibrary: item.bookId != null && libraryBookIds.has(item.bookId),
+    });
+  const formatted = pending.map(withLibraryState);
   const totalPrice = pending.reduce((sum, i) => sum + (i.price ?? 0), 0);
   const upcoming = formatted.filter((i) => i.isUpcoming);
   const available = formatted.filter((i) => !i.isUpcoming);
@@ -186,7 +196,7 @@ export async function getWishlist(userName: string) {
     available,
     totalItems: pending.length,
     totalPrice: Math.round(totalPrice * 100) / 100,
-    purchased: purchased.map(formatItem),
+    purchased: purchased.map(withLibraryState),
     // Resumen para los widgets compactos
     summary: {
       totalItems: pending.length,
@@ -265,10 +275,37 @@ export async function addWishlistItem(
       : null;
   }
 
+  const resolvedBookId = input.bookId ?? catalogBook?.id ?? null;
+  if (resolvedBookId) {
+    const existingActiveItem = await prisma.wishlistItem.findFirst({
+      where: {
+        userId: user.id,
+        bookId: resolvedBookId,
+        purchasedAt: null,
+      },
+      include: {
+        book: {
+          select: {
+            title: true,
+            coverUrl: true,
+            author: { select: { name: true } },
+          },
+        },
+      },
+    });
+    if (existingActiveItem) {
+      return {
+        ok: true as const,
+        alreadyExists: true,
+        item: formatItem(existingActiveItem),
+      };
+    }
+  }
+
   const item = await prisma.wishlistItem.create({
     data: {
       userId: user.id,
-      bookId: input.bookId ?? catalogBook?.id ?? null,
+      bookId: resolvedBookId,
       title: input.title.trim() || catalogBook?.title || input.title,
       author: input.author?.trim() || catalogBook?.author?.name.trim() || null,
       coverUrl: input.coverUrl?.trim() || catalogBook?.coverUrl?.trim() || null,

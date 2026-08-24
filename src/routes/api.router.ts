@@ -145,6 +145,7 @@ import {
   handleUnmarkPurchased,
   handleGetClubWishlist,
 } from '../controllers/wishlist.controller.js';
+import { handleGetUpcomingReleases } from '../controllers/upcoming-releases.controller.js';
 export const apiRouter = Router();
 
 const PUBLIC_AUTH_ACTIONS = new Set([
@@ -740,6 +741,7 @@ apiRouter.get(
 
 // ── Wishlist (lista de adquisición) ──────────────────────────────────────
 apiRouter.get('/wishlist', requireAuthentication, handleGetWishlist);
+apiRouter.get('/books/upcoming', requireAuthentication, handleGetUpcomingReleases);
 apiRouter.post('/wishlist', requireAuthentication, handleAddWishlistItem);
 apiRouter.patch('/wishlist/:id', requireAuthentication, handleUpdateWishlistItem);
 apiRouter.delete('/wishlist/:id', requireAuthentication, handleDeleteWishlistItem);

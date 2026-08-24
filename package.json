@@ -38,6 +38,7 @@
     "authors:isbn-preview": "tsx scripts/enrich-book-authors-isbn.ts",
     "authors:isbn-apply": "tsx scripts/enrich-book-authors-isbn.ts --apply",
     "authors:missing": "tsx scripts/backfill-book-authors.ts --missing-only",
+    "sync:upcoming-releases": "tsx scripts/sync-upcoming-releases.ts",
     "seed:founder": "tsx scripts/seedFounderClub.ts",
     "backfill:club": "tsx scripts/backfill-club-context.ts",
     "disposable:init": "node --import tsx scripts/init-disposable-env.ts",
