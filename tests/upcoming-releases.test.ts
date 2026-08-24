@@ -97,6 +97,24 @@ test("Casa del Libro keeps fiction families and rejects non-fiction", () => {
     ),
     null,
   );
+  assert.equal(
+    classifyCasaDelLibroFictionGenre(
+      "https://www.casadellibro.com/libros/literatura/no-ficcion/121030000",
+    ),
+    null,
+  );
+  assert.equal(
+    classifyCasaDelLibroFictionGenre(
+      "https://www.casadellibro.com/libros/literatura/literatura-de-viajes/121031000",
+    ),
+    null,
+  );
+  assert.equal(
+    classifyCasaDelLibroFictionGenre(
+      "https://www.casadellibro.com/libros/literatura/humor/121032000",
+    ),
+    null,
+  );
 });
 
 test("Casa del Libro separates recent available books from future releases", () => {

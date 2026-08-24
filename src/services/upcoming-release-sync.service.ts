@@ -251,6 +251,21 @@ export function classifyCasaDelLibroFictionGenre(genreUrl: string | null) {
       return genreUrl.toLowerCase();
     }
   })();
+  // Algunas secciones editoriales cuelgan de `/libros/literatura/` aunque no
+  // sean ficción. Las descartamos antes de aplicar la lista positiva para que
+  // nunca terminen clasificadas por defecto como «Narrativa».
+  const isExcludedCategory =
+    /(?:^|\/)no-?ficcion(?:\/|$)/.test(path) ||
+    /(?:^|\/)non-?fiction(?:\/|$)/.test(path) ||
+    /(?:^|\/)(?:ensayo|biografias?|autobiografias?|memorias?)(?:\/|$)/.test(
+      path,
+    ) ||
+    /(?:^|\/)(?:viajes?|guias?-de-viaje|literatura-de-viajes)(?:\/|$)/.test(
+      path,
+    ) ||
+    /(?:^|\/)humor(?:\/|$)/.test(path);
+  if (isExcludedCategory) return null;
+
   const isFiction =
     path.startsWith("/libros/literatura/") ||
     path.startsWith("/libros/juvenil/") ||
