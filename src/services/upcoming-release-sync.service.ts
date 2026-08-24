@@ -142,6 +142,73 @@ export function extractCasaDelLibroProductUrls(html: string, pageUrl: string) {
   return [...urls];
 }
 
+export const CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX = "Casa del Libro · Cliché · ";
+
+export type CasaDelLibroClicheLink = {
+  cliche: string;
+  sourceUrl: string;
+};
+
+/**
+ * La página de clichés no es un catálogo de novedades: contiene también
+ * títulos antiguos. Solo extraemos sus relaciones libro/cliché para anotar
+ * libros que ya hayan entrado por los feeds de novedades o lanzamientos.
+ */
+export function parseCasaDelLibroClicheLinks(
+  html: string,
+  pageUrl: string,
+): CasaDelLibroClicheLink[] {
+  const links = new Map<string, CasaDelLibroClicheLink>();
+  const heading = /<h2\b[^>]*>\s*Novedades\s+([^<]+?)\s*<\/h2>/gi;
+  for (const match of html.matchAll(heading)) {
+    const cliche = match[1]
+      ?.replace(/&amp;/gi, "&")
+      .replace(/&#x27;|&#39;/gi, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cliche || match.index === undefined) continue;
+    const contentStart = match.index + match[0].length;
+    const componentEnd = html.indexOf("</cma-component>", contentStart);
+    const section = html.slice(
+      contentStart,
+      componentEnd < 0 ? html.length : componentEnd,
+    );
+    for (const sourceUrl of extractCasaDelLibroProductUrls(section, pageUrl)) {
+      links.set(`${cliche}|${sourceUrl}`, { cliche, sourceUrl });
+    }
+  }
+  return [...links.values()];
+}
+
+export async function syncCasaDelLibroCliches(pageUrl: string) {
+  const html = await fetchText("Casa del Libro · Clichés", pageUrl);
+  const links = parseCasaDelLibroClicheLinks(html, pageUrl);
+  const sourceUrls = [...new Set(links.map(({ sourceUrl }) => sourceUrl))];
+  const catalogSources = await prisma.bookSource.findMany({
+    where: {
+      sourceUrl: { in: sourceUrls },
+      source: { not: { startsWith: CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX } },
+    },
+    select: { bookId: true, sourceUrl: true },
+  });
+  const bookByUrl = new Map(
+    catalogSources.map(({ bookId, sourceUrl }) => [sourceUrl, bookId]),
+  );
+  let tagged = 0;
+  for (const { cliche, sourceUrl } of links) {
+    const bookId = bookByUrl.get(sourceUrl);
+    if (!bookId) continue;
+    const source = `${CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX}${cliche}`;
+    await prisma.bookSource.upsert({
+      where: { source_sourceUrl: { source, sourceUrl } },
+      update: { bookId, lastCheckedAt: new Date() },
+      create: { bookId, source, sourceUrl },
+    });
+    tagged++;
+  }
+  return { links: links.length, tagged };
+}
+
 function casaDelLibroGenreUrl(html: string) {
   const nodes = jsonLdBlocks(html).flatMap(flattenJsonLd);
   for (const node of nodes) {
@@ -176,7 +243,10 @@ export function classifyCasaDelLibroFictionGenre(genreUrl: string | null) {
   if (!genreUrl) return null;
   const path = (() => {
     try {
-      return new URL(genreUrl, "https://www.casadellibro.com").pathname.toLowerCase();
+      return new URL(
+        genreUrl,
+        "https://www.casadellibro.com",
+      ).pathname.toLowerCase();
     } catch (_) {
       return genreUrl.toLowerCase();
     }
@@ -217,9 +287,10 @@ export function parseCasaDelLibroDetail(
   const publicationDate = new Date(`${rawDate}T12:00:00.000Z`);
   const oldestNovelty = new Date(now);
   oldestNovelty.setMonth(oldestNovelty.getMonth() - 9);
-  const outsideWindow = window === "upcoming"
-    ? publicationDate <= now
-    : publicationDate > now || publicationDate < oldestNovelty;
+  const outsideWindow =
+    window === "upcoming"
+      ? publicationDate <= now
+      : publicationDate > now || publicationDate < oldestNovelty;
   if (Number.isNaN(publicationDate.getTime()) || outsideWindow) {
     return null;
   }
@@ -282,12 +353,16 @@ export async function fetchCasaDelLibroUpcoming(
       ),
     );
     for (const result of settled) {
-      if (result.status === "fulfilled" && result.value) results.push(result.value);
+      if (result.status === "fulfilled" && result.value)
+        results.push(result.value);
     }
   }
   const unique = new Map<string, ExternalUpcomingBook>();
   for (const item of results) {
-    unique.set(normalizeBookIsbn(item.isbn) ?? canonicalBookKey(item.title, item.author), item);
+    unique.set(
+      normalizeBookIsbn(item.isbn) ?? canonicalBookKey(item.title, item.author),
+      item,
+    );
   }
   return [...unique.values()];
 }

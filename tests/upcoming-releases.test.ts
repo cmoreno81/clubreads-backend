@@ -6,10 +6,37 @@ import {
   classifyCasaDelLibroFictionGenre,
   extractCasaDelLibroProductUrls,
   parseCasaDelLibroDetail,
+  parseCasaDelLibroClicheLinks,
   parseGoogleBooksUpcoming,
   parseUpcomingFeed,
   parseUpcomingJsonLd,
 } from "../src/services/upcoming-release-sync.service.js";
+
+test("extracts Casa del Libro cliches without treating the page as releases", () => {
+  const html = `
+    <cma-component><h2>Novedades Enemies to Lovers</h2>
+      <a href="/libro-uno/9781234567890/123">Uno</a>
+    </cma-component>
+    <cma-component><h2>Novedades Found Family</h2>
+      <a href="/libro-dos/9781234567891/124">Dos</a>
+    </cma-component>`;
+  assert.deepEqual(
+    parseCasaDelLibroClicheLinks(
+      html,
+      "https://www.casadellibro.com/seleccion",
+    ),
+    [
+      {
+        cliche: "Enemies to Lovers",
+        sourceUrl: "https://www.casadellibro.com/libro-uno/9781234567890/123",
+      },
+      {
+        cliche: "Found Family",
+        sourceUrl: "https://www.casadellibro.com/libro-dos/9781234567891/124",
+      },
+    ],
+  );
+});
 
 test("extracts Casa del Libro product links and their future metadata", () => {
   const urls = extractCasaDelLibroProductUrls(
