@@ -356,16 +356,29 @@ export async function searchGeneralCatalog(userName: string, rawQuery: string) {
     url.searchParams.set('q', query);
     url.searchParams.set('maxResults', '20');
     url.searchParams.set('printType', 'books');
+    url.searchParams.set('langRestrict', 'es');
     if (process.env.GOOGLE_BOOKS_API_KEY) {
       url.searchParams.set('key', process.env.GOOGLE_BOOKS_API_KEY);
     }
-    const response = await observeExternalCall('google_books', 'catalog_search', () => fetch(url, {
+    let response = await observeExternalCall('google_books', 'catalog_search', () => fetch(url, {
       signal: AbortSignal.timeout(5000),
       headers: { Accept: 'application/json' },
     }));
+    let payload = response.ok
+      ? await response.json() as { items?: ExternalVolume[] }
+      : { items: [] as ExternalVolume[] };
+    if ((payload.items ?? []).length === 0) {
+      url.searchParams.delete('langRestrict');
+      response = await observeExternalCall('google_books', 'catalog_search_fallback', () => fetch(url, {
+        signal: AbortSignal.timeout(5000),
+        headers: { Accept: 'application/json' },
+      }));
+      payload = response.ok
+        ? await response.json() as { items?: ExternalVolume[] }
+        : { items: [] as ExternalVolume[] };
+    }
     if (response.ok) {
       googleAvailable = true;
-      const payload = await response.json() as { items?: ExternalVolume[] };
       external = (payload.items ?? [])
         .map(externalBook)
         .filter((book) => book.id && book.titulo);
