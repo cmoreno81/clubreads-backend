@@ -89,10 +89,14 @@ test('los avisos de Clubvisión solo aparecen en clubes preparados', () => {
   assert.match(generalDashboard, /readyClubs\.length === 0/);
 });
 
-test('las últimas incorporaciones proceden del catálogo global', () => {
+test('las últimas incorporaciones proceden de altas reales en bibliotecas', () => {
   assert.match(
     generalDashboard,
-    /prisma\.book\.findMany\(\{[\s\S]*deletedAt: null[\s\S]*createdAt: 'desc'/,
+    /prisma\.library\.findMany\(\{[\s\S]*book: \{ deletedAt: null \}[\s\S]*createdAt: 'desc'/,
+  );
+  assert.match(
+    generalDashboard,
+    /latestBooks\.map\(\(\{ book, createdAt \}\) => \(\{ \.\.\.book, createdAt \}\)\)/,
   );
   assert.match(generalDashboard, /ultimasIncorporaciones/);
   assert.doesNotMatch(

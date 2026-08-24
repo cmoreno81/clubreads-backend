@@ -384,18 +384,26 @@ export async function getGeneralDashboard(userId: string) {
         where: { readingFormat: { not: null } },
         _count: { id: true },
       }),
-      // 20 es suficiente: deduplicateLatestBooks solo devuelve 10
-      prisma.book.findMany({
-        where: { deletedAt: null },
+      // Las incorporaciones son altas reales en bibliotecas personales. El
+      // catálogo también recibe libros desde sincronizadores externos y esos
+      // deben mostrarse en «Próximos lanzamientos», no en este bloque.
+      prisma.library.findMany({
+        where: { book: { deletedAt: null } },
         orderBy: { createdAt: 'desc' },
-        take: 20,
+        // Traemos margen para poder colapsar ediciones equivalentes y seguir
+        // mostrando hasta 10 obras distintas.
+        take: 40,
         select: {
-          id: true,
-          title: true,
-          coverUrl: true,
           createdAt: true,
-          author: { select: { name: true } },
-          genre: { select: { name: true } },
+          book: {
+            select: {
+              id: true,
+              title: true,
+              coverUrl: true,
+              author: { select: { name: true } },
+              genre: { select: { name: true } },
+            },
+          },
         },
       }),
       prisma.hiddenUserSeries.findMany({
@@ -752,7 +760,10 @@ export async function getGeneralDashboard(userId: string) {
               ? 'BAJA'
               : 'MEDIA',
       })),
-    ultimasIncorporaciones: deduplicateLatestBooks(latestBooks, 10).map((book) => ({
+    ultimasIncorporaciones: deduplicateLatestBooks(
+      latestBooks.map(({ book, createdAt }) => ({ ...book, createdAt })),
+      10,
+    ).map((book) => ({
       id: book.id,
       titulo: book.title,
       autor: book.author?.name ?? '',
