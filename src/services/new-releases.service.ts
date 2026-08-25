@@ -10,6 +10,19 @@ export async function getNewReleases(userName: string, limit = 40) {
   });
   if (!user) return { ok: false as const, mensaje: "Usuario no encontrado" };
 
+  // Wishlist activa del usuario: detecta también ítems añadidos manualmente
+  // (sin bookId) comparando por ISBN.
+  const userWishlist = await prisma.wishlistItem.findMany({
+    where: { userId: user.id, purchasedAt: null },
+    select: { id: true, bookId: true, isbn: true },
+  });
+  const wishlistByBookId = new Map(
+    userWishlist.filter((w) => w.bookId).map((w) => [w.bookId!, w.id]),
+  );
+  const wishlistByIsbn = new Map(
+    userWishlist.filter((w) => w.isbn).map((w) => [w.isbn!, w.id]),
+  );
+
   const books = await prisma.book.findMany({
     where: {
       deletedAt: null,
@@ -29,11 +42,6 @@ export async function getNewReleases(userName: string, limit = 40) {
         orderBy: { lastCheckedAt: "desc" },
         select: { source: true, sourceUrl: true },
       },
-      wishlistItems: {
-        where: { userId: user.id, purchasedAt: null },
-        take: 1,
-        select: { id: true },
-      },
       library: { where: { userId: user.id }, take: 1, select: { id: true } },
     },
     orderBy: [{ publicationDate: "desc" }, { title: "asc" }],
@@ -46,6 +54,11 @@ export async function getNewReleases(userName: string, limit = 40) {
       const primarySource = book.sources.find(({ source }) =>
         source.startsWith(NEW_RELEASE_SOURCE_PREFIX),
       );
+      // Coincidencia por bookId o por ISBN (cubre ítems manuales)
+      const wishlistItemId =
+        wishlistByBookId.get(book.id) ??
+        (book.isbn ? wishlistByIsbn.get(book.isbn) : undefined) ??
+        null;
       return {
         id: book.id,
         bookId: book.id,
@@ -65,8 +78,8 @@ export async function getNewReleases(userName: string, limit = 40) {
           .map(({ source }) =>
             source.slice(CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX.length),
           ),
-        isInWishlist: book.wishlistItems.length > 0,
-        wishlistItemId: book.wishlistItems[0]?.id ?? null,
+        isInWishlist: wishlistItemId !== null,
+        wishlistItemId,
         isInLibrary: book.library.length > 0,
       };
     }),

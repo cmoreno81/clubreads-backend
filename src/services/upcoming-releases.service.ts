@@ -22,6 +22,20 @@ export async function getUpcomingReleases(
 
   const now = new Date();
   const from = filters.from && filters.from > now ? filters.from : now;
+
+  // Cargamos la wishlist activa del usuario (no comprados) para detectar
+  // también los ítems añadidos manualmente que no tienen bookId pero sí ISBN.
+  const userWishlist = await prisma.wishlistItem.findMany({
+    where: { userId: user.id, purchasedAt: null },
+    select: { id: true, bookId: true, isbn: true },
+  });
+  const wishlistByBookId = new Map(
+    userWishlist.filter((w) => w.bookId).map((w) => [w.bookId!, w.id]),
+  );
+  const wishlistByIsbn = new Map(
+    userWishlist.filter((w) => w.isbn).map((w) => [w.isbn!, w.id]),
+  );
+
   const books = await prisma.book.findMany({
     where: {
       deletedAt: null,
@@ -51,11 +65,6 @@ export async function getUpcomingReleases(
         orderBy: { lastCheckedAt: "desc" },
         select: { source: true, sourceUrl: true },
       },
-      wishlistItems: {
-        where: { userId: user.id, purchasedAt: null },
-        take: 1,
-        select: { id: true },
-      },
       library: {
         where: { userId: user.id },
         take: 1,
@@ -72,6 +81,11 @@ export async function getUpcomingReleases(
       const primarySource = book.sources.find(
         ({ source }) => !source.startsWith(CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX),
       );
+      // Wishlist: coincidencia por bookId o por ISBN (cubre ítems manuales)
+      const wishlistItemId =
+        wishlistByBookId.get(book.id) ??
+        (book.isbn ? wishlistByIsbn.get(book.isbn) : undefined) ??
+        null;
       return {
         id: book.id,
         bookId: book.id,
@@ -91,8 +105,8 @@ export async function getUpcomingReleases(
           .map(({ source }) =>
             source.slice(CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX.length),
           ),
-        isInWishlist: book.wishlistItems.length > 0,
-        wishlistItemId: book.wishlistItems[0]?.id ?? null,
+        isInWishlist: wishlistItemId !== null,
+        wishlistItemId,
         isInLibrary: book.library.length > 0,
       };
     }),
