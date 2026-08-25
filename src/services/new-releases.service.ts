@@ -14,13 +14,18 @@ export async function getNewReleases(userName: string, limit = 40) {
   // (sin bookId) comparando por ISBN.
   const userWishlist = await prisma.wishlistItem.findMany({
     where: { userId: user.id, purchasedAt: null },
-    select: { id: true, bookId: true, isbn: true },
+    select: { id: true, bookId: true, isbn: true, title: true },
   });
+  const normalizeTitle = (t: string) =>
+    t.toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "").trim();
   const wishlistByBookId = new Map(
     userWishlist.filter((w) => w.bookId).map((w) => [w.bookId!, w.id]),
   );
   const wishlistByIsbn = new Map(
     userWishlist.filter((w) => w.isbn).map((w) => [w.isbn!, w.id]),
+  );
+  const wishlistByTitle = new Map(
+    userWishlist.map((w) => [normalizeTitle(w.title), w.id]),
   );
 
   const books = await prisma.book.findMany({
@@ -54,10 +59,11 @@ export async function getNewReleases(userName: string, limit = 40) {
       const primarySource = book.sources.find(({ source }) =>
         source.startsWith(NEW_RELEASE_SOURCE_PREFIX),
       );
-      // Coincidencia por bookId o por ISBN (cubre ítems manuales)
+      // bookId → ISBN → título normalizado (fallback para ítems manuales)
       const wishlistItemId =
         wishlistByBookId.get(book.id) ??
         (book.isbn ? wishlistByIsbn.get(book.isbn) : undefined) ??
+        wishlistByTitle.get(normalizeTitle(book.title)) ??
         null;
       return {
         id: book.id,

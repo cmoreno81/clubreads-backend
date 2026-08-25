@@ -24,16 +24,22 @@ export async function getUpcomingReleases(
   const from = filters.from && filters.from > now ? filters.from : now;
 
   // Cargamos la wishlist activa del usuario (no comprados) para detectar
-  // también los ítems añadidos manualmente que no tienen bookId pero sí ISBN.
+  // también ítems añadidos manualmente: primero comparamos bookId, luego ISBN
+  // y finalmente título normalizado (fallback para ítems sin bookId ni ISBN).
   const userWishlist = await prisma.wishlistItem.findMany({
     where: { userId: user.id, purchasedAt: null },
-    select: { id: true, bookId: true, isbn: true },
+    select: { id: true, bookId: true, isbn: true, title: true },
   });
+  const normalizeTitle = (t: string) =>
+    t.toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "").trim();
   const wishlistByBookId = new Map(
     userWishlist.filter((w) => w.bookId).map((w) => [w.bookId!, w.id]),
   );
   const wishlistByIsbn = new Map(
     userWishlist.filter((w) => w.isbn).map((w) => [w.isbn!, w.id]),
+  );
+  const wishlistByTitle = new Map(
+    userWishlist.map((w) => [normalizeTitle(w.title), w.id]),
   );
 
   const books = await prisma.book.findMany({
@@ -81,10 +87,11 @@ export async function getUpcomingReleases(
       const primarySource = book.sources.find(
         ({ source }) => !source.startsWith(CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX),
       );
-      // Wishlist: coincidencia por bookId o por ISBN (cubre ítems manuales)
+      // Wishlist: bookId → ISBN → título normalizado (fallback para ítems manuales)
       const wishlistItemId =
         wishlistByBookId.get(book.id) ??
         (book.isbn ? wishlistByIsbn.get(book.isbn) : undefined) ??
+        wishlistByTitle.get(normalizeTitle(book.title)) ??
         null;
       return {
         id: book.id,
