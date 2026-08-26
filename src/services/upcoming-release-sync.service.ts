@@ -120,6 +120,17 @@ function htmlAttribute(tag: string, name: string) {
   return match?.[1]?.trim() || null;
 }
 
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&apos;", "'")
+    .replaceAll("&nbsp;", " ");
+}
+
 function metaContent(html: string, key: string) {
   for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
     const tag = match[0];
@@ -127,7 +138,10 @@ function metaContent(html: string, key: string) {
       htmlAttribute(tag, "property")?.toLowerCase() === key.toLowerCase() ||
       htmlAttribute(tag, "name")?.toLowerCase() === key.toLowerCase()
     ) {
-      return htmlAttribute(tag, "content");
+      const raw = htmlAttribute(tag, "content");
+      // Los atributos HTML pueden contener entidades (&amp;, etc.)
+      // Las decodificamos para que los títulos se guarden limpios en BD.
+      return raw != null ? decodeHtmlEntities(raw) : null;
     }
   }
   return null;
