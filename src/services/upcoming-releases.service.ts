@@ -42,6 +42,20 @@ export async function getUpcomingReleases(
     userWishlist.map((w) => [normalizeTitle(w.title), w.id]),
   );
 
+  // Biblioteca del usuario: bookId, ISBN y título normalizado para detectar
+  // variantes de edición sin duplicar la entrada.
+  const userLibrary = await prisma.library.findMany({
+    where: { userId: user.id },
+    select: { bookId: true, book: { select: { isbn: true, title: true } } },
+  });
+  const libraryByBookId = new Set(userLibrary.map((l) => l.bookId));
+  const libraryByIsbn = new Set(
+    userLibrary.filter((l) => l.book.isbn).map((l) => l.book.isbn!),
+  );
+  const libraryByTitle = new Set(
+    userLibrary.map((l) => normalizeTitle(l.book.title)),
+  );
+
   const books = await prisma.book.findMany({
     where: {
       deletedAt: null,
@@ -71,11 +85,8 @@ export async function getUpcomingReleases(
         orderBy: { lastCheckedAt: "desc" },
         select: { source: true, sourceUrl: true },
       },
-      library: {
-        where: { userId: user.id },
-        take: 1,
-        select: { id: true },
-      },
+      // library ya no se incluye aquí: la comprobación se hace contra
+      // libraryByBookId / libraryByIsbn / libraryByTitle cargados arriba.
     },
     orderBy: [{ publicationDate: "asc" }, { title: "asc" }],
     take: clampLimit(filters.limit),
@@ -105,16 +116,24 @@ export async function getUpcomingReleases(
         genre: book.genre.name,
         source: primarySource?.source ?? null,
         sourceUrl: primarySource?.sourceUrl ?? null,
-        cliches: book.sources
-          .filter(({ source }) =>
-            source.startsWith(CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX),
-          )
-          .map(({ source }) =>
-            source.slice(CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX.length),
+        cliches: [
+          ...new Set(
+            book.sources
+              .filter(({ source }) =>
+                source.startsWith(CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX),
+              )
+              .map(({ source }) =>
+                source.slice(CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX.length),
+              ),
           ),
+        ],
         isInWishlist: wishlistItemId !== null,
         wishlistItemId,
-        isInLibrary: book.library.length > 0,
+        // bookId exacto → ISBN → título normalizado (captura variantes de edición)
+        isInLibrary:
+          libraryByBookId.has(book.id) ||
+          (book.isbn != null && libraryByIsbn.has(book.isbn)) ||
+          libraryByTitle.has(normalizeTitle(book.title)),
       };
     }),
   };
