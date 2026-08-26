@@ -2,7 +2,7 @@ import { WishlistFormat, WishlistPriority } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { canonicalBookTitle } from './catalog.service.js';
 import { getCurrentClubContext } from './club-context.service.js';
-import { cleanText, cleanTextNullable } from '../utils/text.js';
+import { cleanText, cleanTextNullable, normalizeForComparison } from '../utils/text.js';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -502,7 +502,7 @@ export async function getClubWishlist(userName: string) {
     // Normalizar título antes de usarlo como clave: decodificar HTML y minúsculas.
     // Esto agrupa "Mortal & Inmortal" y "Mortal &amp; Inmortal" en el mismo grupo.
     const rawTitle = item.title.trim() || item.book?.title.trim() || item.title;
-    const normalizedTitle = cleanText(rawTitle).toLowerCase();
+    const normalizedTitle = normalizeForComparison(rawTitle);
     const key: GroupKey = item.bookId ?? normalizedTitle;
     const existing = groups.get(key);
     const memberInfo = memberMap.get(item.userId);
@@ -561,7 +561,7 @@ export async function getClubWishlist(userName: string) {
   for (const [key, group] of [...groups.entries()]) {
     // Solo procesamos grupos cuya clave es por título (no tiene bookId propio como clave)
     if (group.bookId && key === group.bookId) continue;
-    const normalizedTitle = cleanText(group.title).toLowerCase();
+    const normalizedTitle = normalizeForComparison(group.title);
     const bookIdKey = titleToBookIdKey.get(normalizedTitle);
     if (bookIdKey && bookIdKey !== key) {
       // Fusionar en el grupo con bookId

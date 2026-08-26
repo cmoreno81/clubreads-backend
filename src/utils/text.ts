@@ -37,13 +37,47 @@ export function cleanTextNullable(value: string | null | undefined): string | nu
 }
 
 /**
- * Normaliza un título para comparaciones: limpia HTML, pasa a minúsculas
- * y elimina diacríticos. Usar para detectar duplicados o coincidencias.
+ * Normaliza un título para comparaciones entre el catálogo y la wishlist.
+ *
+ * Aplica transformaciones agresivas para que variantes del mismo libro
+ * produzcan la misma cadena:
+ *   - Decodifica entidades HTML          ("Mortal &amp; Inmortal" → "Mortal & Inmortal")
+ *   - Elimina diacríticos                ("é" → "e")
+ *   - Elimina sufijos de edición         ("Edición especial", "Edición especial limitada", …)
+ *   - Elimina paréntesis con ediciones   ("(Edición limitada collector)", …)
+ *   - Normaliza puntuación como espacios ("." ":" "-" "–" "—")
+ *   - Colapsa espacios y pasa a minúsculas
+ *
+ * Ejemplo:
+ *   "Zodiac Academy 1. El despertar. Edición especial"  →  "zodiac academy 1 el despertar"
+ *   "Zodiac Academy 1: El despertar"                    →  "zodiac academy 1 el despertar"
  */
 export function normalizeForComparison(value: string): string {
-  return cleanText(value)
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Mn}/gu, '')
-    .trim();
+  return (
+    decodeHtmlEntities(value)
+      // Eliminar diacríticos
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      // Eliminar bloque entre paréntesis que contenga palabras de edición
+      .replace(
+        /\s*\((?:[^)]*\b(?:edicion|edition|limited|deluxe|collector|standard|special)\b[^)]*)\)/g,
+        ' ',
+      )
+      // Eliminar "edición/edicion especial/limitada/de lujo" como texto suelto
+      .replace(
+        /\b(?:edicion|edition)\s+(?:especial|limitada|de\s+lujo|special|limited|deluxe|collector|standard)(?:\s+limitada)?\b/g,
+        ' ',
+      )
+      // Eliminar "special/limited/deluxe edition" como texto suelto
+      .replace(
+        /\b(?:standard|special|limited|deluxe|collector'?s?)\s+(?:edicion|edition)\b/g,
+        ' ',
+      )
+      // Normalizar puntuación separadora como espacio (. : - – —)
+      .replace(/[.:\-–—]/g, ' ')
+      // Colapsar espacios sobrantes
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }
