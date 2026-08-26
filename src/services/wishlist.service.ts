@@ -573,6 +573,37 @@ export async function getClubWishlist(userName: string) {
     }
   }
 
+  // ── Segunda pasada: fusionar grupos por-título con grupos por-bookId ──────────
+  // Caso: Mery añade "La espada de Kaigen" manualmente (sin bookId) → clave por título.
+  //       Cristina lo añade desde el catálogo (con bookId) → clave por bookId.
+  //       Mismo libro, keys distintas → dos grupos. Los fusionamos aquí.
+  const titleToBookIdKey = new Map<string, string>(); // normalizedTitle → key del grupo con bookId
+  for (const [key, group] of groups) {
+    if (group.bookId && key === group.bookId) {
+      titleToBookIdKey.set(cleanText(group.title).toLowerCase(), key);
+    }
+  }
+  for (const [key, group] of [...groups.entries()]) {
+    // Solo procesamos grupos cuya clave es por título (no tiene bookId propio como clave)
+    if (group.bookId && key === group.bookId) continue;
+    const normalizedTitle = cleanText(group.title).toLowerCase();
+    const bookIdKey = titleToBookIdKey.get(normalizedTitle);
+    if (bookIdKey && bookIdKey !== key) {
+      // Fusionar en el grupo con bookId
+      const target = groups.get(bookIdKey)!;
+      const existingMemberIds = new Set(target.members.map((m) => m.userId));
+      for (const member of group.members) {
+        if (!existingMemberIds.has(member.userId)) {
+          target.members.push(member);
+        }
+      }
+      if (group.isInMyWishlist) target.isInMyWishlist = true;
+      if (!target.coverUrl && group.coverUrl) target.coverUrl = group.coverUrl;
+      if (!target.author && group.author) target.author = group.author;
+      groups.delete(key);
+    }
+  }
+
   // Ordenar: primero los que tienen más miembros interesados, luego próximas novedades
   const sorted = [...groups.values()].sort((a, b) => {
     const byMembers = b.members.length - a.members.length;
