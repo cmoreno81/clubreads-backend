@@ -21,6 +21,33 @@ export type WishlistItemInput = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Decodifica entidades HTML básicas en títulos/autores.
+ * Algunos clientes (o scrapes externos) guardan "&amp;" en vez de "&", etc.
+ * Normalizamos siempre antes de persistir y antes de agrupar.
+ */
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replaceAll('&amp;', '&')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&apos;', "'")
+    .replaceAll('&nbsp;', ' ');
+}
+
+/** Limpia un string de texto: decodifica HTML y quita espacios sobrantes. */
+function cleanText(value: string): string {
+  return decodeHtmlEntities(value).trim().replace(/\s+/g, ' ');
+}
+
+function cleanTextNullable(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const cleaned = cleanText(value);
+  return cleaned || null;
+}
+
 function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
   const d = new Date(value);
@@ -306,8 +333,8 @@ export async function addWishlistItem(
     data: {
       userId: user.id,
       bookId: resolvedBookId,
-      title: input.title.trim() || catalogBook?.title || input.title,
-      author: input.author?.trim() || catalogBook?.author?.name.trim() || null,
+      title: cleanText(input.title) || cleanText(catalogBook?.title ?? '') || input.title,
+      author: cleanTextNullable(input.author) ?? cleanTextNullable(catalogBook?.author?.name) ?? null,
       coverUrl: input.coverUrl?.trim() || catalogBook?.coverUrl?.trim() || null,
       isbn: input.isbn?.trim() ?? null,
       format: input.format ?? 'PHYSICAL',
@@ -344,9 +371,9 @@ export async function updateWishlistItem(
   const updated = await prisma.wishlistItem.update({
     where: { id: itemId },
     data: {
-      ...(input.title !== undefined && { title: input.title.trim() }),
+      ...(input.title !== undefined && { title: cleanText(input.title) }),
       ...(input.author !== undefined && {
-        author: input.author?.trim() ?? null,
+        author: cleanTextNullable(input.author),
       }),
       ...(input.coverUrl !== undefined && {
         coverUrl: input.coverUrl?.trim() ?? null,
@@ -497,14 +524,18 @@ export async function getClubWishlist(userName: string) {
   >();
 
   for (const item of recoveredItems) {
-    const key: GroupKey = item.bookId ?? item.title.toLowerCase().trim();
+    // Normalizar título antes de usarlo como clave: decodificar HTML y minúsculas.
+    // Esto agrupa "Mortal & Inmortal" y "Mortal &amp; Inmortal" en el mismo grupo.
+    const rawTitle = item.title.trim() || item.book?.title.trim() || item.title;
+    const normalizedTitle = cleanText(rawTitle).toLowerCase();
+    const key: GroupKey = item.bookId ?? normalizedTitle;
     const existing = groups.get(key);
     const memberInfo = memberMap.get(item.userId);
     if (!memberInfo) continue;
 
-    const title = item.title.trim() || item.book?.title.trim() || item.title;
+    const title = cleanText(rawTitle);
     const author =
-      item.author?.trim() || item.book?.author?.name.trim() || null;
+      cleanTextNullable(item.author) ?? cleanTextNullable(item.book?.author?.name) ?? null;
     const coverUrl =
       item.coverUrl?.trim() || item.book?.coverUrl?.trim() || null;
 
