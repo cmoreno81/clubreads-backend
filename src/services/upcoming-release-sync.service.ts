@@ -2,6 +2,7 @@ import { prisma } from "../prisma.js";
 import {
   canonicalBookKey,
   findBookByIdentity,
+  findSimilarBooks,
   normalizeBookIsbn,
 } from "./book-identity.service.js";
 import { cleanText, cleanTextNullable, decodeHtmlEntities } from "../utils/text.js";
@@ -295,11 +296,24 @@ export async function syncCasaDelLibroCliches(pageUrl: string) {
         : null;
 
       const cleanTitle = cleanText(detail.title);
-      const existing = await findBookByIdentity(prisma, {
+      let existing = await findBookByIdentity(prisma, {
         title: cleanTitle,
         authorName: author?.name,
         isbn: detail.isbn,
       });
+      // Fallback: buscar por similitud para fusionar variantes de edición
+      if (!existing) {
+        const similar = await findSimilarBooks(prisma, cleanTitle, {
+          authorName: author?.name,
+          limit: 1,
+        });
+        if (similar.length > 0) {
+          existing = await prisma.book.findUnique({
+            where: { id: similar[0]!.id },
+            include: { author: true },
+          });
+        }
+      }
 
       const normalizedIsbn = normalizeBookIsbn(detail.isbn);
 
@@ -723,11 +737,26 @@ export async function saveUpcomingBooks(items: ExternalUpcomingBook[]) {
         })
       : fallbackGenre;
     const cleanTitle = cleanText(item.title);
-    const existing = await findBookByIdentity(prisma, {
+    // Buscar por ISBN o clave canónica exacta
+    let existing = await findBookByIdentity(prisma, {
       title: cleanTitle,
       authorName: author?.name,
       isbn: item.isbn,
     });
+    // Si no hay match exacto, intentar por similitud de título (captura variantes
+    // de edición: "El despertar. Edición especial" ≈ "El despertar")
+    if (!existing) {
+      const similar = await findSimilarBooks(prisma, cleanTitle, {
+        authorName: author?.name,
+        limit: 1,
+      });
+      if (similar.length > 0) {
+        existing = await prisma.book.findUnique({
+          where: { id: similar[0]!.id },
+          include: { author: true },
+        });
+      }
+    }
     const previousPublicationDate = existing?.publicationDate ?? null;
     const normalizedIsbn = normalizeBookIsbn(item.isbn);
     const data = {

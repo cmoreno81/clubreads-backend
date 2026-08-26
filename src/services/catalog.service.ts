@@ -20,6 +20,7 @@ import {
 } from '../utils/cursor-pagination.js';
 import { observeExternalCall } from '../logging/external-call.js';
 import { backgroundError } from '../logging/logger.js';
+import { normalizeForComparison } from '../utils/text.js';
 import {
   normalizePriority,
   normalizeReadingFormat,
@@ -430,6 +431,27 @@ export async function importCatalogBook(
       libro: { id: book.id, titulo: book.title },
     };
   }
+
+  // Comprobar también si hay una variante del mismo libro en la biblioteca
+  // (p.ej. "Zodiac Academy 1: El despertar" vs "Zodiac Academy 1. El despertar. Edición especial").
+  // normalizeForComparison elimina sufijos de edición y normaliza puntuación.
+  const normNewTitle = normalizeForComparison(book.title);
+  const libraryBooks = await prisma.library.findMany({
+    where: { userId: user.id },
+    select: { book: { select: { id: true, title: true } } },
+  });
+  const variantEntry = libraryBooks.find(
+    (entry) => normalizeForComparison(entry.book.title) === normNewTitle,
+  );
+  if (variantEntry) {
+    return {
+      ok: true,
+      codigo: 'LIBRO_YA_EN_BIBLIOTECA',
+      mensaje: 'Este libro ya está en tu biblioteca',
+      libro: { id: variantEntry.book.id, titulo: variantEntry.book.title },
+    };
+  }
+
   await prisma.library.create({
     data: {
       userId: user.id,
