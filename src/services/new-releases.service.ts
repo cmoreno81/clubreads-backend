@@ -1,5 +1,6 @@
 import { prisma } from "../prisma.js";
 import { CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX } from "./upcoming-release-sync.service.js";
+import { normalizeForComparison } from "../utils/text.js";
 
 const NEW_RELEASE_SOURCE_PREFIX = "Casa del Libro · Novedades";
 
@@ -16,8 +17,7 @@ export async function getNewReleases(userName: string, limit = 40) {
     where: { userId: user.id, purchasedAt: null },
     select: { id: true, bookId: true, isbn: true, title: true },
   });
-  const normalizeTitle = (t: string) =>
-    t.toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "").trim();
+  const normalizeTitle = (t: string) => normalizeForComparison(t);
   const wishlistByBookId = new Map(
     userWishlist.filter((w) => w.bookId).map((w) => [w.bookId!, w.id]),
   );

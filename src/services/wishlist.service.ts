@@ -2,6 +2,7 @@ import { WishlistFormat, WishlistPriority } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { canonicalBookTitle } from './catalog.service.js';
 import { getCurrentClubContext } from './club-context.service.js';
+import { cleanText, cleanTextNullable } from '../utils/text.js';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -21,32 +22,6 @@ export type WishlistItemInput = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Decodifica entidades HTML básicas en títulos/autores.
- * Algunos clientes (o scrapes externos) guardan "&amp;" en vez de "&", etc.
- * Normalizamos siempre antes de persistir y antes de agrupar.
- */
-function decodeHtmlEntities(value: string): string {
-  return value
-    .replaceAll('&amp;', '&')
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
-    .replaceAll('&quot;', '"')
-    .replaceAll('&#39;', "'")
-    .replaceAll('&apos;', "'")
-    .replaceAll('&nbsp;', ' ');
-}
-
-/** Limpia un string de texto: decodifica HTML y quita espacios sobrantes. */
-function cleanText(value: string): string {
-  return decodeHtmlEntities(value).trim().replace(/\s+/g, ' ');
-}
-
-function cleanTextNullable(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const cleaned = cleanText(value);
-  return cleaned || null;
-}
 
 function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
@@ -79,8 +54,8 @@ function formatItem(item: {
   return {
     id: item.id,
     bookId: item.bookId,
-    title: item.title.trim() || item.book?.title.trim() || item.title,
-    author: item.author?.trim() || item.book?.author?.name.trim() || null,
+    title: cleanText(item.title) || cleanText(item.book?.title ?? '') || item.title,
+    author: cleanTextNullable(item.author) ?? cleanTextNullable(item.book?.author?.name) ?? null,
     coverUrl: item.coverUrl?.trim() || item.book?.coverUrl?.trim() || null,
     isbn: item.isbn,
     format: item.format,

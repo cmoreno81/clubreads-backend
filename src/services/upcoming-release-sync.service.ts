@@ -4,6 +4,7 @@ import {
   findBookByIdentity,
   normalizeBookIsbn,
 } from "./book-identity.service.js";
+import { cleanText, cleanTextNullable, decodeHtmlEntities } from "../utils/text.js";
 
 export type ExternalUpcomingBook = {
   title: string;
@@ -120,17 +121,6 @@ function htmlAttribute(tag: string, name: string) {
   return match?.[1]?.trim() || null;
 }
 
-function decodeHtmlEntities(value: string): string {
-  return value
-    .replaceAll("&amp;", "&")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'")
-    .replaceAll("&apos;", "'")
-    .replaceAll("&nbsp;", " ");
-}
-
 function metaContent(html: string, key: string) {
   for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
     const tag = match[0];
@@ -211,7 +201,7 @@ function parseCasaDelLibroClicheBookDetail(
 } | null {
   const titleParts = (metaContent(html, "og:title") ?? "")
     .split("|")
-    .map((v) => v.trim())
+    .map((v: string) => v.trim())
     .filter(Boolean);
   const title = titleParts[0];
   if (!title) return null;
@@ -295,16 +285,18 @@ export async function syncCasaDelLibroCliches(pageUrl: string) {
       );
       if (!detail) continue;
 
-      const author = detail.author?.trim()
+      const cleanAuthorName = cleanTextNullable(detail.author);
+      const author = cleanAuthorName
         ? await prisma.author.upsert({
-            where: { name: detail.author.trim() },
+            where: { name: cleanAuthorName },
             update: {},
-            create: { name: detail.author.trim() },
+            create: { name: cleanAuthorName },
           })
         : null;
 
+      const cleanTitle = cleanText(detail.title);
       const existing = await findBookByIdentity(prisma, {
-        title: detail.title,
+        title: cleanTitle,
         authorName: author?.name,
         isbn: detail.isbn,
       });
@@ -326,7 +318,7 @@ export async function syncCasaDelLibroCliches(pageUrl: string) {
           })
         : await prisma.book.create({
             data: {
-              title: detail.title.trim(),
+              title: cleanTitle,
               authorId: author?.id,
               canonicalKey: canonicalBookKey(
                 detail.title,
@@ -473,7 +465,7 @@ export function parseCasaDelLibroDetail(
     metaContent(html, "book:release_date");
   const titleParts = (metaContent(html, "og:title") ?? "")
     .split("|")
-    .map((value) => value.trim())
+    .map((value: string) => value.trim())
     .filter(Boolean);
   const title = titleParts[0];
   if (!title || !rawDate || !/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) return null;
@@ -488,7 +480,7 @@ export function parseCasaDelLibroDetail(
     return null;
   }
   const isbn = metaContent(html, "book:isbn");
-  const publisherPart = titleParts.find((value) =>
+  const publisherPart = titleParts.find((value: string) =>
     /^editorial\s+/i.test(value),
   );
   const language = casaDelLibroLanguage(html);
@@ -714,22 +706,25 @@ export async function saveUpcomingBooks(items: ExternalUpcomingBook[]) {
   let created = 0;
   let updated = 0;
   for (const item of items) {
-    const author = item.author?.trim()
+    const cleanAuthorName = cleanTextNullable(item.author);
+    const author = cleanAuthorName
       ? await prisma.author.upsert({
-          where: { name: item.author.trim() },
+          where: { name: cleanAuthorName },
           update: {},
-          create: { name: item.author.trim() },
+          create: { name: cleanAuthorName },
         })
       : null;
-    const genre = item.genre?.trim()
+    const cleanGenreName = cleanTextNullable(item.genre);
+    const genre = cleanGenreName
       ? await prisma.genre.upsert({
-          where: { name: item.genre.trim() },
+          where: { name: cleanGenreName },
           update: {},
-          create: { name: item.genre.trim() },
+          create: { name: cleanGenreName },
         })
       : fallbackGenre;
+    const cleanTitle = cleanText(item.title);
     const existing = await findBookByIdentity(prisma, {
-      title: item.title,
+      title: cleanTitle,
       authorName: author?.name,
       isbn: item.isbn,
     });
@@ -738,7 +733,7 @@ export async function saveUpcomingBooks(items: ExternalUpcomingBook[]) {
     const data = {
       publicationDate: item.publicationDate,
       publicationYear: item.publicationDate.getFullYear(),
-      publisher: item.publisher?.trim() || undefined,
+      publisher: cleanTextNullable(item.publisher) ?? undefined,
       coverUrl: item.coverUrl?.trim() || undefined,
       isbn: item.isbn?.trim() || undefined,
       normalizedIsbn: normalizedIsbn ?? undefined,
@@ -748,9 +743,9 @@ export async function saveUpcomingBooks(items: ExternalUpcomingBook[]) {
       ? await prisma.book.update({ where: { id: existing.id }, data })
       : await prisma.book.create({
           data: {
-            title: item.title.trim(),
+            title: cleanTitle,
             authorId: author?.id,
-            canonicalKey: canonicalBookKey(item.title, author?.name ?? ""),
+            canonicalKey: canonicalBookKey(cleanTitle, author?.name ?? ""),
             ...data,
           },
         });
