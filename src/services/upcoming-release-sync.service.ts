@@ -149,11 +149,6 @@ export type CasaDelLibroClicheLink = {
   sourceUrl: string;
 };
 
-/**
- * La página de clichés no es un catálogo de novedades: contiene también
- * títulos antiguos. Solo extraemos sus relaciones libro/cliché para anotar
- * libros que ya hayan entrado por los feeds de novedades o lanzamientos.
- */
 export function parseCasaDelLibroClicheLinks(
   html: string,
   pageUrl: string,
@@ -180,32 +175,171 @@ export function parseCasaDelLibroClicheLinks(
   return [...links.values()];
 }
 
+/**
+ * Parsea la página de un producto de Casa del Libro para extraer los datos
+ * del libro sin restricciones de fecha ni género: la página de clichés ya
+ * es una curaduría de ficción juvenil/romántica, por lo que no necesitamos
+ * filtrar por categoría, y los libros listados pueden tener cualquier fecha.
+ *
+ * Si no se encuentra fecha de publicación se usa la fecha actual como
+ * aproximación para que el libro aparezca como "disponible".
+ */
+function parseCasaDelLibroClicheBookDetail(
+  html: string,
+  sourceUrl: string,
+  now = new Date(),
+): {
+  title: string;
+  author: string | null;
+  isbn: string | null;
+  coverUrl: string | null;
+  publicationDate: Date;
+} | null {
+  const titleParts = (metaContent(html, "og:title") ?? "")
+    .split("|")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const title = titleParts[0];
+  if (!title) return null;
+
+  const rawDate =
+    casaDelLibroVisibleReleaseDate(html) ??
+    metaContent(html, "book:release_date");
+
+  let publicationDate: Date;
+  if (rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+    const parsed = new Date(`${rawDate}T12:00:00.000Z`);
+    // Si la fecha es válida y anterior a hoy, la usamos; si es futura,
+    // la limitamos a hoy para que el libro aparezca como disponible.
+    publicationDate =
+      !Number.isNaN(parsed.getTime()) && parsed <= now ? parsed : new Date(now);
+  } else {
+    // Sin fecha explícita → disponible desde hoy
+    publicationDate = new Date(now);
+  }
+
+  return {
+    title,
+    author: metaContent(html, "book:author"),
+    isbn: metaContent(html, "book:isbn"),
+    coverUrl: metaContent(html, "og:image"),
+    publicationDate,
+  };
+}
+
+/**
+ * Sincroniza la página de clichés de Casa del Libro como fuente primaria de
+ * libros. Cada sección (p. ej. "Enemies to Lovers") se importa directamente:
+ * se descarga la ficha de cada producto, se crea o actualiza el registro de
+ * Book en base de datos y se upserta un BookSource con el nombre del cliché.
+ *
+ * Esto permite filtrar por cliché en "Novedades disponibles" aunque el libro
+ * no haya entrado por el feed general de novedades.
+ */
 export async function syncCasaDelLibroCliches(pageUrl: string) {
   const html = await fetchText("Casa del Libro · Clichés", pageUrl);
   const links = parseCasaDelLibroClicheLinks(html, pageUrl);
-  const sourceUrls = [...new Set(links.map(({ sourceUrl }) => sourceUrl))];
-  const catalogSources = await prisma.bookSource.findMany({
-    where: {
-      sourceUrl: { in: sourceUrls },
-      source: { not: { startsWith: CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX } },
-    },
-    select: { bookId: true, sourceUrl: true },
-  });
-  const bookByUrl = new Map(
-    catalogSources.map(({ bookId, sourceUrl }) => [sourceUrl, bookId]),
-  );
-  let tagged = 0;
+
+  // Agrupa los clichés por URL de producto (un libro puede estar en varios)
+  const urlToCliches = new Map<string, string[]>();
   for (const { cliche, sourceUrl } of links) {
-    const bookId = bookByUrl.get(sourceUrl);
-    if (!bookId) continue;
-    const source = `${CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX}${cliche}`;
-    await prisma.bookSource.upsert({
-      where: { source_sourceUrl: { source, sourceUrl } },
-      update: { bookId, lastCheckedAt: new Date() },
-      create: { bookId, source, sourceUrl },
-    });
-    tagged++;
+    const existing = urlToCliches.get(sourceUrl) ?? [];
+    existing.push(cliche);
+    urlToCliches.set(sourceUrl, existing);
   }
+
+  const productUrls = [...urlToCliches.keys()];
+
+  // Género por defecto para libros nuevos procedentes de la página de clichés
+  const fallbackGenre = await prisma.genre.upsert({
+    where: { name: "Juvenil" },
+    update: {},
+    create: { name: "Juvenil" },
+  });
+
+  let tagged = 0;
+  const now = new Date();
+
+  // Descargamos las fichas en lotes de 4 para no sobrecargar el servidor
+  for (let i = 0; i < productUrls.length; i += 4) {
+    const batch = productUrls.slice(i, i + 4);
+    const settled = await Promise.allSettled(
+      batch.map(async (productUrl) => ({
+        productUrl,
+        productHtml: await fetchText("Casa del Libro · Clichés", productUrl),
+      })),
+    );
+
+    for (const result of settled) {
+      if (result.status !== "fulfilled") continue;
+      const { productUrl, productHtml } = result.value;
+
+      const detail = parseCasaDelLibroClicheBookDetail(
+        productHtml,
+        productUrl,
+        now,
+      );
+      if (!detail) continue;
+
+      const author = detail.author?.trim()
+        ? await prisma.author.upsert({
+            where: { name: detail.author.trim() },
+            update: {},
+            create: { name: detail.author.trim() },
+          })
+        : null;
+
+      const existing = await findBookByIdentity(prisma, {
+        title: detail.title,
+        authorName: author?.name,
+        isbn: detail.isbn,
+      });
+
+      const normalizedIsbn = normalizeBookIsbn(detail.isbn);
+
+      // Si el libro ya existe solo actualizamos portada e ISBN (nunca la fecha);
+      // si es nuevo lo creamos con todos los datos disponibles.
+      const book = existing
+        ? await prisma.book.update({
+            where: { id: existing.id },
+            data: {
+              ...(detail.coverUrl?.trim()
+                ? { coverUrl: detail.coverUrl.trim() }
+                : {}),
+              ...(detail.isbn?.trim() ? { isbn: detail.isbn.trim() } : {}),
+              ...(normalizedIsbn ? { normalizedIsbn } : {}),
+            },
+          })
+        : await prisma.book.create({
+            data: {
+              title: detail.title.trim(),
+              authorId: author?.id,
+              canonicalKey: canonicalBookKey(
+                detail.title,
+                author?.name ?? "",
+              ),
+              publicationDate: detail.publicationDate,
+              publicationYear: detail.publicationDate.getFullYear(),
+              coverUrl: detail.coverUrl?.trim() || undefined,
+              isbn: detail.isbn?.trim() || undefined,
+              normalizedIsbn: normalizedIsbn ?? undefined,
+              genreId: fallbackGenre.id,
+            },
+          });
+
+      // Upserta un BookSource por cada cliché al que pertenece este producto
+      for (const cliche of urlToCliches.get(productUrl) ?? []) {
+        const source = `${CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX}${cliche}`;
+        await prisma.bookSource.upsert({
+          where: { source_sourceUrl: { source, sourceUrl: productUrl } },
+          update: { bookId: book.id, lastCheckedAt: new Date() },
+          create: { bookId: book.id, source, sourceUrl: productUrl },
+        });
+        tagged++;
+      }
+    }
+  }
+
   return { links: links.length, tagged };
 }
 

@@ -32,7 +32,16 @@ export async function getNewReleases(userName: string, limit = 40) {
     where: {
       deletedAt: null,
       publicationDate: { not: null, lte: new Date() },
-      sources: { some: { source: { startsWith: NEW_RELEASE_SOURCE_PREFIX } } },
+      // Incluimos libros procedentes del feed de novedades Y libros que
+      // entraron directamente desde la página de clichés.
+      sources: {
+        some: {
+          OR: [
+            { source: { startsWith: NEW_RELEASE_SOURCE_PREFIX } },
+            { source: { startsWith: CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX } },
+          ],
+        },
+      },
     },
     select: {
       id: true,
@@ -56,9 +65,14 @@ export async function getNewReleases(userName: string, limit = 40) {
   return {
     ok: true as const,
     items: books.map((book) => {
-      const primarySource = book.sources.find(({ source }) =>
-        source.startsWith(NEW_RELEASE_SOURCE_PREFIX),
-      );
+      // Prioridad: fuente de novedades > fuente de cliché
+      const primarySource =
+        book.sources.find(({ source }) =>
+          source.startsWith(NEW_RELEASE_SOURCE_PREFIX),
+        ) ??
+        book.sources.find(({ source }) =>
+          source.startsWith(CASA_DEL_LIBRO_CLICHE_SOURCE_PREFIX),
+        );
       // bookId → ISBN → título normalizado (fallback para ítems manuales)
       const wishlistItemId =
         wishlistByBookId.get(book.id) ??
