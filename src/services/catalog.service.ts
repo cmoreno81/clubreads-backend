@@ -452,15 +452,28 @@ export async function importCatalogBook(
     };
   }
 
-  await prisma.library.create({
-    data: {
-      userId: user.id,
-      bookId: book.id,
-      status: ReadingStatus.PENDING,
-      priority: priorityFromFlutter(data.prioridad),
-      readingFormat: formatFromFlutter(data.formato),
-    },
-  });
+  try {
+    await prisma.library.create({
+      data: {
+        userId: user.id,
+        bookId: book.id,
+        status: ReadingStatus.PENDING,
+        priority: priorityFromFlutter(data.prioridad),
+        readingFormat: formatFromFlutter(data.formato),
+      },
+    });
+  } catch (e: unknown) {
+    // P2002 = unique constraint violation: petición duplicada simultánea
+    if ((e as { code?: string })?.code === 'P2002') {
+      return {
+        ok: true,
+        codigo: 'LIBRO_YA_EN_BIBLIOTECA',
+        mensaje: 'Este libro ya está en tu biblioteca',
+        libro: { id: book.id, titulo: book.title },
+      };
+    }
+    throw e;
+  }
   void notifyLibraryAddition(user, book).catch(backgroundError('library_addition_notification_failed'));
   return {
     ok: true,
