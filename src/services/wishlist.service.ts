@@ -548,35 +548,58 @@ export async function getClubWishlist(userName: string) {
     }
   }
 
-  // ── Segunda pasada: fusionar grupos por-título con grupos por-bookId ──────────
-  // Caso: Mery añade "La espada de Kaigen" manualmente (sin bookId) → clave por título.
-  //       Cristina lo añade desde el catálogo (con bookId) → clave por bookId.
-  //       Mismo libro, keys distintas → dos grupos. Los fusionamos aquí.
-  const titleToBookIdKey = new Map<string, string>(); // normalizedTitle → key del grupo con bookId
+  // ── Segunda pasada: fusionar grupos con el mismo título normalizado ──────────
+  // Cubre tres casos:
+  //   A) Una usuaria añadió manualmente (clave = título) y otra desde el catálogo
+  //      (clave = bookId) → mismo libro, dos grupos distintos.
+  //   B) Dos usuarias añadieron desde el catálogo pero con dos Book records diferentes
+  //      (ej. "Legado II. Memorias de sombra" con y sin fecha) → dos claves bookId distintas.
+  //   C) Mezcla de A y B.
+  //
+  // Estrategia: para cada título normalizado, elegir un grupo "canónico" (preferimos
+  // los que tienen bookId como clave por tener mejores metadatos) y fusionar el resto en él.
+
+  // Sub-pasada 1: determinar el grupo canónico de cada título normalizado.
+  const normTitleToCanonicalKey = new Map<string, string>(); // normTitle → key canónica
   for (const [key, group] of groups) {
-    if (group.bookId && key === group.bookId) {
-      titleToBookIdKey.set(cleanText(group.title).toLowerCase(), key);
+    const normTitle = normalizeForComparison(group.title);
+    const existingKey = normTitleToCanonicalKey.get(normTitle);
+    if (!existingKey) {
+      normTitleToCanonicalKey.set(normTitle, key);
+    } else {
+      // Preferir grupos cuya clave ES su bookId (tienen metadatos más fiables)
+      const isKeyedByBookId = group.bookId != null && key === group.bookId;
+      const existingIsKeyedByBookId = (() => {
+        const eg = groups.get(existingKey);
+        return eg != null && eg.bookId != null && existingKey === eg.bookId;
+      })();
+      if (isKeyedByBookId && !existingIsKeyedByBookId) {
+        normTitleToCanonicalKey.set(normTitle, key);
+      }
     }
   }
+
+  // Sub-pasada 2: fusionar los no-canónicos en su canónico.
   for (const [key, group] of [...groups.entries()]) {
-    // Solo procesamos grupos cuya clave es por título (no tiene bookId propio como clave)
-    if (group.bookId && key === group.bookId) continue;
-    const normalizedTitle = normalizeForComparison(group.title);
-    const bookIdKey = titleToBookIdKey.get(normalizedTitle);
-    if (bookIdKey && bookIdKey !== key) {
-      // Fusionar en el grupo con bookId
-      const target = groups.get(bookIdKey)!;
-      const existingMemberIds = new Set(target.members.map((m) => m.userId));
-      for (const member of group.members) {
-        if (!existingMemberIds.has(member.userId)) {
-          target.members.push(member);
-        }
-      }
-      if (group.isInMyWishlist) target.isInMyWishlist = true;
-      if (!target.coverUrl && group.coverUrl) target.coverUrl = group.coverUrl;
-      if (!target.author && group.author) target.author = group.author;
-      groups.delete(key);
+    const normTitle = normalizeForComparison(group.title);
+    const canonicalKey = normTitleToCanonicalKey.get(normTitle);
+    if (!canonicalKey || canonicalKey === key) continue; // ya es el canónico
+
+    const target = groups.get(canonicalKey)!;
+    // Propagar bookId si el canónico aún no tiene uno
+    if (!target.bookId && group.bookId) target.bookId = group.bookId;
+    if (!target.coverUrl && group.coverUrl) target.coverUrl = group.coverUrl;
+    if (!target.author && group.author) target.author = group.author;
+    if (!target.releaseDate && group.releaseDate) {
+      target.releaseDate = group.releaseDate;
+      target.isUpcoming = group.isUpcoming;
     }
+    const existingMemberIds = new Set(target.members.map((m) => m.userId));
+    for (const member of group.members) {
+      if (!existingMemberIds.has(member.userId)) target.members.push(member);
+    }
+    if (group.isInMyWishlist) target.isInMyWishlist = true;
+    groups.delete(key);
   }
 
   // Ordenar: primero los que tienen más miembros interesados, luego próximas novedades
