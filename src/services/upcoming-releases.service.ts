@@ -38,8 +38,14 @@ export async function getUpcomingReleases(
   const wishlistByIsbn = new Map(
     userWishlist.filter((w) => w.isbn).map((w) => [w.isbn!, w.id]),
   );
+  // Solo ítems sin bookId ni ISBN: si tienen alguno de esos identificadores
+  // ya son capturados por wishlistByBookId/wishlistByIsbn. Limitarlo aquí evita
+  // que un libro con el mismo título normalizado que otro en la wishlist
+  // devuelva el wishlistItemId equivocado.
   const wishlistByTitle = new Map(
-    userWishlist.map((w) => [normalizeTitle(w.title), w.id]),
+    userWishlist
+      .filter((w) => !w.bookId && !w.isbn)
+      .map((w) => [normalizeTitle(w.title), w.id]),
   );
 
   // Biblioteca del usuario: bookId, ISBN y título normalizado para detectar

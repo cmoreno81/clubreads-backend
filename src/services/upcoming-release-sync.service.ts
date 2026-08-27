@@ -712,30 +712,49 @@ export async function fetchGoogleBooksUpcoming(query: string) {
 }
 
 export async function saveUpcomingBooks(items: ExternalUpcomingBook[]) {
-  const fallbackGenre = await prisma.genre.upsert({
-    where: { name: "Sin género" },
-    update: {},
-    create: { name: "Sin género" },
-  });
+  // ── Pre-cargar autores y géneros en bulk ──────────────────────────────────
+  // En lugar de hacer un upsert por cada ítem del loop (N queries secuenciales),
+  // recogemos los nombres únicos y los resolvemos en paralelo antes de entrar
+  // al loop. Así author.upsert y genre.upsert pasan de O(N) a O(únicos).
+  const uniqueAuthorNames = [
+    ...new Set(
+      items.map((i) => cleanTextNullable(i.author)).filter(Boolean) as string[],
+    ),
+  ];
+  const uniqueGenreNames = [
+    ...new Set(
+      items.map((i) => cleanTextNullable(i.genre)).filter(Boolean) as string[],
+    ),
+  ];
+
+  const [authorRecords, genreRecords, fallbackGenre] = await Promise.all([
+    Promise.all(
+      uniqueAuthorNames.map((name) =>
+        prisma.author.upsert({ where: { name }, update: {}, create: { name } }),
+      ),
+    ),
+    Promise.all(
+      uniqueGenreNames.map((name) =>
+        prisma.genre.upsert({ where: { name }, update: {}, create: { name } }),
+      ),
+    ),
+    prisma.genre.upsert({
+      where: { name: "Sin género" },
+      update: {},
+      create: { name: "Sin género" },
+    }),
+  ]);
+
+  const authorMap = new Map(authorRecords.map((a) => [a.name, a]));
+  const genreMap = new Map(genreRecords.map((g) => [g.name, g]));
+
   let created = 0;
   let updated = 0;
   for (const item of items) {
     const cleanAuthorName = cleanTextNullable(item.author);
-    const author = cleanAuthorName
-      ? await prisma.author.upsert({
-          where: { name: cleanAuthorName },
-          update: {},
-          create: { name: cleanAuthorName },
-        })
-      : null;
+    const author = cleanAuthorName ? (authorMap.get(cleanAuthorName) ?? null) : null;
     const cleanGenreName = cleanTextNullable(item.genre);
-    const genre = cleanGenreName
-      ? await prisma.genre.upsert({
-          where: { name: cleanGenreName },
-          update: {},
-          create: { name: cleanGenreName },
-        })
-      : fallbackGenre;
+    const genre = cleanGenreName ? (genreMap.get(cleanGenreName) ?? fallbackGenre) : fallbackGenre;
     const cleanTitle = cleanText(item.title);
     // Buscar por ISBN o clave canónica exacta
     let existing = await findBookByIdentity(prisma, {

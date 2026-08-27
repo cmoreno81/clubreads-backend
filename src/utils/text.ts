@@ -57,7 +57,7 @@ export function normalizeForComparison(value: string): string {
     decodeHtmlEntities(value)
       // Eliminar diacríticos
       .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
+      .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       // Eliminar bloque entre paréntesis que contenga palabras de edición
       .replace(
