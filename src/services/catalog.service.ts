@@ -463,7 +463,8 @@ export async function importCatalogBook(
       },
     });
   } catch (e: unknown) {
-    // P2002 = unique constraint violation: petición duplicada simultánea
+    // P2002 = unique constraint violation (@@unique[userId, bookId]):
+    // dos peticiones simultáneas del mismo bookId llegaron al create a la vez.
     if ((e as { code?: string })?.code === 'P2002') {
       return {
         ok: true,
@@ -473,6 +474,28 @@ export async function importCatalogBook(
       };
     }
     throw e;
+  }
+
+  // Guardia post-create para la race condition de variante-título:
+  // si dos peticiones para bookIds distintos del mismo libro pasaron la
+  // comprobación de variante antes de que ninguna hiciera commit, ambas
+  // habrán creado una entrada (no hay unique constraint entre títulos).
+  // Detectamos y eliminamos el duplicado manteniendo la entrada más antigua.
+  const duplicates = await prisma.library.findMany({
+    where: { userId: user.id },
+    select: { bookId: true, createdAt: true, book: { select: { title: true } } },
+    orderBy: { createdAt: 'asc' },
+  });
+  const normCreatedTitle = normalizeForComparison(book.title);
+  const sameTitle = duplicates.filter(
+    (e) => normalizeForComparison(e.book.title) === normCreatedTitle,
+  );
+  if (sameTitle.length > 1) {
+    // Eliminar todas las entradas excepto la más antigua (primera por createdAt asc)
+    const [_keep, ...toDelete] = sameTitle;
+    await prisma.library.deleteMany({
+      where: { userId: user.id, bookId: { in: toDelete.map((e) => e.bookId) } },
+    });
   }
   void notifyLibraryAddition(user, book).catch(backgroundError('library_addition_notification_failed'));
   return {
