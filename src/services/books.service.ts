@@ -801,7 +801,12 @@ export async function anadirLibroExistente(
     };
   }
 
-  const book = await buscarLibroPorTitulo(libro);
+  // El cliente puede enviar el bookId (cuid) o el título del libro.
+  // Intentamos primero por ID para evitar colisiones con títulos duplicados.
+  const looksLikeId = /^c[a-z0-9]{20,}$/.test(libro.trim());
+  const book = looksLikeId
+    ? await prisma.book.findUnique({ where: { id: libro.trim(), deletedAt: null } })
+    : await buscarLibroPorTitulo(libro);
 
   if (!book) {
     return {
