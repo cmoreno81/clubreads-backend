@@ -452,8 +452,9 @@ export async function getClubvision(
   usuario: string,
   options: ClubvisionReadOptions = {},
 ) {
-  const { club, user: contextUser } = options.context ?? await getCurrentClubContext(usuario);
+  const { club, user: contextUser, membership } = options.context ?? await getCurrentClubContext(usuario);
   const idVotacion = getCurrentEdition();
+  const esAdmin = membership?.role === 'OWNER' || membership?.role === 'ADMIN';
 
   const clubvision = options.synchronize === false
     ? await prisma.clubvision.findUnique({
@@ -502,6 +503,7 @@ export async function getClubvision(
       comentarios: 0,
       likes: 0,
       ultimaActividad: '',
+      esAdmin,
     };
   }
 
@@ -657,6 +659,7 @@ export async function getClubvision(
     comentarios: 0,
     likes: 0,
     ultimaActividad: '',
+    esAdmin,
   };
 }
 
