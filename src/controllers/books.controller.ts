@@ -165,10 +165,14 @@ export async function handleQuitarLibroPendientes(req: Request, res: Response) {
   const usuario = requestUserName(req);
 
   const libro = String(req.body?.libro ?? '');
+  // bookId es opcional; cuando lo envía el cliente, el backend lo usa
+  // directamente y evita buscarLibroPorTitulo (que falla con títulos duplicados).
+  const bookId = req.body?.bookId ? String(req.body.bookId) : undefined;
 
   const data = await quitarLibroPendientes(
     usuario,
     libro,
+    bookId,
   );
 
   return res.json(data);

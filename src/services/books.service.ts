@@ -1806,6 +1806,7 @@ logger.info({
 export async function quitarLibroPendientes(
   usuario: string,
   libro: string,
+  bookId?: string,
 ) {
   const nombreUsuario = usuario.trim();
   const tituloLibro = libro.trim();
@@ -1818,7 +1819,7 @@ export async function quitarLibroPendientes(
     };
   }
 
-  if (!tituloLibro) {
+  if (!tituloLibro && !bookId) {
     return {
       ok: false,
       codigo: 'FALTA_LIBRO',
@@ -1840,7 +1841,11 @@ export async function quitarLibroPendientes(
     };
   }
 
-  const book = await buscarLibroPorTitulo(tituloLibro);
+  // Si el cliente envía bookId, lo usamos directamente para evitar la búsqueda
+  // por título (que falla cuando existen libros con el mismo nombre).
+  const book = bookId
+    ? await prisma.book.findUnique({ where: { id: bookId, deletedAt: null } })
+    : await buscarLibroPorTitulo(tituloLibro);
 
   if (!book) {
     return {
