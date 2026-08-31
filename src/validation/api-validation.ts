@@ -57,7 +57,7 @@ export const dateSchema = z.string().trim().refine((value) => {
 }, 'Fecha inválida');
 export const optionalDateSchema = z.union([z.literal(''), dateSchema]).optional();
 
-export const commentTypeSchema = z.enum(['COMMENT', 'QUOTE']);
+export const commentTypeSchema = z.enum(['COMMENT', 'QUOTE', 'MOMENTO_FAV', 'TEORIA', 'PERSONAJE', 'IMPACTO']);
 export const importSourceSchema = z.enum(['GOODREADS', 'BOOKMORY']);
 export const legacyBooleanSchema = z.union([z.boolean(), z.literal(1), z.literal(0), z.literal('1'), z.literal('0')]);
 

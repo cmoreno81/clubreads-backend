@@ -916,7 +916,13 @@ export async function enviarComentarioLectura(data: {
   const capitulo = data.capitulo.trim();
   const usuario = data.usuario.trim();
   const comentario = data.comentario.trim();
-  const tipo = data.tipo?.trim().toUpperCase() === 'QUOTE' ? 'QUOTE' : 'COMMENT';
+  // Tipos válidos: QUOTE (cita del libro), MOMENTO_FAV, TEORIA, PERSONAJE,
+  // IMPACTO, COMMENT (libre / sin categoría).
+  const TIPOS_VALIDOS = new Set(['QUOTE', 'MOMENTO_FAV', 'TEORIA', 'PERSONAJE', 'IMPACTO', 'COMMENT']);
+  const rawTipo = data.tipo?.trim().toUpperCase() ?? 'COMMENT';
+  const tipo = TIPOS_VALIDOS.has(rawTipo) ? rawTipo : 'COMMENT';
+  // Guardamos el color para todos los tipos tipificados (QUOTE y categorías),
+  // para que el cliente pueda mostrar el badge de color correspondiente.
   const color = /^#[0-9A-F]{6}$/i.test(data.color?.trim() ?? '')
     ? data.color!.trim().toUpperCase()
     : null;
@@ -951,7 +957,7 @@ export async function enviarComentarioLectura(data: {
       userId: user.id,
       text: comentario,
       type: tipo,
-      color: tipo === 'QUOTE' ? color : null,
+      color: tipo !== 'COMMENT' ? color : null,
     },
     select: {
       id: true,
