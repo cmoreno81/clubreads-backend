@@ -211,6 +211,10 @@ async function main() {
   console.log(`\n📚 "Una historia de Taipei" — ${taipeiBooks.length} registros encontrados:`);
   for (const b of taipeiBooks) printBook(b);
 
+  const legadoBooks = await findDuplicates('Legado II');
+  console.log(`\n📚 "Legado II. Memorias de sombra" — ${legadoBooks.length} registros encontrados:`);
+  for (const b of legadoBooks) printBook(b);
+
   // Validar que encontramos exactamente 2 de cada uno
   if (zodiacBooks.length < 2) {
     console.log('\n⚠️  Zodiac Academy 1: ya hay un solo registro, no hace falta fusionar.');
@@ -218,7 +222,10 @@ async function main() {
   if (taipeiBooks.length < 2) {
     console.log('\n⚠️  Una historia de Taipei: ya hay un solo registro, no hace falta fusionar.');
   }
-  if (zodiacBooks.length < 2 && taipeiBooks.length < 2) {
+  if (legadoBooks.length < 2) {
+    console.log('\n⚠️  Legado II: ya hay un solo registro, no hace falta fusionar.');
+  }
+  if (zodiacBooks.length < 2 && taipeiBooks.length < 2 && legadoBooks.length < 2) {
     console.log('\n✅ Nada que fusionar. La BD ya está limpia.');
     return;
   }
@@ -254,6 +261,18 @@ async function main() {
       keepTaipei.id,
       deleteTaipei.id,
       'Una historia de Taipei',
+    );
+  }
+
+  if (legadoBooks.length >= 2) {
+    const [a, b] = legadoBooks;
+    // Canónico: el que tiene más wishlist items entre los miembros del club
+    const keepLegado = (a!.wishlistItems.length >= b!.wishlistItems.length) ? a! : b!;
+    const deleteLegado = keepLegado === a ? b! : a!;
+    await mergeBooks(
+      keepLegado.id,
+      deleteLegado.id,
+      'Legado II. Memorias de sombra',
     );
   }
 

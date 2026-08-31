@@ -356,6 +356,141 @@ export async function getLibros(usuario: string) {
   return cached(`libros:${usuario}`, LIBRARY_TTL, () => _getLibros(usuario));
 }
 
+// ── Vista ClubReads: todos los usuarios, sin filtro de club ───────────────────
+// Limitada a 600 entradas activas para evitar respuestas excesivas.
+export async function getLibrosGlobal(usuario: string) {
+  return cached(
+    `libros-global:${usuario}`,
+    LIBRARY_TTL,
+    () => _getLibrosGlobal(usuario),
+  );
+}
+
+async function _getLibrosGlobal(usuario: string) {
+  const user = await prisma.user.findUnique({
+    where: { name: usuario.trim() },
+    select: { id: true },
+  });
+
+  const library = await prisma.library.findMany({
+    where: {
+      status: { not: ReadingStatus.FINISHED },
+      book: { deletedAt: null },
+    },
+    include: {
+      book: { include: { author: true, genre: true, series: true } },
+      user: true,
+    },
+    orderBy: [{ book: { title: 'asc' } }, { user: { name: 'asc' } }],
+    take: 600,
+  });
+
+  return library.map((item) => ({
+    bookId: item.book.id,
+    usuario: item.user.name,
+    libro: item.book.title,
+    autor: item.book.author?.name ?? '',
+    genero: item.book.genre.name,
+    saga: item.book.series?.name ?? '',
+    numSaga: item.book.seriesOrder ?? '',
+    autoconclusivo: item.book.standalone ? 'Si' : 'No',
+    prioridad: priorityToFlutter(item.priority),
+    formato: formatToFlutter(item.readingFormat),
+    leyendo: statusToFlutter(item.status),
+    estado: statusToFlutter(item.status),
+    valoracion: '',
+    fechaAlta: item.book.createdAt.toISOString(),
+    startedAt: item.startedAt?.toISOString() ?? '',
+    pausedAt: item.pausedAt?.toISOString() ?? '',
+    pauseReason: item.pauseReason ?? '',
+    yaLoTengo: item.userId === user?.id,
+    goodreads: item.book.goodreadsUrl ?? '',
+    coverUrl: item.book.coverUrl ?? '',
+    avatarUrl: item.user.avatarUrl ?? '',
+    paginas: item.book.totalPages,
+  }));
+}
+
+export async function getLibrosFinalizadosTodosGlobal(usuario: string) {
+  return cached(
+    `finalizados-global:${usuario}`,
+    LIBRARY_TTL,
+    () => _getLibrosFinalizadosTodosGlobal(usuario),
+  );
+}
+
+async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
+  const user = await prisma.user.findUnique({
+    where: { name: usuario.trim() },
+    select: { id: true },
+  });
+
+  const library = await prisma.library.findMany({
+    where: {
+      status: ReadingStatus.FINISHED,
+      book: { deletedAt: null },
+    },
+    select: {
+      userId: true,
+      readingFormat: true,
+      finishedAt: true,
+      user: { select: { name: true, avatarUrl: true } },
+      book: {
+        select: {
+          id: true,
+          title: true,
+          coverUrl: true,
+          goodreadsUrl: true,
+          totalPages: true,
+          standalone: true,
+          seriesOrder: true,
+          createdAt: true,
+          author: { select: { name: true } },
+          genre: { select: { name: true } },
+          series: { select: { name: true } },
+          reviews: {
+            where: { deletedAt: null },
+            select: { userId: true, rating: true, review: true },
+          },
+        },
+      },
+    },
+    orderBy: [
+      { book: { title: 'asc' } },
+      { user: { name: 'asc' } },
+    ],
+    take: 600,
+  });
+
+  return library.map((item) => {
+    const review = item.book.reviews.find((r) => r.userId === item.userId);
+    return {
+      bookId: item.book.id,
+      usuario: item.user.name,
+      libro: item.book.title,
+      autor: item.book.author?.name ?? '',
+      genero: item.book.genre.name,
+      saga: item.book.series?.name ?? '',
+      numSaga: item.book.seriesOrder ?? '',
+      autoconclusivo: item.book.standalone ? 'Si' : 'No',
+      valoracion: ratingToFlutter(review?.rating),
+      formato: formatToFlutter(item.readingFormat),
+      fechaAlta: item.book.createdAt.toISOString(),
+      resena: review?.review ?? '',
+      review: review?.review ?? '',
+      goodreads: item.book.goodreadsUrl ?? '',
+      fecha: item.finishedAt ?? '',
+      coverUrl: item.book.coverUrl ?? '',
+      avatarUrl: item.user.avatarUrl ?? '',
+      paginas: item.book.totalPages,
+      yaLoTengo: item.userId === user?.id,
+      mes: item.finishedAt
+        ? `${String(item.finishedAt.getMonth() + 1).padStart(2, '0')}/${item.finishedAt.getFullYear()}`
+        : '',
+    };
+  });
+}
+
 async function _getLibros(usuario: string) {
   const usuarioActual = usuario.trim();
   const { club, user } = await getCurrentClubContext(usuarioActual);

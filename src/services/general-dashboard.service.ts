@@ -387,6 +387,9 @@ export async function getGeneralDashboard(userId: string) {
       // Las incorporaciones son altas reales en bibliotecas personales. El
       // catálogo también recibe libros desde sincronizadores externos y esos
       // deben mostrarse en «Próximos lanzamientos», no en este bloque.
+      // La exclusión de importados se hace en un segundo paso (ver más abajo)
+      // porque Prisma no admite filtros correlacionados entre Library.userId
+      // e ImportRowReceipt.userId en un solo where.
       prisma.library.findMany({
         where: { book: { deletedAt: null } },
         orderBy: { createdAt: 'desc' },
@@ -394,6 +397,7 @@ export async function getGeneralDashboard(userId: string) {
         // mostrando hasta 10 obras distintas.
         take: 40,
         select: {
+          userId: true,  // necesario para identificar imports por (userId, bookId)
           createdAt: true,
           book: {
             select: {
@@ -427,6 +431,32 @@ export async function getGeneralDashboard(userId: string) {
     ]);
   console.log(`[dashboard] Promise.all: ${Date.now() - t0}ms`);
   if (!user) return null;
+
+  // Excluir de «Últimas incorporaciones» las entradas que llegaron vía
+  // importación externa (Goodreads, Bookmory…).
+  // ImportRowReceipt guarda el par (userId, bookId) de cada import; cruzamos
+  // con las 40 entradas recientes para hacer la exclusión por (userId, bookId)
+  // específico: así si Paula importa un libro y María lo añade manualmente,
+  // el de Paula se oculta pero el de María sigue apareciendo en el feed global.
+  const importedKeys: Set<string> = latestBooks.length > 0
+    ? new Set(
+        (
+          await prisma.importRowReceipt.findMany({
+            where: {
+              OR: latestBooks.map((e) => ({
+                userId: e.userId,
+                bookId: e.book.id,
+              })),
+            },
+            select: { userId: true, bookId: true },
+          })
+        ).map((r) => `${r.userId}:${r.bookId}`),
+      )
+    : new Set();
+
+  const filteredLatestBooks = latestBooks.filter(
+    (e) => !importedKeys.has(`${e.userId}:${e.book.id}`),
+  );
 
   // Resolver nombres y fotos de las autoras trending en una sola query IN
   const trendingAuthorIds = trendingAuthorsRaw
@@ -761,7 +791,7 @@ export async function getGeneralDashboard(userId: string) {
               : 'MEDIA',
       })),
     ultimasIncorporaciones: deduplicateLatestBooks(
-      latestBooks.map(({ book, createdAt }) => ({ ...book, createdAt })),
+      filteredLatestBooks.map(({ book, createdAt }) => ({ ...book, createdAt })),
       10,
     ).map((book) => ({
       id: book.id,

@@ -1,8 +1,10 @@
 import type { Request, Response } from 'express';
 import {
   getLibros,
+  getLibrosGlobal,
   getLibrosFinalizados,
   getLibrosFinalizadosTodos,
+  getLibrosFinalizadosTodosGlobal,
   getLibrosFinalizadosPage,
   anadirLibroExistente,
   actualizarPreferenciasLibro,
@@ -23,9 +25,20 @@ import {
 } from '../utils/cursor-pagination.js';
 
 export async function handleLibros(req: Request, res: Response) {
-  const data = await getLibros(
-    requestUserName(req),
-  );
+  const data = await getLibros(requestUserName(req));
+  return res.json(data);
+}
+
+export async function handleLibrosGlobal(req: Request, res: Response) {
+  const data = await getLibrosGlobal(requestUserName(req));
+  return res.json(data);
+}
+
+export async function handleLibrosFinalizadosTodosGlobal(
+  req: Request,
+  res: Response,
+) {
+  const data = await getLibrosFinalizadosTodosGlobal(requestUserName(req));
   return res.json(data);
 }
 
