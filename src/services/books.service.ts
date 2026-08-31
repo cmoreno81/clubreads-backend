@@ -382,7 +382,6 @@ async function _getLibrosGlobal(usuario: string) {
       user: true,
     },
     orderBy: [{ book: { title: 'asc' } }, { user: { name: 'asc' } }],
-    take: 600,
   });
 
   return library.map((item) => ({
@@ -459,7 +458,6 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
       { book: { title: 'asc' } },
       { user: { name: 'asc' } },
     ],
-    take: 600,
   });
 
   return library.map((item) => {
