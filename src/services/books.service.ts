@@ -518,7 +518,28 @@ async function _getLibros(usuario: string) {
     ],
   });
 
-  return library.map((item) => ({
+  // Excluir libros pendientes importados de Goodreads/Bookmory
+  // (para que los contadores "X lectores interesados" reflejen interés genuino)
+  const pendingPairs = library
+    .filter(item => item.status === ReadingStatus.PENDING)
+    .map(item => ({ userId: item.userId, bookId: item.book.id }));
+
+  const importedKeys: Set<string> = pendingPairs.length > 0
+    ? new Set(
+        (await prisma.importRowReceipt.findMany({
+          where: { OR: pendingPairs },
+          select: { userId: true, bookId: true },
+        })).map(r => `${r.userId}:${r.bookId}`)
+      )
+    : new Set();
+
+  const filteredLibrary = library.filter(
+    item =>
+      item.status !== ReadingStatus.PENDING ||
+      !importedKeys.has(`${item.userId}:${item.book.id}`)
+  );
+
+  return filteredLibrary.map((item) => ({
     bookId: item.book.id,
     usuario: item.user.name,
     libro: item.book.title,

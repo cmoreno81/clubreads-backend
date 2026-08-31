@@ -1,5 +1,5 @@
 import type { Club, Prisma } from '@prisma/client';
-import { ReadingStatus, ReadingType } from '@prisma/client';
+import { Priority, ReadingStatus, ReadingType } from '@prisma/client';
 import {
   notifyClubvisionAbierta,
   notifyClubvisionResultados,
@@ -113,57 +113,55 @@ async function getOrCreateCurrentClubvision(
     });
     const tooManyFinishedBookIds = tooManyFinished.map((r) => r.bookId);
 
-    // Candidatas base: PENDING, >= 3 miembros, sin ganadores previos ni muy leídas
+    // Candidatas base: PENDING, >= 3 miembros genuinos (sin importaciones),
+    // sin ganadores previos ni muy leídas
     const allExcluded = [
       ...excludedBookIds,
       ...tooManyFinishedBookIds,
     ];
-    const eligibleCandidates = await tx.library.groupBy({
-      by: ['bookId'],
+    const pendingEntries = await tx.library.findMany({
       where: {
         status: ReadingStatus.PENDING,
-        user: {
-          clubMemberships: {
-            some: { clubId: club.id },
-          },
-        },
-        ...(allExcluded.length > 0
-          ? { bookId: { notIn: allExcluded } }
-          : {}),
-      },
-      _count: { userId: true },
-      having: {
-        userId: {
-          _count: { gte: 3 },
-        },
-      },
-    });
-
-    if (eligibleCandidates.length === 0) return null;
-
-    // Ordenar por prioridad alta (cuántos miembros la tienen en HIGH) desc,
-    // luego por total de pendientes desc
-    const eligibleBookIds = eligibleCandidates.map((c) => c.bookId);
-    const highPriorityCounts = await tx.library.groupBy({
-      by: ['bookId'],
-      where: {
-        bookId: { in: eligibleBookIds },
-        status: ReadingStatus.PENDING,
-        priority: 'HIGH',
         user: { clubMemberships: { some: { clubId: club.id } } },
+        ...(allExcluded.length > 0 ? { bookId: { notIn: allExcluded } } : {}),
       },
-      _count: { userId: true },
+      select: { userId: true, bookId: true, priority: true },
     });
-    const highMap = new Map(
-      highPriorityCounts.map((r) => [r.bookId, r._count.userId]),
+
+    // Excluir entradas importadas de Goodreads/Bookmory
+    const importedKeys: Set<string> = pendingEntries.length > 0
+      ? new Set(
+          (await tx.importRowReceipt.findMany({
+            where: { OR: pendingEntries.map(e => ({ userId: e.userId, bookId: e.bookId })) },
+            select: { userId: true, bookId: true },
+          })).map(r => `${r.userId}:${r.bookId}`)
+        )
+      : new Set();
+
+    const genuinePending = pendingEntries.filter(
+      e => !importedKeys.has(`${e.userId}:${e.bookId}`)
     );
-    const pendientesMap = new Map(
-      eligibleCandidates.map((c) => [c.bookId, c._count.userId]),
-    );
-    const sortedCandidates = eligibleBookIds.sort((a, b) => {
-      const highDiff = (highMap.get(b) ?? 0) - (highMap.get(a) ?? 0);
+
+    // Contar interesados genuinos por libro y prioridad alta
+    const countByBook = new Map<string, number>();
+    const highCountByBook = new Map<string, number>();
+    for (const entry of genuinePending) {
+      countByBook.set(entry.bookId, (countByBook.get(entry.bookId) ?? 0) + 1);
+      if (entry.priority === Priority.HIGH) {
+        highCountByBook.set(entry.bookId, (highCountByBook.get(entry.bookId) ?? 0) + 1);
+      }
+    }
+
+    const eligibleBookIds = [...countByBook.entries()]
+      .filter(([, count]) => count >= 3)
+      .map(([bookId]) => bookId);
+
+    if (eligibleBookIds.length === 0) return null;
+
+    const sortedCandidates = [...eligibleBookIds].sort((a, b) => {
+      const highDiff = (highCountByBook.get(b) ?? 0) - (highCountByBook.get(a) ?? 0);
       if (highDiff !== 0) return highDiff;
-      return (pendientesMap.get(b) ?? 0) - (pendientesMap.get(a) ?? 0);
+      return (countByBook.get(b) ?? 0) - (countByBook.get(a) ?? 0);
     });
 
     await tx.clubvisionCandidate.createMany({
@@ -467,18 +465,32 @@ export async function getClubvision(
   });
 
   if (!clubvision) {
-    // Comprobar si es porque no hay candidatas (ningún libro con ≥2 interesadas)
-    const totalPendientes = await prisma.library.groupBy({
-      by: ['bookId'],
+    // Comprobar si es porque no hay candidatas (ningún libro con ≥2 interesadas genuinas)
+    const pendingCheck = await prisma.library.findMany({
       where: {
         status: ReadingStatus.PENDING,
         user: { clubMemberships: { some: { clubId: club.id } } },
       },
-      _count: { userId: true },
-      having: { userId: { _count: { gte: 2 } } },
+      select: { userId: true, bookId: true },
     });
 
-    const sinCandidatas = totalPendientes.length === 0;
+    const importedKeysCheck: Set<string> = pendingCheck.length > 0
+      ? new Set(
+          (await prisma.importRowReceipt.findMany({
+            where: { OR: pendingCheck.map(e => ({ userId: e.userId, bookId: e.bookId })) },
+            select: { userId: true, bookId: true },
+          })).map(r => `${r.userId}:${r.bookId}`)
+        )
+      : new Set();
+
+    const genuineCounts = new Map<string, number>();
+    for (const entry of pendingCheck) {
+      if (!importedKeysCheck.has(`${entry.userId}:${entry.bookId}`)) {
+        genuineCounts.set(entry.bookId, (genuineCounts.get(entry.bookId) ?? 0) + 1);
+      }
+    }
+
+    const sinCandidatas = ![...genuineCounts.values()].some(count => count >= 2);
 
     return {
       abierta: false,

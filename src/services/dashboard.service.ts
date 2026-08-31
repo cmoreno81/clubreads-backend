@@ -195,14 +195,13 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
   const { start: monthStart, end: monthEnd } = madridMonthRange();
   const yearStart = new Date(Date.UTC(new Date().getFullYear(), 0, 1));
 
-  const [monthlyGroups, reviewAggregate, leyendoAhora, clubvision, rankingAfinidad] = await Promise.all([
-    dashboardBlock('monthly_completions', () => client.readingCompletion.groupBy({
-      by: ['userId'],
+  const [monthlyCompletionsRaw, reviewAggregate, leyendoAhora, clubvision, rankingAfinidad] = await Promise.all([
+    dashboardBlock('monthly_completions', () => client.readingCompletion.findMany({
       where: {
         finishedAt: { gte: monthStart, lt: monthEnd },
         user: { clubMemberships: { some: { clubId: club.id } } },
       },
-      _count: { id: true },
+      select: { userId: true, bookId: true },
     }), (rows) => rows.length),
     dashboardBlock('review_average', () => client.review.aggregate({
       where: {
@@ -251,6 +250,30 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
         )
       : Promise.resolve([]),
   ]);
+
+  // Excluir libros importados de Goodreads/Bookmory del ranking mensual
+  const importedRankingKeys: Set<string> = monthlyCompletionsRaw.length > 0
+    ? new Set(
+        (await prisma.importRowReceipt.findMany({
+          where: { OR: monthlyCompletionsRaw.map(c => ({ userId: c.userId, bookId: c.bookId })) },
+          select: { userId: true, bookId: true },
+        })).map(r => `${r.userId}:${r.bookId}`)
+      )
+    : new Set();
+
+  const genuineCompletions = monthlyCompletionsRaw.filter(
+    c => !importedRankingKeys.has(`${c.userId}:${c.bookId}`)
+  );
+
+  // Reconstruir monthlyGroups con el mismo shape que el antiguo groupBy
+  const rawCountByUser = new Map<string, number>();
+  for (const c of genuineCompletions) {
+    rawCountByUser.set(c.userId, (rawCountByUser.get(c.userId) ?? 0) + 1);
+  }
+  const monthlyGroups = [...rawCountByUser.entries()].map(([userId, count]) => ({
+    userId,
+    _count: { id: count },
+  }));
 
   const monthlyUsers = monthlyGroups.length === 0
     ? []
