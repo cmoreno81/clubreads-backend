@@ -390,20 +390,25 @@ export async function getGeneralDashboard(userId: string) {
       // La exclusión de importados se hace en un segundo paso (ver más abajo)
       // porque Prisma no admite filtros correlacionados entre Library.userId
       // e ImportRowReceipt.userId en un solo where.
+      //
+      // IMPORTANTE: ordenar por book.createdAt (fecha de alta del libro en el
+      // catálogo), NO por Library.createdAt (fecha en que un usuario lo añadió
+      // a su propia biblioteca). Así, añadir a tu lista un libro que ya llevaba
+      // meses en el catálogo no lo hace aparecer como «nueva incorporación».
       prisma.library.findMany({
         where: { book: { deletedAt: null } },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { book: { createdAt: 'desc' } },
         // Traemos margen para poder colapsar ediciones equivalentes y seguir
         // mostrando hasta 10 obras distintas.
-        take: 40,
+        take: 60,
         select: {
           userId: true,  // necesario para identificar imports por (userId, bookId)
-          createdAt: true,
           book: {
             select: {
               id: true,
               title: true,
               coverUrl: true,
+              createdAt: true,  // fecha real de alta en el catálogo
               author: { select: { name: true } },
               genre: { select: { name: true } },
             },
@@ -791,7 +796,9 @@ export async function getGeneralDashboard(userId: string) {
               : 'MEDIA',
       })),
     ultimasIncorporaciones: deduplicateLatestBooks(
-      filteredLatestBooks.map(({ book, createdAt }) => ({ ...book, createdAt })),
+      // book.createdAt = fecha de alta del libro en el catálogo global,
+      // independientemente de cuándo cada usuario lo añadió a su biblioteca.
+      filteredLatestBooks.map(({ book }) => ({ ...book, createdAt: book.createdAt })),
       10,
     ).map((book) => ({
       id: book.id,

@@ -6,6 +6,7 @@ import { prisma } from '../prisma.js';
 import { ClubContextError } from './club-context.service.js';
 import { subirAvatarDesdeBase64, subirAvatarDesdeUrl } from './cloudinary.service.js';
 import { backgroundError } from '../logging/logger.js';
+import { invalidatePrefix } from '../utils/simple-cache.js';
 
 function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, ' ');
@@ -190,10 +191,19 @@ export async function selectClub(userId: string, clubId: string) {
       'NOT_CLUB_MEMBER',
     );
   }
-  await prisma.user.update({
+  // Obtener el nombre del usuario para poder invalidar su caché de biblioteca.
+  // El caché de getLibros usa la clave `libros:{nombre}` y no incluye el clubId,
+  // por lo que cambiar de club no lo invalida automáticamente. Sin esta limpieza,
+  // la siguiente llamada a ?action=libros devuelve datos del club anterior durante
+  // hasta 30 s, causando que los lectores del club viejo aparezcan en el nuevo.
+  const updatedUser = await prisma.user.update({
     where: { id: userId },
     data: { activeClubId: membership.clubId },
+    select: { name: true },
   });
+  invalidatePrefix(`libros:${updatedUser.name}`);
+  invalidatePrefix(`finalizados:${updatedUser.name}`);
+
   return { ok: true, activeClubId: membership.clubId };
 }
 
