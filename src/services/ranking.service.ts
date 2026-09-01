@@ -168,6 +168,39 @@ const topLectoras = top(
       .sort((a, b) => b.media - a.media || b.votos - a.votos),
   );
 
+  // ── Historial mensual: top lectoras por cada mes ya transcurrido ──
+  const ahora = new Date();
+  const mesActual = anio === ahora.getFullYear() ? ahora.getUTCMonth() : 11;
+
+  // Agrupar finalizaciones por mes → lector
+  const porMes = new Map<number, Map<string, { total: number; avatarUrl: string }>>();
+
+  for (const item of finalizaciones) {
+    const mes = item.finishedAt.getUTCMonth(); // 0 = enero … 11 = diciembre
+    if (mes > mesActual) continue; // no mostrar meses futuros
+    if (!porMes.has(mes)) porMes.set(mes, new Map());
+    const lectoras = porMes.get(mes)!;
+    const prev = lectoras.get(item.user.name);
+    lectoras.set(item.user.name, {
+      total: (prev?.total ?? 0) + 1,
+      avatarUrl: item.user.avatarUrl ?? '',
+    });
+  }
+
+  const historicoMensual = Array.from(porMes.entries())
+    .map(([mes, lectoras]) => ({
+      mes,
+      top: Array.from(lectoras.entries())
+        .map(([usuario, datos]) => ({
+          usuario,
+          total: datos.total,
+          avatarUrl: datos.avatarUrl,
+        }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 3),
+    }))
+    .sort((a, b) => b.mes - a.mes); // más reciente primero
+
   return {
     anio,
     masDeseados,
@@ -175,5 +208,6 @@ const topLectoras = top(
     mejorValorados,
     masAbandonados,
     topLectoras,
+    historicoMensual,
   };
 }
