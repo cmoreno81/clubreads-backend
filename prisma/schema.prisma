@@ -392,6 +392,8 @@ model User {
   bookOfYearWinners             BookOfYearWinner[]
   clubBookOfYearQualifyingVotes ClubBookOfYearQualifyingVote[]
   clubBookOfYearDuelVotes       ClubBookOfYearDuelVote[]
+  proposedReadings              ClubReadingProposal[]           @relation("ProposedReadings")
+  proposalApprovals             ClubReadingProposalApproval[]   @relation("ProposalApprovals")
 
   @@index([activeClubId])
 }
@@ -501,6 +503,7 @@ model Club {
   moodVotes          ClubMoodVote[]
   bookOfYearEditions ClubBookOfYearEdition[]
   bookOfYearHistoricalLinks ClubBookOfYearHistoricalLink[]
+  readingProposals   ClubReadingProposal[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -994,6 +997,43 @@ enum ClubvisionStatus {
   RESULTADOS
   LECTURA
   FINALIZADA
+}
+
+// ── Propuestas de lectura conjunta ──────────────────────────
+// Se usan cuando no hay suficientes candidatos para votar.
+// Cualquier miembro propone un libro; los demás lo apoyan.
+// Cuando todos aprueban se crea la lectura automáticamente.
+
+enum ClubReadingProposalStatus {
+  PENDING
+  ACCEPTED
+  CANCELLED
+}
+
+model ClubReadingProposal {
+  id        String                      @id @default(cuid())
+  clubId    String
+  club      Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  bookTitle String
+  proposedBy String
+  proposer  User                        @relation("ProposedReadings", fields: [proposedBy], references: [id], onDelete: Cascade)
+  status    ClubReadingProposalStatus   @default(PENDING)
+  approvals ClubReadingProposalApproval[]
+  createdAt DateTime                    @default(now())
+  updatedAt DateTime                    @updatedAt
+
+  @@index([clubId, status])
+}
+
+model ClubReadingProposalApproval {
+  proposalId String
+  proposal   ClubReadingProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User                @relation("ProposalApprovals", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime            @default(now())
+
+  @@id([proposalId, userId])
+  @@index([userId])
 }
 
 model Clubvision {

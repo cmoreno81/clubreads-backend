@@ -9,6 +9,12 @@ import {
   handleHistorialClubvision,
   handleGetClubvisionEstadisticas,
 } from '../controllers/clubvision.controller.js';
+import {
+  handleGetPropuesta,
+  handleCrearPropuesta,
+  handleApoyarPropuesta,
+  handleCancelarPropuesta,
+} from '../controllers/club-reading-proposal.controller.js';
 
 import { handleUsuarios } from '../controllers/users.controller.js';
 
@@ -554,6 +560,18 @@ export async function handleApi(
 
       case 'historialClubvision':
         return handleHistorialClubvision(req, res);
+
+      case 'propuestaLectura':
+        return handleGetPropuesta(req, res);
+
+      case 'crearPropuestaLectura':
+        return handleCrearPropuesta(req, res);
+
+      case 'apoyarPropuestaLectura':
+        return handleApoyarPropuesta(req, res);
+
+      case 'cancelarPropuestaLectura':
+        return handleCancelarPropuesta(req, res);
 
       case 'clubvisionEstadisticas':
         if (!req.auth) return requireAuthentication(req, res, () => {});
