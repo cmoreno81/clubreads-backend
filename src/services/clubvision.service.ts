@@ -124,6 +124,13 @@ async function getOrCreateCurrentClubvision(
         status: ReadingStatus.PENDING,
         user: { clubMemberships: { some: { clubId: club.id } } },
         ...(allExcluded.length > 0 ? { bookId: { notIn: allExcluded } } : {}),
+        // Excluir libros aún no publicados (fecha de publicación futura)
+        book: {
+          OR: [
+            { publicationDate: null },
+            { publicationDate: { lte: getNow() } },
+          ],
+        },
       },
       select: { userId: true, bookId: true, priority: true },
     });
