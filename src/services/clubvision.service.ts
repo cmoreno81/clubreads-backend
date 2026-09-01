@@ -667,7 +667,7 @@ export async function getClubvision(
       titulo: sinCandidatas ? '📚 Sin candidatas' : 'Clubvisión',
       mensaje: sinCandidatas
         ? 'Aún no hay libros con suficiente interés para votar'
-        : 'Sin información',
+        : '',
       ganador: '',
       ganadorCoverUrl: '',
       lecturaConfigurada: false,
