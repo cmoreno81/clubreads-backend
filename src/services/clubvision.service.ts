@@ -1,5 +1,5 @@
-import type { Club, Prisma } from '@prisma/client';
-import { Priority, ReadingStatus, ReadingType } from '@prisma/client';
+import type { Club, Clubvision, Prisma } from '@prisma/client';
+import { ClubRole, Priority, ReadingStatus, ReadingType } from '@prisma/client';
 import {
   notifyClubvisionAbierta,
   notifyClubvisionResultados,
@@ -9,10 +9,13 @@ import { prisma } from '../prisma.js';
 import {
   getCurrentClubContext,
   requireClubMember,
+  requireClubRole,
 } from './club-context.service.js';
 import {
   getClubvisionCalendarFor,
   getClubvisionStage,
+  getTimedClubvisionStage,
+  fitsBeforeNextClubvisionEdition,
 } from '../utils/clubvision-calendar.js';
 import {
   descendingCursorFilter,
@@ -23,6 +26,147 @@ import { syncAchievementsForUser } from './achievements.service.js';
 import { backgroundError, logger } from '../logging/logger.js';
 
 const POINTS_BY_POSITION = [12, 10, 8, 7, 6] as const;
+const WELCOME_VOTING_HOURS = 48;
+const WELCOME_RESULTS_HOURS = 24;
+const WELCOME_MAX_CLUB_AGE_DAYS = 45;
+const WELCOME_MIN_MEMBERS = 3;
+const WELCOME_MIN_CANDIDATES = 5;
+const WELCOME_MIN_INTERESTED = 2;
+
+function isWelcomeClubvision(clubvision: Pick<Clubvision, 'kind'>) {
+  return clubvision.kind === 'WELCOME';
+}
+
+function addHours(date: Date, hours: number) {
+  return new Date(date.getTime() + hours * 60 * 60 * 1000);
+}
+
+function getWelcomeStage(
+  clubvision: Pick<Clubvision, 'openedAt' | 'votingEndsAt' | 'resultsEndsAt'>,
+  allMembersVoted: boolean,
+) {
+  const now = getNow();
+  const votingEndsAt = clubvision.votingEndsAt ?? addHours(clubvision.openedAt ?? now, WELCOME_VOTING_HOURS);
+  const resultsEndsAt = clubvision.resultsEndsAt ?? addHours(votingEndsAt, WELCOME_RESULTS_HOURS);
+  return getTimedClubvisionStage(now, votingEndsAt, resultsEndsAt, allMembersVoted);
+}
+
+async function findRelevantClubvision(club: Club, includeWelcomeFallback = true) {
+  const activeWelcome = await prisma.clubvision.findFirst({
+    where: { clubId: club.id, kind: 'WELCOME', status: { in: ['VOTACION', 'RESULTADOS'] } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (activeWelcome) return activeWelcome;
+
+  const monthly = await prisma.clubvision.findUnique({
+    where: { clubId_edition: { clubId: club.id, edition: getCurrentEdition() } },
+  });
+  if (monthly) return monthly;
+
+  if (!includeWelcomeFallback) return null;
+
+  return prisma.clubvision.findFirst({
+    where: { clubId: club.id, kind: 'WELCOME' },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+async function getWelcomeCandidateIds(clubId: string) {
+  const entries = await prisma.library.findMany({
+    where: {
+      status: ReadingStatus.PENDING,
+      user: { clubMemberships: { some: { clubId } } },
+      book: { OR: [{ publicationDate: null }, { publicationDate: { lte: getNow() } }] },
+    },
+    select: { userId: true, bookId: true, priority: true },
+  });
+  const imported = entries.length === 0 ? [] : await prisma.importRowReceipt.findMany({
+    where: { OR: entries.map(({ userId, bookId }) => ({ userId, bookId })) },
+    select: { userId: true, bookId: true },
+  });
+  const importedKeys = new Set(imported.map(({ userId, bookId }) => `${userId}:${bookId}`));
+  const counts = new Map<string, number>();
+  const highCounts = new Map<string, number>();
+  for (const entry of entries) {
+    if (importedKeys.has(`${entry.userId}:${entry.bookId}`)) continue;
+    counts.set(entry.bookId, (counts.get(entry.bookId) ?? 0) + 1);
+    if (entry.priority === Priority.HIGH) highCounts.set(entry.bookId, (highCounts.get(entry.bookId) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count >= WELCOME_MIN_INTERESTED)
+    .sort(([a, countA], [b, countB]) =>
+      (highCounts.get(b) ?? 0) - (highCounts.get(a) ?? 0) || countB - countA,
+    )
+    .map(([bookId]) => bookId);
+}
+
+export async function getWelcomeClubvisionEligibility(usuario: string) {
+  const { club, membership } = await requireClubMember(usuario);
+  const esAdmin = membership.role === ClubRole.OWNER || membership.role === ClubRole.ADMIN;
+  const [members, previousWelcome, activeMonthly, candidateIds] = await Promise.all([
+    prisma.clubMember.count({ where: { clubId: club.id } }),
+    prisma.clubvision.findFirst({ where: { clubId: club.id, kind: 'WELCOME' }, select: { id: true } }),
+    prisma.clubvision.findFirst({
+      where: {
+        clubId: club.id,
+        kind: 'MONTHLY',
+        edition: getCurrentEdition(),
+        status: { in: ['VOTACION', 'RESULTADOS'] },
+      },
+      select: { id: true },
+    }),
+    getWelcomeCandidateIds(club.id),
+  ]);
+  const ageDays = Math.floor((getNow().getTime() - club.createdAt.getTime()) / 86_400_000);
+  const reasons: string[] = [];
+  if (!esAdmin) reasons.push('Solo una administradora puede iniciarla');
+  if (ageDays > WELCOME_MAX_CLUB_AGE_DAYS) reasons.push('La bienvenida solo está disponible durante los primeros 45 días');
+  if (previousWelcome) reasons.push('Este club ya tuvo su Clubvisión de bienvenida');
+  if (activeMonthly) reasons.push('Ya hay otra Clubvisión activa');
+  if (getClubvisionCalendar().day <= 3) {
+    reasons.push('El ciclo mensual de Clubvisión está en curso');
+  }
+  if (!fitsBeforeNextClubvisionEdition(
+    getNow(),
+    WELCOME_VOTING_HOURS + WELCOME_RESULTS_HOURS,
+  )) reasons.push('La próxima Clubvisión mensual está demasiado cerca');
+  if (members < WELCOME_MIN_MEMBERS) reasons.push(`Necesitáis al menos ${WELCOME_MIN_MEMBERS} miembros`);
+  if (candidateIds.length < WELCOME_MIN_CANDIDATES) reasons.push(`Necesitáis al menos ${WELCOME_MIN_CANDIDATES} libros compartidos por dos miembros`);
+  return {
+    disponible: reasons.length === 0,
+    esAdmin,
+    miembros: members,
+    candidatas: candidateIds.length,
+    minimoMiembros: WELCOME_MIN_MEMBERS,
+    minimoCandidatas: WELCOME_MIN_CANDIDATES,
+    motivo: reasons[0] ?? '',
+  };
+}
+
+export async function startWelcomeClubvision(usuario: string) {
+  const { club } = await requireClubRole(usuario, [ClubRole.OWNER, ClubRole.ADMIN]);
+  const eligibility = await getWelcomeClubvisionEligibility(usuario);
+  if (!eligibility.disponible) return { ok: false, mensaje: eligibility.motivo };
+  const candidateIds = await getWelcomeCandidateIds(club.id);
+  const openedAt = getNow();
+  const votingEndsAt = addHours(openedAt, WELCOME_VOTING_HOURS);
+  const resultsEndsAt = addHours(votingEndsAt, WELCOME_RESULTS_HOURS);
+  const edition = `WELCOME-${openedAt.toISOString()}`;
+  const created = await prisma.$transaction(async (tx) => {
+    const clubvision = await tx.clubvision.create({ data: {
+      clubId: club.id, edition, kind: 'WELCOME', status: 'VOTACION',
+      title: '✨ Clubvisión de bienvenida', message: '🗳️ Ya podéis votar',
+      openedAt, votingEndsAt, resultsEndsAt,
+    } });
+    await tx.clubvisionCandidate.createMany({
+      data: candidateIds.map((bookId) => ({ clubvisionId: clubvision.id, bookId })),
+      skipDuplicates: true,
+    });
+    return clubvision;
+  }, { maxWait: 5_000, timeout: 15_000 });
+  void notifyClubvisionAbierta(club.id).catch(backgroundError('welcome_clubvision_notification_failed'));
+  return { ok: true, idVotacion: created.edition };
+}
 
 function getNow() {
   const isProduction = process.env.NODE_ENV === 'production';
@@ -374,17 +518,17 @@ export async function synchronizeCurrentClubvision(
 ) {
   const club =
     clubOverride ?? (await getCurrentClubContext(usuario)).club;
-  const clubvision = await getOrCreateCurrentClubvision(
-    usuario,
-    club,
-  );
+  const clubvision = (await findRelevantClubvision(club, false)) ??
+    (await getOrCreateCurrentClubvision(usuario, club)) ??
+    (await findRelevantClubvision(club));
   if (!clubvision) return null;
+
+  if (clubvision.status === 'FINALIZADA') return clubvision;
 
   // Si la Clubvisión fue marcada como LECTURA por una propuesta de club,
   // no recalculamos ni transitamos — el estado manual tiene prioridad.
   if (clubvision.status === 'LECTURA') return clubvision;
 
-  const { day } = getClubvisionCalendar();
   const totalUsuarios = await prisma.clubMember.count({
     where: { clubId: club.id },
   });
@@ -393,7 +537,9 @@ export async function synchronizeCurrentClubvision(
     where: { clubvisionId: clubvision.id },
   });
   const todasHanVotado = totalUsuarios > 0 && voters.length >= totalUsuarios;
-  const stage = getClubvisionStage(day, todasHanVotado);
+  const stage = isWelcomeClubvision(clubvision)
+    ? getWelcomeStage(clubvision, todasHanVotado)
+    : getClubvisionStage(getClubvisionCalendar().day, todasHanVotado);
 
   let result = await prisma.clubvisionResult.findUnique({
     where: {
@@ -406,6 +552,12 @@ export async function synchronizeCurrentClubvision(
 
   if (stage !== 'VOTACION') {
     result = await calculateClubvisionResult(clubvision);
+    if (!result && isWelcomeClubvision(clubvision) && stage === 'LECTURA') {
+      return prisma.clubvision.update({
+        where: { id: clubvision.id },
+        data: { status: 'FINALIZADA', finishedAt: getNow() },
+      });
+    }
   }
 
   if (stage === 'LECTURA' && result?.winnerBookId) {
@@ -431,10 +583,9 @@ export async function synchronizeCurrentClubvision(
 }
 
 async function getCalculatedClubvisionStatus(
-  clubvisionId: string,
+  clubvision: Clubvision,
   clubId: string,
 ) {
-  const { day } = getClubvisionCalendar();
   const totalUsuarios = await prisma.clubMember.count({
     where: { clubId },
   });
@@ -442,14 +593,16 @@ async function getCalculatedClubvisionStatus(
   const votosUsuarios = await prisma.clubvisionVote.groupBy({
     by: ['userId'],
     where: {
-      clubvisionId,
+      clubvisionId: clubvision.id,
     },
   });
 
   const votosRecibidos = votosUsuarios.length;
   const todasHanVotado = totalUsuarios > 0 && votosRecibidos >= totalUsuarios;
 
-  return getClubvisionStage(day, todasHanVotado);
+  return isWelcomeClubvision(clubvision)
+    ? getWelcomeStage(clubvision, todasHanVotado)
+    : getClubvisionStage(getClubvisionCalendar().day, todasHanVotado);
 }
 
 type ClubvisionReadOptions = {
@@ -462,14 +615,12 @@ export async function getClubvision(
   options: ClubvisionReadOptions = {},
 ) {
   const { club, user: contextUser, membership } = options.context ?? await getCurrentClubContext(usuario);
-  const idVotacion = getCurrentEdition();
   const esAdmin = membership?.role === 'OWNER' || membership?.role === 'ADMIN';
 
   const clubvision = options.synchronize === false
-    ? await prisma.clubvision.findUnique({
-        where: { clubId_edition: { clubId: club.id, edition: idVotacion } },
-      })
+    ? await findRelevantClubvision(club)
     : await synchronizeCurrentClubvision(usuario, club);
+  const idVotacion = clubvision?.edition ?? getCurrentEdition();
 
   const totalUsuarios = await prisma.clubMember.count({
     where: { clubId: club.id },
@@ -527,6 +678,7 @@ export async function getClubvision(
       likes: 0,
       ultimaActividad: '',
       esAdmin,
+      bienvenida: await getWelcomeClubvisionEligibility(usuario),
     };
   }
 
@@ -542,9 +694,11 @@ export async function getClubvision(
   // Si la Clubvisión fue activada directamente por propuesta de club, respetar
   // el estado almacenado en lugar de recalcular desde el calendario.
   const storedStatus = clubvision?.status;
-  const estado = storedStatus === 'LECTURA'
-    ? 'LECTURA'
-    : getClubvisionStage(getClubvisionCalendar().day, todasHanVotado);
+  const estado = storedStatus === 'LECTURA' || storedStatus === 'FINALIZADA'
+    ? storedStatus
+    : isWelcomeClubvision(clubvision)
+      ? getWelcomeStage(clubvision, todasHanVotado)
+      : getClubvisionStage(getClubvisionCalendar().day, todasHanVotado);
   const votosPendientes = Math.max(totalUsuarios - votosRecibidos, 0);
 
   const porcentaje =
@@ -590,7 +744,7 @@ export async function getClubvision(
     }),
     prisma.clubvisionResult.findUnique({
       where: {
-        clubId_edition: { clubId: club.id, edition: getCurrentEdition() },
+        clubId_edition: { clubId: club.id, edition: clubvision.edition },
       },
       select: {
         winnerTitle: true,
@@ -659,7 +813,9 @@ export async function getClubvision(
     porcentaje,
 
     titulo:
-      estado === 'VOTACION'
+      isWelcomeClubvision(clubvision) && estado === 'VOTACION'
+        ? '✨ Clubvisión de bienvenida'
+        : estado === 'VOTACION'
         ? '🎤 Clubvisión abierta'
         : estado === 'RESULTADOS'
           ? '🏆 Próxima lectura'
@@ -668,7 +824,9 @@ export async function getClubvision(
             : 'Clubvisión',
 
     mensaje:
-      estado === 'VOTACION'
+      isWelcomeClubvision(clubvision) && estado === 'VOTACION'
+        ? 'Vuestra primera votación ya está abierta'
+        : estado === 'VOTACION'
         ? '🗳️ Ya puedes votar'
         : estado === 'RESULTADOS'
           ? 'Ya tenemos una nueva lectura.'
@@ -694,6 +852,8 @@ export async function getClubvision(
     likes: 0,
     ultimaActividad: '',
     esAdmin,
+    tipo: isWelcomeClubvision(clubvision) ? 'WELCOME' : 'MONTHLY',
+    bienvenida: await getWelcomeClubvisionEligibility(usuario),
   };
 }
 
@@ -707,7 +867,7 @@ export function getClubvisionSnapshot(
 export async function enviarVotacion(usuario: string, votos: string[]) {
   const { club, user } = await requireClubMember(usuario);
 
-  const clubvision = await getOrCreateCurrentClubvision(usuario);
+  const clubvision = await synchronizeCurrentClubvision(usuario);
 
   if (!clubvision) {
     return {
@@ -717,7 +877,7 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
   }
 
   const estado = await getCalculatedClubvisionStatus(
-    clubvision.id,
+    clubvision,
     club.id,
   );
 
@@ -808,14 +968,7 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
 export async function getMiVoto(usuario: string) {
   const { club, user } = await requireClubMember(usuario);
 
-  const clubvision = await prisma.clubvision.findUnique({
-    where: {
-      clubId_edition: {
-        clubId: club.id,
-        edition: getCurrentEdition(),
-      },
-    },
-  });
+  const clubvision = await findRelevantClubvision(club);
 
   if (!clubvision) {
     return { encontrado: false };
@@ -881,7 +1034,7 @@ export async function getComoVotaron(usuario = '') {
   }
 
   const estado = await getCalculatedClubvisionStatus(
-    clubvision.id,
+    clubvision,
     club.id,
   );
   if (estado === 'VOTACION') return [];

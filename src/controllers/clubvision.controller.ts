@@ -7,6 +7,7 @@ import {
   getHistorialClubvision,
   getHistorialClubvisionPage,
   getClubvisionEstadisticas,
+  startWelcomeClubvision,
 } from '../services/clubvision.service.js';
 import { requestUserName } from '../middleware/auth.middleware.js';
 import {
@@ -35,6 +36,10 @@ export async function handleEnviarVotacion(req: Request, res: Response) {
     votos,
   );
   return res.json(data);
+}
+
+export async function handleStartWelcomeClubvision(req: Request, res: Response) {
+  return res.json(await startWelcomeClubvision(requestUserName(req)));
 }
 
 export async function handleMiVoto(req: Request, res: Response) {

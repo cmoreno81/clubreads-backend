@@ -54,6 +54,7 @@ const mutationHandlers: Record<string, string> = {
   actualizarValoracion: 'handleActualizarValoracion',
   actualizarPaginaLibrary: 'handleActualizarPaginaLibrary',
   enviarVotacion: 'handleEnviarVotacion',
+  iniciarClubvisionBienvenida: 'handleStartWelcomeClubvision',
   crearLectura: 'handleCrearLectura',
   guardarComentarioLectura: 'handleGuardarComentarioLectura',
   responderComentario: 'handleResponderComentario',

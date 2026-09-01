@@ -28,6 +28,26 @@ export function getClubvisionStage(
   return 'VOTACION';
 }
 
+export function getTimedClubvisionStage(
+  now: Date,
+  votingEndsAt: Date,
+  resultsEndsAt: Date,
+  allMembersVoted: boolean,
+): ClubvisionStage {
+  if (now >= resultsEndsAt) return 'LECTURA';
+  if (now >= votingEndsAt || allMembersVoted) return 'RESULTADOS';
+  return 'VOTACION';
+}
+
+export function fitsBeforeNextClubvisionEdition(
+  start: Date,
+  durationHours: number,
+) {
+  const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
+  return getClubvisionCalendarFor(start).edition ===
+    getClubvisionCalendarFor(end).edition;
+}
+
 export function getClubvisionNoticeMomentFor(
   date: Date,
 ): { type: ClubvisionNoticeType; edition: string } | null {

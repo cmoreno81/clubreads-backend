@@ -5,6 +5,8 @@ import {
   getClubvisionCalendarFor,
   getClubvisionNoticeMomentFor,
   getClubvisionStage,
+  getTimedClubvisionStage,
+  fitsBeforeNextClubvisionEdition,
 } from '../src/utils/clubvision-calendar.js';
 
 test('el día 1 abre la votación con el mes de Madrid', () => {
@@ -14,6 +16,26 @@ test('el día 1 abre la votación con el mes de Madrid', () => {
 
   assert.deepEqual(calendar, { edition: '2026-08', day: 1 });
   assert.equal(getClubvisionStage(calendar.day, false), 'VOTACION');
+});
+
+test('la Clubvisión de bienvenida usa plazos relativos y no el día del mes', () => {
+  const votingEndsAt = new Date('2026-09-17T10:00:00Z');
+  const resultsEndsAt = new Date('2026-09-18T10:00:00Z');
+  assert.equal(getTimedClubvisionStage(new Date('2026-09-16T10:00:00Z'), votingEndsAt, resultsEndsAt, false), 'VOTACION');
+  assert.equal(getTimedClubvisionStage(new Date('2026-09-17T10:00:00Z'), votingEndsAt, resultsEndsAt, false), 'RESULTADOS');
+  assert.equal(getTimedClubvisionStage(new Date('2026-09-18T10:00:00Z'), votingEndsAt, resultsEndsAt, false), 'LECTURA');
+  assert.equal(getTimedClubvisionStage(new Date('2026-09-16T10:00:00Z'), votingEndsAt, resultsEndsAt, true), 'RESULTADOS');
+});
+
+test('la bienvenida solo empieza si sus 72 horas caben en el mismo mes de Madrid', () => {
+  assert.equal(
+    fitsBeforeNextClubvisionEdition(new Date('2026-08-20T10:00:00Z'), 72),
+    true,
+  );
+  assert.equal(
+    fitsBeforeNextClubvisionEdition(new Date('2026-08-29T10:00:00Z'), 72),
+    false,
+  );
 });
 
 test('los nueve votos publican resultados antes del día 3', () => {

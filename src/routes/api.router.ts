@@ -8,6 +8,7 @@ import {
   handleComoVotaron,
   handleHistorialClubvision,
   handleGetClubvisionEstadisticas,
+  handleStartWelcomeClubvision,
 } from '../controllers/clubvision.controller.js';
 import {
   handleGetPropuesta,
@@ -206,6 +207,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'actualizarValoracion',
   'actualizarPaginaLibrary',
   'enviarVotacion',
+  'iniciarClubvisionBienvenida',
   'crearLectura',
   'guardarComentarioLectura',
   'responderComentario',
@@ -551,6 +553,9 @@ export async function handleApi(
 
       case 'enviarVotacion':
         return handleEnviarVotacion(req, res);
+
+      case 'iniciarClubvisionBienvenida':
+        return handleStartWelcomeClubvision(req, res);
 
       case 'miVoto':
         return handleMiVoto(req, res);

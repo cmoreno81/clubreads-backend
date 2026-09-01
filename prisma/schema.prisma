@@ -999,6 +999,11 @@ enum ClubvisionStatus {
   FINALIZADA
 }
 
+enum ClubvisionKind {
+  MONTHLY
+  WELCOME
+}
+
 // ── Propuestas de lectura conjunta ──────────────────────────
 // Se usan cuando no hay suficientes candidatos para votar.
 // Cualquier miembro propone un libro; los demás lo apoyan.
@@ -1044,12 +1049,16 @@ model Clubvision {
 
   edition String // yyyy-MM
 
+  kind ClubvisionKind @default(MONTHLY)
+
   status ClubvisionStatus @default(SIN_DATOS)
 
   title   String?
   message String?
 
   openedAt   DateTime?
+  votingEndsAt DateTime?
+  resultsEndsAt DateTime?
   closedAt   DateTime?
   finishedAt DateTime?
 
