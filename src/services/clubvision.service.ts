@@ -373,6 +373,10 @@ export async function synchronizeCurrentClubvision(
   );
   if (!clubvision) return null;
 
+  // Si la Clubvisión fue marcada como LECTURA por una propuesta de club,
+  // no recalculamos ni transitamos — el estado manual tiene prioridad.
+  if (clubvision.status === 'LECTURA') return clubvision;
+
   const { day } = getClubvisionCalendar();
   const totalUsuarios = await prisma.clubMember.count({
     where: { clubId: club.id },
@@ -528,7 +532,12 @@ export async function getClubvision(
 
   const votosRecibidos = votosUsuarios.length;
   const todasHanVotado = totalUsuarios > 0 && votosRecibidos >= totalUsuarios;
-  const estado = getClubvisionStage(getClubvisionCalendar().day, todasHanVotado);
+  // Si la Clubvisión fue activada directamente por propuesta de club, respetar
+  // el estado almacenado en lugar de recalcular desde el calendario.
+  const storedStatus = clubvision?.status;
+  const estado = storedStatus === 'LECTURA'
+    ? 'LECTURA'
+    : getClubvisionStage(getClubvisionCalendar().day, todasHanVotado);
   const votosPendientes = Math.max(totalUsuarios - votosRecibidos, 0);
 
   const porcentaje =
@@ -621,7 +630,13 @@ export async function getClubvision(
       }),
     ])
     : [[], 0] as const;
-  const lecturaConfigurada = officialReadingCount > 0;
+  // Si llegamos por propuesta (sin bookId) buscamos cualquier lectura CLUBVISION activa
+  const fallbackReadingCount = !winner?.winnerBookId && winner?.winnerTitle
+    ? await prisma.reading.count({
+        where: { clubId: club.id, type: 'CLUBVISION', status: 'ACTIVE' },
+      })
+    : 0;
+  const lecturaConfigurada = officialReadingCount > 0 || fallbackReadingCount > 0;
 
   return {
     abierta: estado === 'VOTACION',

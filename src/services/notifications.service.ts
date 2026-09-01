@@ -459,6 +459,21 @@ export async function eliminarTodasNotificaciones(userId: string) {
   await prisma.notification.deleteMany({ where: { userId } });
   return { ok: true };
 }
+export async function notifyPropuestaActivada(clubId: string, bookTitle: string) {
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { name: true },
+  });
+  if (!club) return;
+  await notifyClubMembers({
+    clubId,
+    tipo: NotificationType.LECTURA_NUEVA,
+    titulo: '📖 ¡Lectura acordada!',
+    mensaje: `${club.name} ha elegido leer "${bookTitle}". ¡Entrad a Clubvisión para empezar!`,
+    extra: { bookTitle, fromProposal: true },
+  });
+}
+
 export async function notifyLogroDesbloqueado({
   clubId,
   userId,

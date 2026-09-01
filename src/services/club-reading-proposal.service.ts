@@ -1,6 +1,8 @@
 import { prisma } from '../prisma.js';
 import { getCurrentClubContext } from './club-context.service.js';
-import { crearLectura } from './readings.service.js';
+import { getClubvisionCalendarFor } from '../utils/clubvision-calendar.js';
+import { notifyPropuestaActivada } from './notifications.service.js';
+import { backgroundError } from '../logging/logger.js';
 
 // ── Obtener propuesta pendiente del club ─────────────────────
 
@@ -142,26 +144,51 @@ export async function cancelarPropuesta(usuario: string, propuestaId: string) {
   return { ok: true };
 }
 
-// ── Activar: crear lectura y marcar propuesta como aceptada ──
+// ── Activar: marcar propuesta, establecer Clubvisión en LECTURA y notificar ──
 
 async function _activarPropuesta(
   propuestaId: string,
   clubId: string,
   bookTitle: string,
-  usuario: string,
+  _usuario: string,
 ) {
-  await prisma.clubReadingProposal.update({
-    where: { id: propuestaId },
-    data: { status: 'ACCEPTED' },
+  const { edition } = getClubvisionCalendarFor(new Date());
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Marcar propuesta como aceptada
+    await tx.clubReadingProposal.update({
+      where: { id: propuestaId },
+      data: { status: 'ACCEPTED' },
+    });
+
+    // 2. Buscar la Clubvisión actual del club
+    const clubvision = await tx.clubvision.findUnique({
+      where: { clubId_edition: { clubId, edition } },
+    });
+
+    if (clubvision) {
+      // 3. Crear el resultado con el libro propuesto (sin bookId en BD)
+      await tx.clubvisionResult.upsert({
+        where: { clubId_edition: { clubId, edition } },
+        update: { winnerTitle: bookTitle },
+        create: {
+          clubId,
+          edition,
+          winnerTitle: bookTitle,
+          winnerBookId: null,
+          points: 0,
+        },
+      });
+
+      // 4. Marcar la Clubvisión como LECTURA (saltamos la Gala)
+      await tx.clubvision.update({
+        where: { id: clubvision.id },
+        data: { status: 'LECTURA', closedAt: new Date() },
+      });
+    }
   });
 
-  // Crear la lectura oficial con 0 capítulos (lectura libre)
-  await crearLectura({
-    usuario,
-    libro: bookTitle,
-    capitulos: 0,
-    prologo: false,
-    epilogo: false,
-    tipo: 'OFICIAL',
-  });
+  // 5. Notificar a todos los miembros del club
+  void notifyPropuestaActivada(clubId, bookTitle)
+    .catch(backgroundError('proposal_activation_notification_failed'));
 }
