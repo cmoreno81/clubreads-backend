@@ -558,6 +558,10 @@ async function _getLibros(usuario: string) {
     pausedAt: item.pausedAt?.toISOString() ?? '',
     pauseReason: item.pauseReason ?? '',
     yaLoTengo: item.userId === user?.id,
+    // true cuando este registro llegó por importación (Goodreads, Bookmory…).
+    // El cliente lo usa para excluir estos libros del orden "Añadidos recientemente"
+    // y evitar que un import masivo inunde esa vista.
+    isImported: importedKeys.has(`${item.userId}:${item.book.id}`),
 
     goodreads: item.book.goodreadsUrl ?? '',
     coverUrl: item.book.coverUrl ?? '',
