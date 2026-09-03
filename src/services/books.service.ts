@@ -398,7 +398,8 @@ async function _getLibrosGlobal(usuario: string) {
     leyendo: statusToFlutter(item.status),
     estado: statusToFlutter(item.status),
     valoracion: '',
-    fechaAlta: item.book.createdAt.toISOString(),
+    // fechaAlta = cuándo este usuario añadió el libro a su biblioteca.
+    fechaAlta: item.createdAt.toISOString(),
     startedAt: item.startedAt?.toISOString() ?? '',
     pausedAt: item.pausedAt?.toISOString() ?? '',
     pauseReason: item.pauseReason ?? '',
@@ -553,11 +554,15 @@ async function _getLibros(usuario: string) {
     leyendo: statusToFlutter(item.status),
     estado: statusToFlutter(item.status),
     valoracion: '',
-    fechaAlta: item.book.createdAt.toISOString(),
     startedAt: item.startedAt?.toISOString() ?? '',
     pausedAt: item.pausedAt?.toISOString() ?? '',
     pauseReason: item.pauseReason ?? '',
     yaLoTengo: item.userId === user?.id,
+    // fechaAlta = cuándo este usuario añadió el libro a su biblioteca,
+    // no cuándo el libro se creó en el catálogo. Esto evita que libros
+    // recién llegados al catálogo (p.ej. por un import masivo) parezcan
+    // "nuevos" para todos los miembros aunque llevasen tiempo en sus listas.
+    fechaAlta: item.createdAt.toISOString(),
     // true cuando este registro llegó por importación (Goodreads, Bookmory…).
     // El cliente lo usa para excluir estos libros del orden "Añadidos recientemente"
     // y evitar que un import masivo inunde esa vista.
@@ -628,7 +633,8 @@ export async function getLibrosFinalizados(usuario: string) {
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
       valoracion: ratingToFlutter(review?.rating),
       formato: formatToFlutter(item.readingFormat),
-      fechaAlta: item.book.createdAt.toISOString(),
+      // fechaAlta = cuándo este usuario terminó/añadió el libro a su biblioteca.
+      fechaAlta: item.createdAt.toISOString(),
       resena: review?.review ?? '',
       review: review?.review ?? '',
       goodreads: item.book.goodreadsUrl ?? '',
