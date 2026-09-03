@@ -398,9 +398,11 @@ export async function getGeneralDashboard(userId: string) {
       prisma.library.findMany({
         where: { book: { deletedAt: null } },
         orderBy: { book: { createdAt: 'desc' } },
-        // Traemos margen para poder colapsar ediciones equivalentes y seguir
-        // mostrando hasta 10 obras distintas.
-        take: 60,
+        // Margen amplio para sobrevivir a imports masivos: si se importaron
+        // 100 libros de golpe, necesitamos mirar más allá de esos 100 para
+        // encontrar libros añadidos manualmente. 200 cubre imports grandes
+        // sin impacto relevante en BD (query indexada por createdAt).
+        take: 200,
         select: {
           userId: true,  // necesario para identificar imports por (userId, bookId)
           book: {

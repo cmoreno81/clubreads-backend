@@ -51,6 +51,7 @@
     "disposable:test:write": "node --env-file=.env.disposable --import tsx scripts/disposable-db.ts write-command npm test",
     "disposable:fixtures:flutter": "node --env-file=.env.disposable --import tsx scripts/create-disposable-flutter-fixtures.ts",
     "disposable:fixtures:cleanup": "node --env-file=.env.disposable --import tsx scripts/cleanup-disposable-flutter-fixtures.ts",
+    "disposable:clubvision:scenarios": "node --env-file=.env.disposable --import tsx scripts/generate-clubvision-scenarios.ts",
     "disposable:seed": "node --env-file=.env.disposable --import tsx scripts/disposable-db.ts write-command npm run seed",
     "disposable:import:sheets": "node --env-file=.env.disposable --import tsx scripts/disposable-db.ts write-command npm run import:sheets",
     "disposable:stop": "docker compose --env-file .env.disposable -f docker-compose.disposable.yml stop",
