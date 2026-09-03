@@ -597,6 +597,21 @@ export async function getLibrosFinalizados(usuario: string) {
     ],
   });
 
+  // Calcular qué entradas llegaron por importación (Goodreads/Bookmory)
+  // para que el cliente pueda excluirlas del orden "Añadidos recientemente".
+  const finalizadosPairs = library.map(item => ({
+    userId: item.userId,
+    bookId: item.book.id,
+  }));
+  const importedFinalizadosKeys: Set<string> = finalizadosPairs.length > 0
+    ? new Set(
+        (await prisma.importRowReceipt.findMany({
+          where: { OR: finalizadosPairs },
+          select: { userId: true, bookId: true },
+        })).map(r => `${r.userId}:${r.bookId}`)
+      )
+    : new Set();
+
   return library.map((item) => {
     const review = item.book.reviews.find(
       (bookReview) => bookReview.userId === item.userId,
@@ -622,6 +637,8 @@ export async function getLibrosFinalizados(usuario: string) {
       avatarUrl: item.user.avatarUrl ?? '',
       paginas: item.book.totalPages,
       yaLoTengo: item.userId === user?.id,
+      // true cuando este registro llegó por importación.
+      isImported: importedFinalizadosKeys.has(`${item.userId}:${item.book.id}`),
       mes: item.finishedAt
         ? `${String(item.finishedAt.getMonth() + 1).padStart(
             2,
