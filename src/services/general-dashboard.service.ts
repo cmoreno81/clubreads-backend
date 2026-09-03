@@ -437,9 +437,20 @@ export async function getGeneralDashboard(userId: string) {
         take: 10,
       }),
 
-      // Total de libros del usuario en su estantería (cualquier estado)
+      // Total de libros del usuario en su estantería (PENDING, excluyendo importados de Goodreads/Bookmory)
+      // Equivale al filtro "En mi estantería" de la página Libros
       // Debe ir al final para coincidir con totalEnEstanteria en el destructuring
-      prisma.library.count({ where: { userId } }),
+      prisma.importRowReceipt
+        .findMany({ where: { userId }, select: { bookId: true } })
+        .then((imports) =>
+          prisma.library.count({
+            where: {
+              userId,
+              status: ReadingStatus.PENDING,
+              bookId: { notIn: imports.map((i) => i.bookId) },
+            },
+          })
+        ),
     ]);
   console.log(`[dashboard] Promise.all: ${Date.now() - t0}ms`);
   if (!user) return null;
