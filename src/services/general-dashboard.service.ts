@@ -239,6 +239,7 @@ export async function getGeneralDashboard(userId: string) {
     latestBooks,
     hiddenSeries,
     trendingAuthorsRaw,
+    totalEnEstanteria,
   ] =
     await Promise.all([
       prisma.user.findUnique({
@@ -421,6 +422,9 @@ export async function getGeneralDashboard(userId: string) {
         where: { userId },
         select: { seriesId: true },
       }),
+
+      // Total de libros del usuario en su estantería (cualquier estado)
+      prisma.library.count({ where: { userId } }),
 
       // Autoras trending: groupBy en PostgreSQL, sin escanear Library global en Node
       prisma.book.groupBy({
@@ -732,6 +736,7 @@ export async function getGeneralDashboard(userId: string) {
       leyendo: user.library.length,
       terminados: completedBookIds.size,
       terminadosMes: monthCompletions.length,
+      enEstanteria: totalEnEstanteria,
       paginasMes: monthCompletions.reduce(
         (total, item) => total + pagesForBook(item.book.id, item.book.totalPages),
         0,
