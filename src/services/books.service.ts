@@ -674,6 +674,7 @@ async function _getLibrosFinalizadosTodos(usuario: string) {
     },
     select: {
       userId: true,
+      createdAt: true,   // cuándo el usuario añadió el libro a su biblioteca
       readingFormat: true,
       finishedAt: true,
       user: { select: { name: true, avatarUrl: true } },
@@ -686,7 +687,6 @@ async function _getLibrosFinalizadosTodos(usuario: string) {
           totalPages: true,
           standalone: true,
           seriesOrder: true,
-          createdAt: true,
           author: { select: { name: true } },
           genre: { select: { name: true } },
           series: { select: { name: true } },
@@ -703,6 +703,20 @@ async function _getLibrosFinalizadosTodos(usuario: string) {
     ],
   });
 
+  // Detectar qué entradas llegaron por importación (Goodreads/Bookmory)
+  const finalizadosPairs = library.map(item => ({
+    userId: item.userId,
+    bookId: item.book.id,
+  }));
+  const importedKeys: Set<string> = finalizadosPairs.length > 0
+    ? new Set(
+        (await prisma.importRowReceipt.findMany({
+          where: { OR: finalizadosPairs },
+          select: { userId: true, bookId: true },
+        })).map(r => `${r.userId}:${r.bookId}`)
+      )
+    : new Set();
+
   return library.map((item) => {
     const review = item.book.reviews.find((r) => r.userId === item.userId);
     return {
@@ -716,7 +730,10 @@ async function _getLibrosFinalizadosTodos(usuario: string) {
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
       valoracion: ratingToFlutter(review?.rating),
       formato: formatToFlutter(item.readingFormat),
-      fechaAlta: item.book.createdAt.toISOString(),
+      // fechaAlta = Library.createdAt: cuándo el usuario añadió el libro,
+      // no cuándo el libro fue catalogado (book.createdAt). Evita que imports
+      // masivos con libros recién creados en el catálogo inunden "Más recientes".
+      fechaAlta: item.createdAt.toISOString(),
       resena: review?.review ?? '',
       review: review?.review ?? '',
       goodreads: item.book.goodreadsUrl ?? '',
@@ -725,6 +742,9 @@ async function _getLibrosFinalizadosTodos(usuario: string) {
       avatarUrl: item.user.avatarUrl ?? '',
       paginas: item.book.totalPages,
       yaLoTengo: item.userId === user?.id,
+      // true si este registro llegó por importación; el cliente lo usa
+      // para excluir estos libros del orden "Más recientes".
+      isImported: importedKeys.has(`${item.userId}:${item.book.id}`),
       mes: item.finishedAt
         ? `${String(item.finishedAt.getMonth() + 1).padStart(2, '0')}/${item.finishedAt.getFullYear()}`
         : '',
