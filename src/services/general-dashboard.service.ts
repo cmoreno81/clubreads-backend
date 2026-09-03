@@ -423,9 +423,6 @@ export async function getGeneralDashboard(userId: string) {
         select: { seriesId: true },
       }),
 
-      // Total de libros del usuario en su estantería (cualquier estado)
-      prisma.library.count({ where: { userId } }),
-
       // Autoras trending: groupBy en PostgreSQL, sin escanear Library global en Node
       prisma.book.groupBy({
         by: ['authorId'],
@@ -439,6 +436,10 @@ export async function getGeneralDashboard(userId: string) {
         orderBy: { _count: { id: 'desc' } },
         take: 10,
       }),
+
+      // Total de libros del usuario en su estantería (cualquier estado)
+      // Debe ir al final para coincidir con totalEnEstanteria en el destructuring
+      prisma.library.count({ where: { userId } }),
     ]);
   console.log(`[dashboard] Promise.all: ${Date.now() - t0}ms`);
   if (!user) return null;
