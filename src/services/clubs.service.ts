@@ -451,6 +451,42 @@ export async function getClubMembers(userId: string, clubId: string) {
   };
 }
 
+// ─────────────────────────────────────────────
+// Eliminar club (solo OWNER, no espacio personal)
+// ─────────────────────────────────────────────
+export async function deleteClub(userId: string, clubId: string) {
+  const membership = await prisma.clubMember.findUnique({
+    where: { clubId_userId: { clubId, userId } },
+    include: { club: true },
+  });
+  if (!membership || membership.role !== ClubRole.OWNER) {
+    throw new ClubContextError(
+      'Solo la propietaria puede eliminar el club',
+      403,
+      'INSUFFICIENT_CLUB_ROLE',
+    );
+  }
+  if (membership.club.tipo === ClubType.PERSONAL) {
+    throw new ClubContextError(
+      'El espacio lector personal no se puede eliminar',
+      400,
+      'CANNOT_DELETE_PERSONAL_SPACE',
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Desactivar el club en todos los usuarios que lo tenían activo
+    await tx.user.updateMany({
+      where: { activeClubId: clubId },
+      data: { activeClubId: null },
+    });
+    // Borrar el club (cascade elimina membresías por FK)
+    await tx.club.delete({ where: { id: clubId } });
+  });
+
+  return { ok: true };
+}
+
 export async function getPersonalidadesClub(userId: string) {
   // Usar el club activo del usuario
   const userRecord = await prisma.user.findUnique({

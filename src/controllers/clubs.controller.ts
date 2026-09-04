@@ -9,6 +9,7 @@ import {
   selectClub,
   leaveClub,
   updateClub,
+  deleteClub,
   getClubMembers,
   getPersonalidadesClub,
 } from '../services/clubs.service.js';
@@ -75,6 +76,12 @@ export async function handleUpdateClubWith(
       descripcion: req.body?.descripcion,
       avatarUrl: req.body?.avatarUrl,
     }),
+  );
+}
+
+export async function handleDeleteClub(req: Request, res: Response) {
+  return res.json(
+    await deleteClub(req.auth!.userId, String(req.body?.clubId ?? '')),
   );
 }
 

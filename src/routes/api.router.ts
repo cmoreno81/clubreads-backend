@@ -104,6 +104,7 @@ import {
   handleClubInvite,
   handleCreateClub,
   handleCrearEspacioPersonal,
+  handleDeleteClub,
   handleGetClubMembers,
   handleGetPersonalidadesClub,
   handleJoinClub,
@@ -194,6 +195,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'seleccionarClub',
   'invitacionClub',
   'salirClub',
+  'eliminarClub',
   'editarClub',
   'crearLibro',
   'editarLibro',
@@ -467,6 +469,12 @@ export async function handleApi(
           return requireAuthentication(req, res, () => {});
         }
         return handleLeaveClub(req, res);
+
+      case 'eliminarClub':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleDeleteClub(req, res);
 
       case 'editarClub':
         if (!req.auth) {
