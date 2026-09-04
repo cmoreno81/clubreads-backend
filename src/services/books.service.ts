@@ -1605,7 +1605,9 @@ export async function crearLibro(data: any) {
   }
 
   if (existingBook) {
-    if (!existingBook.coverUrl?.trim() && suppliedCoverUrl) {
+    // Actualizar portada si: el usuario ha enviado una URL explícita (siempre
+    // tiene precedencia) O si el libro no tenía portada y podemos rellenarla.
+    if (suppliedCoverUrl && suppliedCoverUrl !== existingBook.coverUrl?.trim()) {
       await prisma.book.update({
         where: { id: existingBook.id },
         data: { coverUrl: suppliedCoverUrl },
