@@ -30,8 +30,8 @@ export async function handleLibrosPorAutor(req: Request, res: Response) {
     include: {
       books: {
         where: { deletedAt: null },
-        include: { genre: true },
-        orderBy: { title: 'asc' },
+        include: { genre: true, series: { select: { id: true, name: true } } },
+        orderBy: [{ seriesId: 'asc' }, { seriesOrder: 'asc' }, { title: 'asc' }],
       },
     },
   });
@@ -50,6 +50,9 @@ export async function handleLibrosPorAutor(req: Request, res: Response) {
       titulo: book.title,
       coverUrl: book.coverUrl ?? '',
       genero: book.genre?.name ?? '',
+      sagaId: book.seriesId ?? null,
+      sagaNombre: book.series?.name ?? null,
+      sagaOrden: book.seriesOrder ?? null,
     })),
   });
 }
