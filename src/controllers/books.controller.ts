@@ -276,3 +276,10 @@ export async function handleGetLibroPorId(req: Request, res: Response) {
   const data = await getLibroPorId(bookId, requestUserName(req), global);
   return res.json(data);
 }
+
+export async function handleGetSeriesVolumesForBook(req: Request, res: Response) {
+  const { getSeriesVolumesForBook } = await import('../services/series-volumes.service.js');
+  const bookId = String(req.query.bookId || req.query.id || '').trim();
+  const data = await getSeriesVolumesForBook(bookId, requestUserName(req));
+  return res.json(data);
+}
