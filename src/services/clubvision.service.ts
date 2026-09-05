@@ -214,23 +214,15 @@ async function getOrCreateCurrentClubvision(
   if (existing || day > 2) return existing;
 
   const created = await prisma.$transaction(async (tx) => {
-    const clubvision = await tx.clubvision.upsert({
-      where: {
-        clubId_edition: {
-          clubId: club.id,
-          edition,
-        },
-      },
-      update: {},
-      create: {
-        clubId: club.id,
-        edition,
-        status: 'VOTACION',
-        title: '🎤 Clubvisión abierta',
-        message: '🗳️ Ya puedes votar',
-        openedAt: getNow(),
-      },
-    });
+    // Calculamos los candidatos ANTES de crear el registro de Clubvisión:
+    // si no hay suficientes, no debe quedar ni rastro en la base de datos.
+    // Antes se creaba el registro (status VOTACION) primero y solo después
+    // se comprobaba si había candidatos — al devolver null sin lanzar, la
+    // transacción igualmente hacía commit y dejaba un Clubvisión vacío y
+    // "abierto" para siempre en esa edición, porque la siguiente llamada
+    // encontraría ese `existing` y ni siquiera reintentaría generar
+    // candidatos. Ese club se quedaba sin poder votar hasta la edición
+    // siguiente.
     // Excluir solo los libros que han ganado en ediciones anteriores
     const previousWinners = await tx.clubvisionResult.findMany({
       where: {
@@ -313,6 +305,27 @@ async function getOrCreateCurrentClubvision(
       const highDiff = (highCountByBook.get(b) ?? 0) - (highCountByBook.get(a) ?? 0);
       if (highDiff !== 0) return highDiff;
       return (countByBook.get(b) ?? 0) - (countByBook.get(a) ?? 0);
+    });
+
+    // Ya sabemos que hay candidatos suficientes: ahora sí creamos (o
+    // recuperamos, por si una llamada concurrente se adelantó) el registro
+    // de Clubvisión.
+    const clubvision = await tx.clubvision.upsert({
+      where: {
+        clubId_edition: {
+          clubId: club.id,
+          edition,
+        },
+      },
+      update: {},
+      create: {
+        clubId: club.id,
+        edition,
+        status: 'VOTACION',
+        title: '🎤 Clubvisión abierta',
+        message: '🗳️ Ya puedes votar',
+        openedAt: getNow(),
+      },
     });
 
     await tx.clubvisionCandidate.createMany({
@@ -912,18 +925,41 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
     };
   }
 
-  const candidates = await prisma.clubvisionCandidate.findMany({
-    where: {
-      clubvisionId: clubvision.id,
-      book: {
-        title: { in: normalizedVotes },
-      },
-    },
+  // Las papeletas llegan como títulos, no como ids de libro (limitación del
+  // cliente actual). Para no emparejar un voto con el candidato equivocado
+  // si dos candidatos de esta misma edición comparten título exacto (dos
+  // libros distintos con el mismo nombre), comprobamos toda la lista de
+  // candidatos de la edición — no solo los votados — antes de emparejar.
+  const allCandidates = await prisma.clubvisionCandidate.findMany({
+    where: { clubvisionId: clubvision.id },
     include: { book: true },
   });
 
+  const titleCounts = new Map<string, number>();
+  for (const candidate of allCandidates) {
+    titleCounts.set(
+      candidate.book.title,
+      (titleCounts.get(candidate.book.title) ?? 0) + 1,
+    );
+  }
+  const ambiguousVotes = normalizedVotes.filter(
+    (title) => (titleCounts.get(title) ?? 0) > 1,
+  );
+  if (ambiguousVotes.length > 0) {
+    backgroundError('clubvision_ambiguous_candidate_title')(
+      new Error(
+        `Clubvision ${clubvision.id}: título de candidato ambiguo (${ambiguousVotes.join(', ')})`,
+      ),
+    );
+    return {
+      ok: false,
+      mensaje:
+        'No se ha podido procesar la papeleta porque hay libros candidatos con el mismo título. Contacta con soporte.',
+    };
+  }
+
   const candidatesByTitle = new Map(
-    candidates.map((candidate) => [candidate.book.title, candidate]),
+    allCandidates.map((candidate) => [candidate.book.title, candidate]),
   );
 
   if (

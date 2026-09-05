@@ -8,7 +8,10 @@ import { requestUserName } from '../middleware/auth.middleware.js';
 
 export async function handleGetAchievements(req: Request, res: Response) {
   const user = String(req.query.user ?? req.query.usuario ?? req.auth?.userName ?? '').trim();
-  const data = await getAchievementsForUser(user || requestUserName(req));
+  const data = await getAchievementsForUser(
+    user || requestUserName(req),
+    req.auth!.userId,
+  );
 
   return res.json(data);
 }

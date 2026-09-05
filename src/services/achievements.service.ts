@@ -339,11 +339,25 @@ async function getCompletedSeriesForUser(
   return result;
 }
 
-export async function getAchievementsForUser(userName: string) {
+export async function getAchievementsForUser(userName: string, callerUserId: string) {
   const user = await prisma.user.findUnique({
-    where: { name: userName.trim() }, select: { id: true, name: true },
+    where: { name: userName.trim() },
+    select: { id: true, name: true, clubMemberships: { select: { clubId: true } } },
   });
   if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+
+  // El perfil consultado debe compartir club con quien pregunta — si no,
+  // cualquier usuaria autenticada podría ver los logros de cualquier otra
+  // persona de la app pasando su nombre en el parámetro "user".
+  if (user.id !== callerUserId) {
+    const caller = await prisma.user.findUnique({
+      where: { id: callerUserId },
+      select: { clubMemberships: { select: { clubId: true } } },
+    });
+    const callerClubIds = new Set(caller?.clubMemberships.map((m) => m.clubId) ?? []);
+    const comparten = user.clubMemberships.some((m) => callerClubIds.has(m.clubId));
+    if (!comparten) return { ok: false, mensaje: 'Usuaria no encontrada' };
+  }
 
   // ── Todo se mide en el año en curso ──
   const now = new Date();
@@ -396,7 +410,7 @@ const completedSeries = await getCompletedSeriesForUser(user.id, completedBooks)
 }
 
 export async function syncAchievementsForUser(userId: string, userName: string, clubId: string) {
-  const data = await getAchievementsForUser(userName);
+  const data = await getAchievementsForUser(userName, userId);
   if (!data.ok || !Array.isArray(data.achievements)) return;
 
   const newUnlocks: AchievementDefinition[] = [];

@@ -131,7 +131,11 @@ export async function handleGetFavoritos(req: Request, res: Response) {
   // del usuario autenticado cuando se visita un perfil ajeno sin parámetro perfil.
   const perfil = String(req.query.perfil ?? req.query.usuario ?? '');
   const profileId = req.query.profileUserId ? String(req.query.profileUserId) : undefined;
-  const data = await getFavoritosUsuario({ usuario: perfil, profileId });
+  const data = await getFavoritosUsuario({
+    usuario: perfil,
+    profileId,
+    callerUserId: req.auth!.userId,
+  });
   return res.json(data);
 }
 

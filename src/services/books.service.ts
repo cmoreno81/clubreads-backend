@@ -2133,12 +2133,25 @@ if (duplicado) {
   };
 }
 
+  // Igual que con isbn/páginas: si el cliente no envía estos campos,
+  // conservamos el valor actual en vez de resetearlo. Sin esto, editar solo
+  // la portada (o cualquier otro campo) desde un formulario que no conoce
+  // el género o la saga real del libro (p. ej. porque nadie del club lo
+  // tiene aún en su biblioteca) lo dejaba en "Sin género" y le borraba la
+  // saga a todo el mundo.
+  const generoFueEnviado = Object.prototype.hasOwnProperty.call(data, 'genero');
+  const sagaCampoEnviado =
+    Object.prototype.hasOwnProperty.call(data, 'saga') ||
+    Object.prototype.hasOwnProperty.call(data, 'numSaga') ||
+    Object.prototype.hasOwnProperty.call(data, 'autoconclusivo');
+
   const genreName =
     String(data.genero || 'Sin género').trim() || 'Sin género';
-
   const seriesName = String(data.saga || '').trim();
   const seriesOrder = String(data.numSaga || '').trim();
-  const standalone = boolFromFlutter(data.autoconclusivo);
+  const standalone = sagaCampoEnviado
+    ? boolFromFlutter(data.autoconclusivo)
+    : actual.standalone;
 
   const goodreadsUrl = normalizeGoodreadsUrl(
     data.goodreads || data.goodreadsUrl || '',
@@ -2146,19 +2159,23 @@ if (duplicado) {
 
   const coverUrl = String(data.coverUrl || '').trim();
 
-  const genre = await prisma.genre.upsert({
-    where: {
-      name: genreName,
-    },
-    update: {},
-    create: {
-      name: genreName,
-    },
-  });
+  let genreId = actual.genreId;
+  if (generoFueEnviado) {
+    const genre = await prisma.genre.upsert({
+      where: {
+        name: genreName,
+      },
+      update: {},
+      create: {
+        name: genreName,
+      },
+    });
+    genreId = genre.id;
+  }
 
   const series =
-    !standalone && seriesName
-      ? await buscarOCrearSaga(seriesName, genre.id, actual.seriesId)
+    sagaCampoEnviado && !standalone && seriesName
+      ? await buscarOCrearSaga(seriesName, genreId, actual.seriesId)
       : null;
 
 const suppliedAuthor = suppliedAuthorName
@@ -2190,16 +2207,20 @@ const editResult = await prisma.$transaction(async (tx) => {
     data: {
     title,
     authorId: suppliedAuthor?.id ?? actual.authorId,
-    genreId: genre.id,
+    genreId,
     standalone,
 
-    seriesId: standalone
-      ? null
-      : series?.id ?? null,
+    seriesId: !sagaCampoEnviado
+      ? actual.seriesId
+      : standalone
+        ? null
+        : series?.id ?? null,
 
-    seriesOrder: standalone
-      ? null
-      : seriesOrder || null,
+    seriesOrder: !sagaCampoEnviado
+      ? actual.seriesOrder
+      : standalone
+        ? null
+        : seriesOrder || null,
 
     goodreadsUrl:
       goodreadsUrl ||

@@ -182,9 +182,15 @@ export async function mergeBooks(sourceIdValue: string, canonicalIdValue: string
           review: [...new Set(texts)].join('\n\n') || null,
           containsSpoilers: targetReview.containsSpoilers || sourceReview.containsSpoilers,
           edited: true,
-          deletedAt: targetReview.deletedAt && sourceReview.deletedAt
-            ? (targetReview.deletedAt > sourceReview.deletedAt ? targetReview.deletedAt : sourceReview.deletedAt)
-            : null,
+          // Antes: null salvo que AMBAS estuvieran borradas — si solo una lo
+          // estaba (el caso normal: alguien borró su reseña en un duplicado
+          // pero no en el otro), esto resucitaba la reseña borrada. Ahora
+          // seguimos la acción más reciente entre las dos, igual que ya se
+          // hace con la valoración.
+          deletedAt:
+            sourceReview.updatedAt > targetReview.updatedAt
+              ? sourceReview.deletedAt
+              : targetReview.deletedAt,
         },
       });
       await tx.review.delete({ where: { id: sourceReview.id } });

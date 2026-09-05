@@ -1425,14 +1425,35 @@ export async function getFavoritosUsuario(params: {
   usuario: string;
   /** ID estable del perfil. Si se proporciona, el lookup por nombre es secundario. */
   profileId?: string;
+  /** Quién pregunta — debe compartir club con el perfil consultado. */
+  callerUserId: string;
 }): Promise<{ ok: boolean; favoritos: Array<{ id: string; title: string; authorName: string | null; coverUrl: string | null; genreName: string }> }> {
-  const { usuario, profileId } = params;
+  const { usuario, profileId, callerUserId } = params;
 
   // Lookup preferente por ID estable; fallback por nombre si no hay ID.
   const user = profileId?.trim()
-    ? await prisma.user.findUnique({ where: { id: profileId.trim() }, select: { id: true } })
-    : await prisma.user.findFirst({ where: { name: usuario.trim() }, select: { id: true } });
+    ? await prisma.user.findUnique({
+        where: { id: profileId.trim() },
+        select: { id: true, clubMemberships: { select: { clubId: true } } },
+      })
+    : await prisma.user.findFirst({
+        where: { name: usuario.trim() },
+        select: { id: true, clubMemberships: { select: { clubId: true } } },
+      });
   if (!user) return { ok: false, favoritos: [] };
+
+  // El perfil consultado debe compartir al menos un club con quien pregunta —
+  // si no, cualquier usuaria autenticada podría leer los favoritos de
+  // cualquier otra persona de la app pasando su id o nombre.
+  if (user.id !== callerUserId) {
+    const caller = await prisma.user.findUnique({
+      where: { id: callerUserId },
+      select: { clubMemberships: { select: { clubId: true } } },
+    });
+    const callerClubIds = new Set(caller?.clubMemberships.map((m) => m.clubId) ?? []);
+    const comparten = user.clubMemberships.some((m) => callerClubIds.has(m.clubId));
+    if (!comparten) return { ok: false, favoritos: [] };
+  }
 
   const entries = await prisma.library.findMany({
     where: { userId: user.id, isFavorite: true },

@@ -522,7 +522,30 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
 export async function getAfinidadDetalle(userId: string, miembroId: string) {
   const yearStart = new Date(Date.UTC(new Date().getFullYear(), 0, 1));
 
-  const [misLibros, susLibros, miembro] = await Promise.all([
+  // El otro miembro debe compartir al menos un club con quien pregunta — si
+  // no, cualquier persona autenticada podría leer el historial de lectura de
+  // cualquier otra usuaria de la app con solo adivinar/enumerar su id.
+  const [caller, miembro] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { clubMemberships: { select: { clubId: true } } },
+    }),
+    prisma.user.findUnique({
+      where: { id: miembroId },
+      select: {
+        name: true,
+        avatarUrl: true,
+        clubMemberships: { select: { clubId: true } },
+      },
+    }),
+  ]);
+  const callerClubIds = new Set(caller?.clubMemberships.map((m) => m.clubId) ?? []);
+  const comparten = miembro?.clubMemberships.some((m) => callerClubIds.has(m.clubId));
+  if (!comparten) {
+    return { miembro: { id: miembroId, nombre: '', avatarUrl: '' }, librosComunes: [] };
+  }
+
+  const [misLibros, susLibros] = await Promise.all([
     prisma.readingCompletion.findMany({
       where: { userId, finishedAt: { gte: yearStart } },
       select: { bookId: true },
@@ -530,10 +553,6 @@ export async function getAfinidadDetalle(userId: string, miembroId: string) {
     prisma.readingCompletion.findMany({
       where: { userId: miembroId, finishedAt: { gte: yearStart } },
       select: { bookId: true },
-    }),
-    prisma.user.findUnique({
-      where: { id: miembroId },
-      select: { name: true, avatarUrl: true },
     }),
   ]);
 
