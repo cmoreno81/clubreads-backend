@@ -371,13 +371,7 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
   let winnerBookId = clubvision.ganadorBookId || '';
   let ganadorCoverUrl = clubvision.ganadorCoverUrl || '';
 
-  // Un club de ≤5 miembros nunca puede abrir una votación real (ver
-  // sinCandidatas en getClubvision): para esos siempre priorizamos "Proponer
-  // lectura" en vez de buscar una lectura de respaldo, aunque tengan alguna
-  // marcada ACTIVE en la base de datos de cuando sí la tuvieron (p. ej. una
-  // lectura de hace semanas que ya nadie sigue) — proponer una nueva es lo
-  // correcto ahí, no resucitar la antigua.
-  if (!ganador && clubvision.totalUsuarios > 5) {
+  if (!ganador) {
     // Esta edición de Clubvisión puede no tener ganadora (sin candidatas
     // suficientes este mes) y aun así el club sigue leyendo oficialmente un
     // libro elegido en una edición anterior, o configurado a mano. Sin este
