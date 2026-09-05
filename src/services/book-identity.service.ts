@@ -130,31 +130,41 @@ export async function findSimilarBooks(
   });
 
   // Puntuar por solapamiento de palabras entre el título base de cada candidato y el buscado
-  const scored = candidates
+  const queryWords = new Set(words);
+  let scored = candidates
     .map((book) => {
       const candBase = baseTitleNormalized(book.title);
       const candWords = new Set(candBase.split(' ').filter((w) => w.length >= 4));
-      const queryWords = new Set(words);
       const overlap = [...queryWords].filter((w) => candWords.has(w)).length;
       const maxPossible = Math.max(queryWords.size, candWords.size);
       const score = overlap / maxPossible;
-      return { book, score };
+      return { book, score, overlap, candWordsSize: candWords.size };
     })
-    .filter(({ score }) => score >= 0.5) // al menos 50 % de solapamiento
+    .filter(({ score, overlap, candWordsSize }) => {
+      if (score < 0.5) return false;
+      // Con títulos de dos palabras significativas, compartir una sola palabra
+      // genérica (p. ej. "hija" en "La mala hija" y "Hija del cielo") ya basta
+      // para llegar al 50 % y disparaba fusiones entre libros distintos.
+      // Exigimos al menos 2 palabras en común, salvo que alguno de los dos
+      // títulos solo tenga una palabra significativa (ahí "1 de 1" ya es 100 %).
+      if (queryWords.size <= 1 || candWordsSize <= 1) return overlap >= 1;
+      return overlap >= 2;
+    })
     .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+    .slice(0, limit * 3); // margen antes de aplicar el filtro de autor
 
-  // Si se pasa autor, dar preferencia a coincidencias de autor
+  // Si se pasa autor y el candidato tiene autor registrado distinto, lo
+  // descartamos: no basta con reordenar, porque con limit bajo (como en los
+  // sync automáticos) un único candidato con autor equivocado se devolvía
+  // igualmente y acababa fusionando libros de autoras distintas.
   if (authorName) {
     const normAuthor = normalizeBookIdentityText(authorName);
-    scored.sort((a, b) => {
-      const aAuthor = normalizeBookIdentityText(a.book.author?.name ?? '');
-      const bAuthor = normalizeBookIdentityText(b.book.author?.name ?? '');
-      const aMatch = aAuthor === normAuthor ? 1 : 0;
-      const bMatch = bAuthor === normAuthor ? 1 : 0;
-      return (bMatch - aMatch) || (b.score - a.score);
+    scored = scored.filter(({ book }) => {
+      const candAuthor = book.author?.name ? normalizeBookIdentityText(book.author.name) : '';
+      return !candAuthor || candAuthor === normAuthor;
     });
   }
+  scored = scored.slice(0, limit);
 
   return scored.map(({ book }) => ({
     id: book.id,

@@ -81,6 +81,58 @@ test('la fusión conserva relaciones, auditoría y redirección', () => {
   assert.match(mergeService, /readingCompletion\.deleteMany/);
 });
 
+test('findSimilarBooks no fusiona libros distintos que solo comparten una palabra genérica', async () => {
+  const { findSimilarBooks } = await import('../src/services/book-identity.service.js');
+  const books = [
+    {
+      id: 'la-mala-hija',
+      title: 'La mala hija',
+      coverUrl: 'https://example.com/mala-hija.jpg',
+      author: { name: 'Autora A' },
+      genre: { name: 'Narrativa' },
+    },
+  ];
+  const database = {
+    book: {
+      findMany: async () => books,
+    },
+  };
+  // "Hija del cielo" solo comparte la palabra "hija" con "La mala hija":
+  // antes del fix, el 50 % de solapamiento bastaba para tratarlos como el mismo libro.
+  const resultados = await findSimilarBooks(database as never, 'Hija del cielo', {
+    authorName: 'Autora B',
+  });
+  assert.deepEqual(resultados, []);
+});
+
+test('findSimilarBooks descarta candidatos cuyo autor registrado no coincide', async () => {
+  const { findSimilarBooks } = await import('../src/services/book-identity.service.js');
+  const books = [
+    {
+      id: 'otra-edicion',
+      title: 'El despertar de la luna',
+      coverUrl: null,
+      author: { name: 'Autora Correcta' },
+      genre: { name: 'Fantasía' },
+    },
+  ];
+  const database = {
+    book: {
+      findMany: async () => books,
+    },
+  };
+  const conAutorDistinto = await findSimilarBooks(database as never, 'El despertar de la luna', {
+    authorName: 'Otra Autora',
+  });
+  assert.deepEqual(conAutorDistinto, []);
+
+  const conAutorCorrecto = await findSimilarBooks(database as never, 'El despertar de la luna', {
+    authorName: 'Autora Correcta',
+  });
+  assert.equal(conAutorCorrecto.length, 1);
+  assert.equal(conAutorCorrecto[0]!.id, 'otra-edicion');
+});
+
 test('una redirección puede resolverse en cadena y detecta ciclos', async () => {
   const { resolveCanonicalBookId } = await import('../src/services/book-identity.service.js');
   const redirects = new Map([['old', 'middle'], ['middle', 'canonical']]);
