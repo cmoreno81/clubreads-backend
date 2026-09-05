@@ -239,6 +239,9 @@ model Book {
 
   normalizedIsbn String?
 
+  /// Idioma de lectura (código ISO 639-1, ej. "es", "en"). Null si no se ha podido determinar.
+  language String?
+
   canonicalKey String?
 
   publicationYear Int?
@@ -291,6 +294,7 @@ model Book {
   @@index([canonicalKey])
   @@index([normalizedIsbn])
   @@index([publicationDate])
+  @@index([language])
 }
 
 /// Procedencia de los metadatos editoriales de un libro. No duplica el catálogo.

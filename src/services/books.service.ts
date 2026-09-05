@@ -1812,6 +1812,8 @@ logger.info({
           publicationYear:
             automaticCover?.publicationYear ?? null,
           totalPages: paginas > 0 ? paginas : null,
+
+          language: automaticCover?.language ?? null,
         },
       });
 

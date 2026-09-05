@@ -442,6 +442,22 @@ async function coverExists(url: string) {
   }
 }
 
+export async function findImportedBookLanguage(
+  identity: ImportedBookIdentity,
+): Promise<string | null> {
+  try {
+    const candidates = await searchBookCoverCandidates(identity.title);
+    const safe = candidates.find((candidate) => {
+      const authorMatches = !identity.author.trim() ||
+        sameAuthor(identity.author, candidate.authors);
+      return candidate.score >= 96 && authorMatches && candidate.language;
+    });
+    return safe?.language ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function findImportedBookCover(
   identity: ImportedBookIdentity,
 ) {
