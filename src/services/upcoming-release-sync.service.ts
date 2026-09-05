@@ -4,6 +4,7 @@ import {
   findBookByIdentity,
   findSimilarBooks,
   normalizeBookIsbn,
+  resolveCanonicalBookId,
 } from "./book-identity.service.js";
 import { cleanText, cleanTextNullable, decodeHtmlEntities } from "../utils/text.js";
 
@@ -296,11 +297,30 @@ export async function syncCasaDelLibroCliches(pageUrl: string) {
         : null;
 
       const cleanTitle = cleanText(detail.title);
-      let existing = await findBookByIdentity(prisma, {
-        title: cleanTitle,
-        authorName: author?.name,
-        isbn: detail.isbn,
+      // Primero miramos si ya vinculamos esta URL exacta a un libro en una
+      // pasada anterior: si ese libro se fusionó luego con otro (p. ej. una
+      // "edición especial" resultó ser el mismo libro), seguimos el redirect
+      // hasta el canónico en vez de fiarnos solo del título — si no, cada
+      // vez que se fusiona un duplicado detectado aquí, la siguiente
+      // sincronización lo vuelve a crear porque el libro fusionado ya no
+      // aparece en las búsquedas por identidad/similitud (están borradas).
+      const priorSource = await prisma.bookSource.findFirst({
+        where: { sourceUrl: productUrl },
+        select: { bookId: true },
       });
+      let existing = priorSource
+        ? await prisma.book.findUnique({
+            where: { id: await resolveCanonicalBookId(prisma, priorSource.bookId) },
+            include: { author: true },
+          })
+        : null;
+      if (!existing) {
+        existing = await findBookByIdentity(prisma, {
+          title: cleanTitle,
+          authorName: author?.name,
+          isbn: detail.isbn,
+        });
+      }
       // Fallback: buscar por similitud para fusionar variantes de edición
       if (!existing) {
         const similar = await findSimilarBooks(prisma, cleanTitle, {
@@ -762,12 +782,29 @@ export async function saveUpcomingBooks(items: ExternalUpcomingBook[]) {
     const cleanGenreName = cleanTextNullable(item.genre);
     const genre = cleanGenreName ? (genreMap.get(cleanGenreName) ?? fallbackGenre) : fallbackGenre;
     const cleanTitle = cleanText(item.title);
-    // Buscar por ISBN o clave canónica exacta
-    let existing = await findBookByIdentity(prisma, {
-      title: cleanTitle,
-      authorName: author?.name,
-      isbn: item.isbn,
+    // Primero, ¿ya vinculamos esta URL exacta a un libro antes? Si ese libro
+    // se fusionó después con otro, seguimos el redirect hasta el canónico —
+    // si no, cada sincronización recrearía el duplicado que ya se fusionó,
+    // porque el libro fusionado ya no aparece en las búsquedas por
+    // identidad/similitud (están borradas).
+    const priorSource = await prisma.bookSource.findFirst({
+      where: { sourceUrl: item.sourceUrl },
+      select: { bookId: true },
     });
+    let existing = priorSource
+      ? await prisma.book.findUnique({
+          where: { id: await resolveCanonicalBookId(prisma, priorSource.bookId) },
+          include: { author: true },
+        })
+      : null;
+    // Si no, buscar por ISBN o clave canónica exacta
+    if (!existing) {
+      existing = await findBookByIdentity(prisma, {
+        title: cleanTitle,
+        authorName: author?.name,
+        isbn: item.isbn,
+      });
+    }
     // Si no hay match exacto, intentar por similitud de título (captura variantes
     // de edición: "El despertar. Edición especial" ≈ "El despertar")
     if (!existing) {

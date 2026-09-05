@@ -2,12 +2,18 @@
  * Fusión: "Una corte de rosas y espinas. Edición especial con sobrecubierta reversible"
  *         → "Una corte de rosas y espinas"
  *
+ * Segunda vez que se fusiona: la sincronización diaria de próximos
+ * lanzamientos recreó el duplicado (id nuevo) porque no reconocía el
+ * redirect del primer merge al crear libros por título/similitud. Ya se
+ * corrigió esa sincronización para que consulte antes el BookSource de la
+ * URL exacta y siga el redirect — no debería volver a recrearse.
+ *
  * Libro definitivo (se conserva): "Una corte de rosas y espinas"
  *   id: cms7g95ie00gb0po9650bqfi8
  *   4 usuarias en biblioteca, 4 reseñas, 4 completions
  *
  * Libro duplicado (se absorbe y borra): "Una corte de rosas y espinas. Edición especial con sobrecubierta reversible"
- *   id: cmt9skcsn002dbj50zwk7ejrn
+ *   id: cmto46q6400ls2ck1ndk50z9b
  *   0 usuarias, 0 reseñas, 0 completions — sin conflictos
  */
 
@@ -16,7 +22,7 @@ import { mergeBooks } from '../src/services/book-merge.service.js';
 import { prisma } from '../src/prisma.js';
 
 const BOOK_ID_DEFINITIVO = 'cms7g95ie00gb0po9650bqfi8'; // Una corte de rosas y espinas
-const BOOK_ID_DUPLICADO  = 'cmt9skcsn002dbj50zwk7ejrn'; // Edición especial con sobrecubierta reversible
+const BOOK_ID_DUPLICADO  = 'cmto46q6400ls2ck1ndk50z9b'; // Edición especial con sobrecubierta reversible
 
 async function precheck() {
   const [definitivo, duplicado] = await Promise.all([
