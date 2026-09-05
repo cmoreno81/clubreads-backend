@@ -640,32 +640,17 @@ export async function getClubvision(
   });
 
   if (!clubvision) {
-    // Comprobar si es porque no hay candidatas (ningún libro con ≥2 interesadas genuinas)
-    const pendingCheck = await prisma.library.findMany({
-      where: {
-        status: ReadingStatus.PENDING,
-        user: { clubMemberships: { some: { clubId: club.id } } },
-      },
-      select: { userId: true, bookId: true },
-    });
-
-    const importedKeysCheck: Set<string> = pendingCheck.length > 0
-      ? new Set(
-          (await prisma.importRowReceipt.findMany({
-            where: { OR: pendingCheck.map(e => ({ userId: e.userId, bookId: e.bookId })) },
-            select: { userId: true, bookId: true },
-          })).map(r => `${r.userId}:${r.bookId}`)
-        )
-      : new Set();
-
-    const genuineCounts = new Map<string, number>();
-    for (const entry of pendingCheck) {
-      if (!importedKeysCheck.has(`${entry.userId}:${entry.bookId}`)) {
-        genuineCounts.set(entry.bookId, (genuineCounts.get(entry.bookId) ?? 0) + 1);
-      }
-    }
-
-    const sinCandidatas = ![...genuineCounts.values()].some(count => count >= 2);
+    // Un club de hasta 5 miembros nunca puede llegar al mínimo real para
+    // abrir votación (se necesitan al menos 3 personas coincidiendo en un
+    // mismo libro y 5 libros candidatos) — así que siempre le ofrecemos
+    // proponer una lectura directamente en vez de esperar a algo que nunca
+    // va a pasar. En clubes más grandes sí es realista que se alcance el
+    // umbral con más tiempo, así que no mostramos nada mientras tanto (antes
+    // esto se decidía mirando si algún libro ya tenía ≥2 interesadas, lo
+    // cual ocultaba la tarjeta justo cuando más sentido tenía mostrarla:
+    // cuanto más de acuerdo estaba un club pequeño en un libro, menos
+    // probable era que viera la opción de proponerlo).
+    const sinCandidatas = totalUsuarios > 0 && totalUsuarios <= 5;
 
     return {
       abierta: false,

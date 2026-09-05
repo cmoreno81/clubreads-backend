@@ -367,8 +367,31 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
     }),
   );
 
-  const ganador = clubvision.ganador || '';
-  const winnerBookId = clubvision.ganadorBookId || '';
+  let ganador = clubvision.ganador || '';
+  let winnerBookId = clubvision.ganadorBookId || '';
+  let ganadorCoverUrl = clubvision.ganadorCoverUrl || '';
+
+  if (!ganador) {
+    // Esta edición de Clubvisión puede no tener ganadora (sin candidatas
+    // suficientes este mes) y aun así el club sigue leyendo oficialmente un
+    // libro elegido en una edición anterior, o configurado a mano. Sin este
+    // respaldo, la tarjeta de "lectura actual" desaparecía del dashboard
+    // aunque el club siguiera leyendo algo en curso.
+    const lecturaActiva = await dashboardBlock(
+      'active_official_reading',
+      () => client.reading.findFirst({
+        where: { clubId: club.id, type: 'CLUBVISION', status: 'ACTIVE' },
+        select: { bookId: true, book: { select: { title: true, coverUrl: true } } },
+        orderBy: { startedAt: 'desc' },
+      }),
+      (result) => result ? 1 : 0,
+    );
+    if (lecturaActiva) {
+      ganador = lecturaActiva.book.title;
+      winnerBookId = lecturaActiva.bookId;
+      ganadorCoverUrl = lecturaActiva.book.coverUrl ?? '';
+    }
+  }
 
   const leyendoLecturaActual = ganador
     ? leyendoAhora
@@ -504,7 +527,7 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
       totalLeyendo: leyendoLecturaActual.length,
       totalFinalizado: finalizadosLecturaActual.length,
       leyendo: leyendoLecturaActual,
-      coverUrl: clubvision.ganadorCoverUrl ?? '',
+      coverUrl: ganadorCoverUrl,
       finalizado: finalizadosLecturaActual.map((item) => {
         return {
           usuario: item.user.name,
