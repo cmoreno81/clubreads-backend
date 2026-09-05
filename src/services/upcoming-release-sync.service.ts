@@ -317,17 +317,23 @@ export async function syncCasaDelLibroCliches(pageUrl: string) {
 
       const normalizedIsbn = normalizeBookIsbn(detail.isbn);
 
-      // Si el libro ya existe solo actualizamos portada e ISBN (nunca la fecha);
-      // si es nuevo lo creamos con todos los datos disponibles.
+      // Si el libro ya existe solo rellenamos huecos (portada e ISBN que no
+      // tuviera ya, nunca la fecha) — no pisamos una portada que alguien ya
+      // haya corregido a mano en el catálogo, o el scraping diario la
+      // devolvería a la de Casa del Libro cada vez que se ejecute.
       const book = existing
         ? await prisma.book.update({
             where: { id: existing.id },
             data: {
-              ...(detail.coverUrl?.trim()
+              ...(detail.coverUrl?.trim() && !existing.coverUrl?.trim()
                 ? { coverUrl: detail.coverUrl.trim() }
                 : {}),
-              ...(detail.isbn?.trim() ? { isbn: detail.isbn.trim() } : {}),
-              ...(normalizedIsbn ? { normalizedIsbn } : {}),
+              ...(detail.isbn?.trim() && !existing.isbn?.trim()
+                ? { isbn: detail.isbn.trim() }
+                : {}),
+              ...(normalizedIsbn && !existing.normalizedIsbn
+                ? { normalizedIsbn }
+                : {}),
             },
           })
         : await prisma.book.create({
@@ -778,23 +784,41 @@ export async function saveUpcomingBooks(items: ExternalUpcomingBook[]) {
     }
     const previousPublicationDate = existing?.publicationDate ?? null;
     const normalizedIsbn = normalizeBookIsbn(item.isbn);
-    const data = {
-      publicationDate: item.publicationDate,
-      publicationYear: item.publicationDate.getFullYear(),
-      publisher: cleanTextNullable(item.publisher) ?? undefined,
-      coverUrl: item.coverUrl?.trim() || undefined,
-      isbn: item.isbn?.trim() || undefined,
-      normalizedIsbn: normalizedIsbn ?? undefined,
-      genreId: genre.id,
-    };
+    // Para un libro ya existente, solo rellenamos huecos: no pisamos una
+    // portada, ISBN o género que alguien ya haya corregido a mano en el
+    // catálogo con lo que devuelva esta sincronización periódica.
     const book = existing
-      ? await prisma.book.update({ where: { id: existing.id }, data })
+      ? await prisma.book.update({
+          where: { id: existing.id },
+          data: {
+            publicationDate: item.publicationDate,
+            publicationYear: item.publicationDate.getFullYear(),
+            ...(existing.publisher
+              ? {}
+              : { publisher: cleanTextNullable(item.publisher) ?? undefined }),
+            ...(existing.coverUrl?.trim()
+              ? {}
+              : { coverUrl: item.coverUrl?.trim() || undefined }),
+            ...(existing.isbn?.trim()
+              ? {}
+              : { isbn: item.isbn?.trim() || undefined }),
+            ...(existing.normalizedIsbn
+              ? {}
+              : { normalizedIsbn: normalizedIsbn ?? undefined }),
+          },
+        })
       : await prisma.book.create({
           data: {
             title: cleanTitle,
             authorId: author?.id,
             canonicalKey: canonicalBookKey(cleanTitle, author?.name ?? ""),
-            ...data,
+            publicationDate: item.publicationDate,
+            publicationYear: item.publicationDate.getFullYear(),
+            publisher: cleanTextNullable(item.publisher) ?? undefined,
+            coverUrl: item.coverUrl?.trim() || undefined,
+            isbn: item.isbn?.trim() || undefined,
+            normalizedIsbn: normalizedIsbn ?? undefined,
+            genreId: genre.id,
           },
         });
     existing ? updated++ : created++;

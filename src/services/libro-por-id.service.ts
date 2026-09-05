@@ -190,6 +190,13 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
       coverUrl: book.coverUrl ?? '',
       goodreads: book.goodreadsUrl ?? '',
       paginas: book.totalPages,
+      // Saga real del catálogo: necesaria para precargar el formulario de
+      // edición cuando nadie del club tiene aún este libro en su biblioteca
+      // (si no, el formulario no tiene de dónde sacarla y al guardar lo
+      // marca como autoconclusivo, borrando su saga para todo el mundo).
+      saga: book.series?.name ?? '',
+      numSaga: book.seriesOrder ?? '',
+      autoconclusivo: book.standalone ? 'Si' : 'No',
     },
     libros,
     finalizados,
