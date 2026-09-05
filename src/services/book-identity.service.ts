@@ -149,22 +149,37 @@ export async function findSimilarBooks(
       // títulos solo tenga una palabra significativa (ahí "1 de 1" ya es 100 %).
       if (queryWords.size <= 1 || candWordsSize <= 1) return overlap >= 1;
       return overlap >= 2;
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit * 3); // margen antes de aplicar el filtro de autor
+    });
 
   // Si se pasa autor y el candidato tiene autor registrado distinto, lo
   // descartamos: no basta con reordenar, porque con limit bajo (como en los
   // sync automáticos) un único candidato con autor equivocado se devolvía
-  // igualmente y acababa fusionando libros de autoras distintas.
+  // igualmente y acababa fusionando libros de autoras distintas. Comparamos
+  // por conjunto de palabras (no por string exacto) para que "Rowling, J.K."
+  // y "J.K. Rowling" (mismo orden invertido, típico de exportaciones de
+  // Goodreads) sigan reconociéndose como la misma autora.
   if (authorName) {
-    const normAuthor = normalizeBookIdentityText(authorName);
+    const queryAuthorWords = new Set(
+      normalizeBookIdentityText(authorName).split(' ').filter(Boolean),
+    );
     scored = scored.filter(({ book }) => {
-      const candAuthor = book.author?.name ? normalizeBookIdentityText(book.author.name) : '';
-      return !candAuthor || candAuthor === normAuthor;
+      const candAuthorName = book.author?.name;
+      if (!candAuthorName) return true;
+      const candAuthorWords = new Set(
+        normalizeBookIdentityText(candAuthorName).split(' ').filter(Boolean),
+      );
+      return (
+        candAuthorWords.size === queryAuthorWords.size &&
+        [...candAuthorWords].every((w) => queryAuthorWords.has(w))
+      );
     });
   }
-  scored = scored.slice(0, limit);
+
+  // Un único slice final: el filtro de autor ya se aplicó sobre todos los
+  // candidatos ordenados por puntuación, así que no hace falta un margen
+  // arbitrario (limit * N) que podía descartar un candidato legítimo con el
+  // autor correcto si quedaba fuera de ese margen antes de filtrar.
+  scored = scored.sort((a, b) => b.score - a.score).slice(0, limit);
 
   return scored.map(({ book }) => ({
     id: book.id,

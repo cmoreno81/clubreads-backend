@@ -133,6 +133,31 @@ test('findSimilarBooks descarta candidatos cuyo autor registrado no coincide', a
   assert.equal(conAutorCorrecto[0]!.id, 'otra-edicion');
 });
 
+test('findSimilarBooks reconoce al mismo autor con el nombre en distinto orden (formato Goodreads "Apellido, Nombre")', async () => {
+  const { findSimilarBooks } = await import('../src/services/book-identity.service.js');
+  const books = [
+    {
+      id: 'libro-existente',
+      title: 'El despertar de la luna',
+      coverUrl: null,
+      author: { name: 'J.K. Rowling' },
+      genre: { name: 'Fantasía' },
+    },
+  ];
+  const database = {
+    book: {
+      findMany: async () => books,
+    },
+  };
+  // Las exportaciones de Goodreads suelen traer "Apellido, Nombre": mismo
+  // conjunto de palabras que el autor del catálogo, solo que en otro orden.
+  const resultados = await findSimilarBooks(database as never, 'El despertar de la luna', {
+    authorName: 'Rowling, J.K.',
+  });
+  assert.equal(resultados.length, 1);
+  assert.equal(resultados[0]!.id, 'libro-existente');
+});
+
 test('una redirección puede resolverse en cadena y detecta ciclos', async () => {
   const { resolveCanonicalBookId } = await import('../src/services/book-identity.service.js');
   const redirects = new Map([['old', 'middle'], ['middle', 'canonical']]);

@@ -20,6 +20,30 @@ import {
   pageFromRows,
   type PaginationRequest,
 } from '../utils/cursor-pagination.js';
+// Posición de un volumen dentro de una saga a partir de su seriesOrder
+// ("3", "3/8", "3 de 8"...). Compartidas con series-volumes.service.ts para
+// que ambos sitios calculen la posición de un tomo exactamente igual.
+export const numeroSaga = (value: string | null) => {
+  const parsed = Number.parseFloat(value?.replace(',', '.') ?? '');
+  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+};
+
+export const datosNumeroSaga = (value: string | null) => {
+  const text = value?.trim() ?? '';
+  const fraction = /^(\d+)\s*(?:\/|de)\s*(\d+)$/i.exec(text);
+  if (fraction) {
+    return {
+      posicion: Number(fraction[1]),
+      total: Number(fraction[2]),
+    };
+  }
+  const parsed = numeroSaga(value);
+  return {
+    posicion: parsed === Number.MAX_SAFE_INTEGER ? null : Math.ceil(parsed),
+    total: null,
+  };
+};
+
 function fechaToFlutter(fecha?: Date | null) {
   if (!fecha) return '';
 
@@ -393,27 +417,6 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
       });
     }
   }
-
-  const numeroSaga = (value: string | null) => {
-    const parsed = Number.parseFloat(value?.replace(',', '.') ?? '');
-    return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
-  };
-  const datosNumeroSaga = (value: string | null) => {
-    const text = value?.trim() ?? '';
-    const fraction = /^(\d+)\s*(?:\/|de)\s*(\d+)$/i.exec(text);
-    if (fraction) {
-      return {
-        posicion: Number(fraction[1]),
-        total: Number(fraction[2]),
-      };
-    }
-    const parsed = numeroSaga(value);
-    return {
-      posicion:
-        parsed === Number.MAX_SAFE_INTEGER ? null : Math.ceil(parsed),
-      total: null,
-    };
-  };
 
   const sagas = [...seriesPersonales.values()]
     .map((series) => {
