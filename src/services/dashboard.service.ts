@@ -380,7 +380,11 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
     const lecturaActiva = await dashboardBlock(
       'active_official_reading',
       () => client.reading.findFirst({
-        where: { clubId: club.id, type: 'CLUBVISION', status: 'ACTIVE' },
+        // Sin filtrar por type: una lectura configurada a mano o aceptada
+        // por propuesta (sin pasar por una votación de Clubvisión) se marca
+        // como FREE, no CLUBVISION — y sigue siendo la lectura activa del
+        // club igualmente.
+        where: { clubId: club.id, status: 'ACTIVE' },
         select: { bookId: true, book: { select: { title: true, coverUrl: true } } },
         orderBy: { startedAt: 'desc' },
       }),
