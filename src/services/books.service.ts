@@ -51,7 +51,9 @@ function invalidateUserLibraryCache(usuario: string) {
 
 function invalidateAllLibraryCaches() {
   invalidatePrefix('libros:');
+  invalidatePrefix('libros-global:');
   invalidatePrefix('finalizados:');
+  invalidatePrefix('finalizados-global:');
 }
 
 
