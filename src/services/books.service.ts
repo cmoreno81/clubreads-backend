@@ -224,15 +224,30 @@ function distanciaEdicion(left: string, right: string) {
   return previous[right.length];
 }
 
+/**
+ * Igual que normalizarTitulo, pero además equipara "&" y "and": muchas
+ * sagas (p. ej. "Fae & Alchemy") llegan con una u otra grafía según la
+ * fuente (catálogo externo, tecleado a mano...), y sin esto se detectaban
+ * como dos sagas distintas — cada libro nuevo caía en una saga diferente
+ * aunque fuera la misma (bug real: "Quicksilver" acabó en una saga
+ * "Fae And Alchemy" separada de "Fae & Alchemy", donde está "Brimstone").
+ */
+function normalizarParaComparacionSaga(value: string) {
+  return normalizarTitulo(value)
+    .replace(/\s*&\s*/g, ' and ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 async function buscarOCrearSaga(
   nombre: string,
   genreId: string,
   preferredSeriesId?: string | null,
 ) {
-  const normalizado = normalizarTitulo(nombre);
+  const normalizado = normalizarParaComparacionSaga(nombre);
   const existentes = await prisma.series.findMany();
   const equivalentes = existentes.filter((series) => {
-    const candidata = normalizarTitulo(series.name);
+    const candidata = normalizarParaComparacionSaga(series.name);
     if (candidata === normalizado) return true;
     return (
       normalizado.length >= 8 &&
