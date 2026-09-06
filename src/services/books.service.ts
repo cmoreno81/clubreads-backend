@@ -385,39 +385,44 @@ async function _getLibrosGlobal(usuario: string) {
     orderBy: [{ book: { title: 'asc' } }, { user: { name: 'asc' } }],
   });
 
-  return library.map((item) => ({
-    bookId: item.book.id,
-    usuario: item.user.name,
+  return library.map((item) => {
     // Vista ClubReads: mezcla lectoras de todos los clubes. Solo revelamos
-    // el nombre de quienes comparten club con quien pregunta; el resto se
-    // agrupa en el cliente como "+N de otros clubes" para no exponer con
-    // quién lee gente de clubes ajenos al tuyo.
-    mismoClub: Boolean(
+    // nombre y foto de quienes comparten club con quien pregunta; el resto
+    // se manda ya anonimizado desde el backend (no solo oculto en el
+    // cliente) para que ninguna versión de la app exponga con quién lee
+    // gente de clubes ajenos al tuyo.
+    const mismoClub = Boolean(
       user?.activeClubId && item.user.activeClubId === user.activeClubId,
-    ),
-    libro: item.book.title,
-    autor: item.book.author?.name ?? '',
-    genero: item.book.genre.name,
-    saga: item.book.series?.name ?? '',
-    numSaga: item.book.seriesOrder ?? '',
-    autoconclusivo: item.book.standalone ? 'Si' : 'No',
-    prioridad: priorityToFlutter(item.priority),
-    formato: formatToFlutter(item.readingFormat),
-    leyendo: statusToFlutter(item.status),
-    estado: statusToFlutter(item.status),
-    valoracion: '',
-    // fechaAlta = cuándo este usuario añadió el libro a su biblioteca.
-    fechaAlta: item.createdAt.toISOString(),
-    startedAt: item.startedAt?.toISOString() ?? '',
-    pausedAt: item.pausedAt?.toISOString() ?? '',
-    pauseReason: item.pauseReason ?? '',
-    yaLoTengo: item.userId === user?.id,
-    goodreads: item.book.goodreadsUrl ?? '',
-    coverUrl: item.book.coverUrl ?? '',
-    idioma: item.book.language ?? '',
-    avatarUrl: item.user.avatarUrl ?? '',
-    paginas: item.book.totalPages,
-  }));
+    );
+
+    return {
+      bookId: item.book.id,
+      usuario: mismoClub ? item.user.name : 'Lectora de otro club',
+      mismoClub,
+      libro: item.book.title,
+      autor: item.book.author?.name ?? '',
+      genero: item.book.genre.name,
+      saga: item.book.series?.name ?? '',
+      numSaga: item.book.seriesOrder ?? '',
+      autoconclusivo: item.book.standalone ? 'Si' : 'No',
+      prioridad: priorityToFlutter(item.priority),
+      formato: formatToFlutter(item.readingFormat),
+      leyendo: statusToFlutter(item.status),
+      estado: statusToFlutter(item.status),
+      valoracion: '',
+      // fechaAlta = cuándo este usuario añadió el libro a su biblioteca.
+      fechaAlta: item.createdAt.toISOString(),
+      startedAt: item.startedAt?.toISOString() ?? '',
+      pausedAt: item.pausedAt?.toISOString() ?? '',
+      pauseReason: item.pauseReason ?? '',
+      yaLoTengo: item.userId === user?.id,
+      goodreads: item.book.goodreadsUrl ?? '',
+      coverUrl: item.book.coverUrl ?? '',
+      idioma: item.book.language ?? '',
+      avatarUrl: mismoClub ? item.user.avatarUrl ?? '' : '',
+      paginas: item.book.totalPages,
+    };
+  });
 }
 
 export async function getLibrosFinalizadosTodosGlobal(usuario: string) {
@@ -473,13 +478,14 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
 
   return library.map((item) => {
     const review = item.book.reviews.find((r) => r.userId === item.userId);
+    // Vista ClubReads: ver comentario en _getLibrosGlobal.
+    const mismoClub = Boolean(
+      user?.activeClubId && item.user.activeClubId === user.activeClubId,
+    );
     return {
       bookId: item.book.id,
-      usuario: item.user.name,
-      // Vista ClubReads: ver comentario en _getLibrosGlobal.
-      mismoClub: Boolean(
-        user?.activeClubId && item.user.activeClubId === user.activeClubId,
-      ),
+      usuario: mismoClub ? item.user.name : 'Lectora de otro club',
+      mismoClub,
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
@@ -495,7 +501,7 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
       fecha: item.finishedAt ?? '',
       coverUrl: item.book.coverUrl ?? '',
       idioma: item.book.language ?? '',
-      avatarUrl: item.user.avatarUrl ?? '',
+      avatarUrl: mismoClub ? item.user.avatarUrl ?? '' : '',
       paginas: item.book.totalPages,
       yaLoTengo: item.userId === user?.id,
       mes: item.finishedAt
