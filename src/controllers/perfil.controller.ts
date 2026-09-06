@@ -49,6 +49,7 @@ export async function handleActualizarFechasLectura(
   const body = req.body ?? {};
 
   const valoracionRecibida = body.valoracion;
+  const picanteRecibido = body.picante;
   const resenaRecibida = body.resena;
 
   const data = await actualizarFechasLectura({
@@ -63,9 +64,10 @@ export async function handleActualizarFechasLectura(
      * estos campos y, por tanto, debemos conservarlos.
      *
      * Una cadena vacía sí significa que la nueva APK quiere
-     * eliminar la valoración o la reseña.
+     * eliminar la valoración, el picante o la reseña.
      */
     valoracion: valoracionRecibida,
+    picante: picanteRecibido,
     resena: resenaRecibida,
   });
 
