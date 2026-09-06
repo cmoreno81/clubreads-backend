@@ -1,0 +1,5 @@
+ALTER TABLE "Review"
+  ADD COLUMN IF NOT EXISTS "spicyRating" INTEGER;
+
+ALTER TABLE "ReadingCompletion"
+  ADD COLUMN IF NOT EXISTS "spicyRating" INTEGER;

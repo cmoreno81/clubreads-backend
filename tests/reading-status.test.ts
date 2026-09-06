@@ -7,7 +7,7 @@ import { actualizarEstado } from '../src/services/books.service.js';
 type Completion = {
   id: string; userId: string; bookId: string; startedAt: Date | null;
   finishedAt: Date; createdAt: Date; isReread: boolean;
-  rating: number | null; review: string | null; readingFormat: null;
+  rating: number | null; spicyRating: number | null; review: string | null; readingFormat: null;
 };
 
 function fixture(status = ReadingStatus.FINISHED) {
@@ -20,7 +20,7 @@ function fixture(status = ReadingStatus.FINISHED) {
   const state: {
     library: any;
     completions: Completion[];
-    review: null | { rating: number; review: string | null; deletedAt?: null };
+    review: null | { rating: number; spicyRating?: number | null; review: string | null; deletedAt?: null };
   } = {
     library: {
       id: 'library', userId: user.id, bookId: book.id, status,
@@ -89,7 +89,7 @@ function fixture(status = ReadingStatus.FINISHED) {
       id: `completion-${++sequence}`, userId: user.id, bookId: book.id,
       startedAt: new Date('2026-01-01T12:00:00Z'),
       finishedAt: new Date('2026-01-10T12:00:00Z'), createdAt: new Date(),
-      isReread: false, rating: 4, review: 'Primera lectura', readingFormat: null,
+      isReread: false, rating: 4, spicyRating: null, review: 'Primera lectura', readingFormat: null,
       ...params,
     };
     state.completions.push(item);
@@ -159,7 +159,7 @@ test('corregir finalizaciones restaura la reseña anterior y después la elimina
   addCompletion({ finishedAt: new Date('2026-02-10T12:00:00Z'), rating: 5, review: 'Reseña corregida', isReread: true });
   state.review = { rating: 5, review: 'Reseña corregida' };
   await update('Lectora', 'Libro', 'PENDIENTE');
-  assert.deepEqual(state.review, { rating: 3.5, review: 'Reseña anterior', deletedAt: null });
+  assert.deepEqual(state.review, { rating: 3.5, spicyRating: null, review: 'Reseña anterior', deletedAt: null });
   state.library.status = ReadingStatus.FINISHED;
   await update('Lectora', 'Libro', 'PENDIENTE');
   assert.equal(state.review, null);

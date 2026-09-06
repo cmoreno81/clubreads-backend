@@ -6,6 +6,7 @@ import {
   ratingFromFlutter,
   ratingToFlutter,
 } from '../utils/rating.utils.js';
+import { spicyFromFlutter, spicyToFlutter } from '../utils/spicy.utils.js';
 import {
   subirAvatarDesdeBase64,
   subirAvatarDesdeUrl,
@@ -221,6 +222,7 @@ const terminados = [
   fechaInicio: fechaToFlutter(item.startedAt),
   fechaFin: fechaToFlutter(item.finishedAt),
   valoracion: ratingToFlutter(item.rating),
+  picante: spicyToFlutter(item.spicyRating),
   resena: item.review ?? '',
   formato: formatToFlutter(item.readingFormat),
   coverUrl: item.book.coverUrl ?? '',
@@ -243,6 +245,7 @@ const terminados = [
         fechaInicio: fechaToFlutter(item.startedAt),
         fechaFin: '',
         valoracion: ratingToFlutter(review?.rating),
+        picante: spicyToFlutter(review?.spicyRating),
         resena: review?.review ?? '',
         formato: formatToFlutter(item.readingFormat),
         coverUrl: item.book.coverUrl ?? '',
@@ -266,6 +269,7 @@ const abandonados = biblioteca
       fechaInicio: fechaToFlutter(item.startedAt),
       fechaFin: fechaToFlutter(item.finishedAt),
       valoracion: ratingToFlutter(review?.rating),
+      picante: spicyToFlutter(review?.spicyRating),
       resena: review?.review ?? '',
       coverUrl: item.book.coverUrl ?? '',
     };
@@ -687,6 +691,7 @@ export async function getPerfilHistorialPage(
       startedAt: true,
       finishedAt: true,
       rating: true,
+      spicyRating: true,
       review: true,
       readingFormat: true,
       isReread: true,
@@ -726,6 +731,7 @@ export async function getPerfilHistorialPage(
       fechaInicio: fechaToFlutter(item.startedAt),
       fechaFin: fechaToFlutter(item.finishedAt),
       valoracion: ratingToFlutter(item.rating),
+      picante: spicyToFlutter(item.spicyRating),
       resena: item.review ?? '',
       formato: formatToFlutter(item.readingFormat),
       coverUrl: item.book.coverUrl ?? '',
@@ -815,6 +821,7 @@ export async function actualizarFechasLectura(params: {
   fechaInicio: unknown;
   fechaFin: unknown;
   valoracion?: unknown;
+  picante?: unknown;
   resena?: unknown;
 }) {
   const usuario = params.usuario.trim();
@@ -960,6 +967,16 @@ export async function actualizarFechasLectura(params: {
       ? ratingFromFlutter(textoValoracion)
       : undefined;
 
+    const picanteFueEnviado = params.picante !== undefined;
+
+    const textoPicante = picanteFueEnviado
+      ? String(params.picante ?? '').trim()
+      : '';
+
+    const spicy = picanteFueEnviado
+      ? spicyFromFlutter(textoPicante)
+      : undefined;
+
     /*
      * Permitimos borrar la valoración enviando una cadena vacía.
      * En ese caso eliminamos la Review si tampoco queda reseña.
@@ -990,6 +1007,10 @@ export async function actualizarFechasLectura(params: {
         ? rating
         : finalizacion?.rating ?? reviewActual?.rating;
 
+      const spicyFinal = picanteFueEnviado
+        ? spicy
+        : finalizacion?.spicyRating ?? reviewActual?.spicyRating;
+
       const resenaFinal = resenaFueEnviada
         ? textoResena || null
         : finalizacion?.review ?? reviewActual?.review ?? null;
@@ -1005,6 +1026,7 @@ export async function actualizarFechasLectura(params: {
             startedAt: fechaInicio,
             finishedAt: fechaFin,
             rating: ratingFinal ?? null,
+            spicyRating: spicyFinal ?? null,
             review: resenaFinal,
           },
         });
@@ -1012,7 +1034,7 @@ export async function actualizarFechasLectura(params: {
 
       if (!actualizaFichaActual) return;
 
-      if (!valoracionFueEnviada && !resenaFueEnviada) return;
+      if (!valoracionFueEnviada && !picanteFueEnviado && !resenaFueEnviada) return;
 
       /*
        * Si no queda ni valoración ni reseña, eliminamos la review.
@@ -1055,6 +1077,7 @@ export async function actualizarFechasLectura(params: {
         },
         update: {
           rating: ratingFinal ?? reviewActual!.rating,
+          spicyRating: spicyFinal ?? null,
           review: resenaFinal,
           edited: true,
           deletedAt: null,
@@ -1063,6 +1086,7 @@ export async function actualizarFechasLectura(params: {
           userId: user.id,
           bookId: lectura.bookId,
           rating: ratingFinal!,
+          spicyRating: spicyFinal ?? null,
           review: resenaFinal,
           edited: true,
         },
@@ -1077,6 +1101,10 @@ export async function actualizarFechasLectura(params: {
       valoracion:
         valoracionFueEnviada && rating != null
           ? ratingToFlutter(rating)
+          : undefined,
+      picante:
+        picanteFueEnviado && spicy != null
+          ? spicyToFlutter(spicy)
           : undefined,
       resena:
         resenaFueEnviada

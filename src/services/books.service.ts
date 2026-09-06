@@ -16,6 +16,10 @@ import {
   ratingFromFlutter,
   ratingToFlutter,
 } from '../utils/rating.utils.js';
+import {
+  spicyFromFlutter,
+  spicyToFlutter,
+} from '../utils/spicy.utils.js';
 import { getCurrentClubContext } from './club-context.service.js';
 import {
   findBookByIdentity,
@@ -480,7 +484,7 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
           series: { select: { name: true } },
           reviews: {
             where: { deletedAt: null },
-            select: { userId: true, rating: true, review: true },
+            select: { userId: true, rating: true, spicyRating: true, review: true },
           },
         },
       },
@@ -508,6 +512,7 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
       valoracion: ratingToFlutter(review?.rating),
+      picante: spicyToFlutter(review?.spicyRating),
       formato: formatToFlutter(item.readingFormat),
       fechaAlta: item.book.createdAt.toISOString(),
       resena: review?.review ?? '',
@@ -669,6 +674,7 @@ export async function getLibrosFinalizados(usuario: string) {
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
       valoracion: ratingToFlutter(review?.rating),
+      picante: spicyToFlutter(review?.spicyRating),
       formato: formatToFlutter(item.readingFormat),
       // fechaAlta = cuándo este usuario terminó/añadió el libro a su biblioteca.
       fechaAlta: item.createdAt.toISOString(),
@@ -731,7 +737,7 @@ async function _getLibrosFinalizadosTodos(usuario: string) {
           series: { select: { name: true } },
           reviews: {
             where: { deletedAt: null },
-            select: { userId: true, rating: true, review: true },
+            select: { userId: true, rating: true, spicyRating: true, review: true },
           },
         },
       },
@@ -768,6 +774,7 @@ async function _getLibrosFinalizadosTodos(usuario: string) {
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
       valoracion: ratingToFlutter(review?.rating),
+      picante: spicyToFlutter(review?.spicyRating),
       formato: formatToFlutter(item.readingFormat),
       // fechaAlta = Library.createdAt: cuándo el usuario añadió el libro,
       // no cuándo el libro fue catalogado (book.createdAt). Evita que imports
@@ -826,7 +833,7 @@ export async function getLibrosFinalizadosPage(
           series: { select: { name: true } },
           reviews: {
             where: { deletedAt: null },
-            select: { userId: true, rating: true, review: true },
+            select: { userId: true, rating: true, spicyRating: true, review: true },
           },
         },
       },
@@ -852,6 +859,7 @@ export async function getLibrosFinalizadosPage(
         numSaga: item.book.seriesOrder ?? '',
         autoconclusivo: item.book.standalone ? 'Si' : 'No',
         valoracion: ratingToFlutter(review?.rating),
+        picante: spicyToFlutter(review?.spicyRating),
         formato: formatToFlutter(item.readingFormat),
         fechaAlta: item.book.createdAt.toISOString(),
         resena: review?.review ?? '',
@@ -1200,6 +1208,7 @@ export async function actualizarEstado(
     notifyStarted?: typeof notifyLibroEmpezado;
     notifyFinished?: typeof notifyLibroTerminado;
   } = {},
+  picante?: string,
 ) {
   const client = runtime.client ?? prisma;
   const notifyStarted = runtime.notifyStarted ?? notifyLibroEmpezado;
@@ -1240,6 +1249,7 @@ export async function actualizarEstado(
   const fechaInicioEditada = transition.startDate;
   const fechaFinEditada = transition.endDate;
   const rating = transition.rating;
+  const spicy = spicyFromFlutter(picante);
 
 let startedReading = false;
 let finishedNotificationClubIds: string[] = [];
@@ -1403,6 +1413,7 @@ await client.$transaction(async (tx) => {
           },
           update: {
             rating: previousCompletion.rating,
+            spicyRating: previousCompletion.spicyRating,
             review: previousCompletion.review,
             deletedAt: null,
           },
@@ -1410,6 +1421,7 @@ await client.$transaction(async (tx) => {
             userId: user.id,
             bookId: book.id,
             rating: previousCompletion.rating,
+            spicyRating: previousCompletion.spicyRating,
             review: previousCompletion.review,
           },
         });
@@ -1461,6 +1473,7 @@ await client.$transaction(async (tx) => {
           finishedAt: statusDates.finishedAt as Date,
           isReread: currentLibrary?.status === ReadingStatus.REREADING,
           rating: finalRating,
+          spicyRating: spicy,
           review: reflexion?.trim() || null,
           readingFormat: requestedFormat ?? currentLibrary?.readingFormat,
         },
@@ -1482,6 +1495,7 @@ await client.$transaction(async (tx) => {
 
       update: {
         rating: finalRating,
+        spicyRating: spicy,
         review: reflexion?.trim() || null,
       },
 
@@ -1489,6 +1503,7 @@ await client.$transaction(async (tx) => {
         userId: user.id,
         bookId: book.id,
         rating: finalRating,
+        spicyRating: spicy,
         review: reflexion?.trim() || null,
       },
     });
@@ -1507,6 +1522,7 @@ await client.$transaction(async (tx) => {
 
       update: {
         rating: 0,
+        spicyRating: null,
         review: null,
       },
 
@@ -1514,6 +1530,7 @@ await client.$transaction(async (tx) => {
         userId: user.id,
         bookId: book.id,
         rating: 0,
+        spicyRating: null,
         review: null,
       },
     });

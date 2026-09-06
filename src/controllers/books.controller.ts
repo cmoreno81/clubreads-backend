@@ -159,6 +159,8 @@ export async function handleActualizarEstado(req: Request, res: Response) {
     String(body.fechaInicio || ''),
     String(body.fechaFin || ''),
     String(body.formato || ''),
+    {},
+    String(body.picante || ''),
   );
 
   return res.json(data);

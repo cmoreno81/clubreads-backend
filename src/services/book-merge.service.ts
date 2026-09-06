@@ -21,6 +21,7 @@ type CompletionForMerge = {
   finishedAt: Date;
   isReread: boolean;
   rating: number | null;
+  spicyRating: number | null;
   review: string | null;
   readingFormat: string | null;
   createdAt: Date;
@@ -74,6 +75,7 @@ export async function consolidateEquivalentCompletions(
         bookId: canonicalBookId,
         startedAt: firstValue(({ startedAt }) => startedAt),
         rating: firstValue(({ rating }) => rating),
+        spicyRating: firstValue(({ spicyRating }) => spicyRating),
         review: firstValue(({ review }) => review?.trim() || null),
         readingFormat: firstValue(({ readingFormat }) => readingFormat),
       },
@@ -175,10 +177,15 @@ export async function mergeBooks(sourceIdValue: string, canonicalIdValue: string
         continue;
       }
       const texts = [targetReview.review?.trim(), sourceReview.review?.trim()].filter(Boolean);
+      const newestReview = sourceReview.updatedAt > targetReview.updatedAt ? sourceReview : targetReview;
+      const oldestReview = newestReview === sourceReview ? targetReview : sourceReview;
       await tx.review.update({
         where: { id: targetReview.id },
         data: {
-          rating: sourceReview.updatedAt > targetReview.updatedAt ? sourceReview.rating : targetReview.rating,
+          rating: newestReview.rating,
+          // El picante es opcional: si la reseña más reciente no lo trae,
+          // no perdemos el que sí hubiera puesto la otra.
+          spicyRating: newestReview.spicyRating ?? oldestReview.spicyRating,
           review: [...new Set(texts)].join('\n\n') || null,
           containsSpoilers: targetReview.containsSpoilers || sourceReview.containsSpoilers,
           edited: true,

@@ -48,6 +48,10 @@ export const ratingSchema = z.union([
   z.literal(''),
   compatibleNumberSchema.refine((value) => Number(value) >= 0 && Number(value) <= 5, 'Valoración fuera de rango'),
 ]);
+export const spicySchema = z.union([
+  z.literal(''),
+  compatibleNumberSchema.refine((value) => Number(value) >= 1 && Number(value) <= 5, 'Nivel picante fuera de rango'),
+]);
 export const dateSchema = z.string().trim().refine((value) => {
   if (!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2}))?$/.test(value)) return false;
   const datePart = value.slice(0, 10);
@@ -137,7 +141,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   actualizarGeneroLibro: body({ bookId: identifierSchema, genero: shortTextSchema }),
   actualizarPreferenciasLibro: body({ libro: identifierSchema, prioridad: prioritySchema, formato: formatSchema.optional() }),
   quitarLibroPendientes: bookBody, iniciarLectura: bookBody,
-  actualizarEstado: body({ libro: identifierSchema, estado: statusSchema, valoracion: ratingSchema.optional(), reflexion: longTextSchema.optional(), motivoPausa: textSchema.optional(), fechaInicio: optionalDateSchema, fechaFin: optionalDateSchema, formato: formatSchema.optional() }).refine((v) => datesAreOrdered(v.fechaInicio, v.fechaFin), { path: ['fechaFin'], message: 'La fecha final no puede ser anterior a la inicial' }),
+  actualizarEstado: body({ libro: identifierSchema, estado: statusSchema, valoracion: ratingSchema.optional(), picante: spicySchema.optional(), reflexion: longTextSchema.optional(), motivoPausa: textSchema.optional(), fechaInicio: optionalDateSchema, fechaFin: optionalDateSchema, formato: formatSchema.optional() }).refine((v) => datesAreOrdered(v.fechaInicio, v.fechaFin), { path: ['fechaFin'], message: 'La fecha final no puede ser anterior a la inicial' }),
   actualizarProgresoLectura: body({ libro: identifierSchema, progreso: progressSchema, comentario: textSchema.optional(), paginaActual: pageSchema.optional(), paginasTotales: pageSchema.optional() }).refine((v) => v.paginaActual === undefined || v.paginasTotales === undefined || Number(v.paginaActual) <= Number(v.paginasTotales), { path: ['paginaActual'], message: 'La página actual supera el total' }),
   toggleProgressReaction: body({ libraryId: identifierSchema, reaccion: reactionSchema.optional() }),
   actualizarValoracion: body({ libro: identifierSchema, valoracion: ratingSchema }),
@@ -151,7 +155,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   editarComentario: commentIdBody.and(body({ comentario: textSchema.min(1) })), eliminarComentario: commentIdBody,
   editarRespuesta: replyIdBody.and(body({ respuesta: textSchema.min(1) })), eliminarRespuesta: replyIdBody,
   marcarConversacionVista: body({ libro: identifierSchema, capitulo: z.union([identifierSchema, integerSchema]) }),
-  actualizarFechasLectura: body({ libraryId: identifierSchema, completionId: identifierSchema.optional(), fechaInicio: optionalDateSchema, fechaFin: optionalDateSchema, valoracion: ratingSchema.optional(), resena: longTextSchema.optional() }).refine((v) => datesAreOrdered(v.fechaInicio, v.fechaFin), { path: ['fechaFin'], message: 'La fecha final no puede ser anterior a la inicial' }),
+  actualizarFechasLectura: body({ libraryId: identifierSchema, completionId: identifierSchema.optional(), fechaInicio: optionalDateSchema, fechaFin: optionalDateSchema, valoracion: ratingSchema.optional(), picante: spicySchema.optional(), resena: longTextSchema.optional() }).refine((v) => datesAreOrdered(v.fechaInicio, v.fechaFin), { path: ['fechaFin'], message: 'La fecha final no puede ser anterior a la inicial' }),
   actualizarAvatarPerfil: body({ avatarUrl: avatarUrlSchema }),
   actualizarFrasePerfil: body({ bio: z.string().max(160) }),
   registrarMoodClub: body({ mood: z.enum(['HOOKED', 'SHOCKED', 'CRYING', 'ANGRY', 'LAUGHING', 'BLOCKED']) }),

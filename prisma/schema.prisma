@@ -649,6 +649,8 @@ model ReadingCompletion {
   finishedAt    DateTime
   isReread      Boolean        @default(false)
   rating        Float?
+  /// Nivel "picante" (1-5) de esta lectura concreta, opcional.
+  spicyRating   Int?
   review        String?        @db.Text
   readingFormat ReadingFormat?
 
@@ -979,6 +981,10 @@ model Review {
   book   Book   @relation(fields: [bookId], references: [id])
 
   rating Float
+
+  /// Nivel "picante" (1-5), opcional — a diferencia de rating, nunca es
+  /// obligatorio y puede quedar sin especificar.
+  spicyRating Int?
 
   review String? @db.Text
 
