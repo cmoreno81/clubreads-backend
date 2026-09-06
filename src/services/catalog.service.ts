@@ -420,6 +420,17 @@ export async function importCatalogBook(
   if (!resolved.ok) return resolved;
   const book = resolved.book;
 
+  // El idioma elegido a mano por la usuaria tiene prioridad sobre el que
+  // trajera el catálogo externo (Google Books/OpenLibrary) o una importación.
+  const suppliedLanguage = String(data.idioma ?? '').trim();
+  if (suppliedLanguage && suppliedLanguage !== book.language) {
+    await prisma.book.update({
+      where: { id: book.id },
+      data: { language: suppliedLanguage },
+    });
+    book.language = suppliedLanguage;
+  }
+
   const existing = await prisma.library.findUnique({
     where: { userId_bookId: { userId: user.id, bookId: book.id } },
   });
@@ -562,6 +573,7 @@ async function resolveCatalogBook(
           genreId: genre.id,
           isbn: isbn || null,
           coverUrl: String(data.coverUrl ?? '').trim() || null,
+          language: String(data.idioma ?? '').trim() || null,
           totalPages: Number.isInteger(pages) && pages > 0 ? pages : null,
           publicationYear: Number.isInteger(year) && year > 0 ? year : null,
           standalone: true,

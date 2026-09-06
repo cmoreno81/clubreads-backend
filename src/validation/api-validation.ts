@@ -59,6 +59,10 @@ export const optionalDateSchema = z.union([z.literal(''), dateSchema]).optional(
 
 export const commentTypeSchema = z.enum(['COMMENT', 'QUOTE', 'MOMENTO_FAV', 'TEORIA', 'PERSONAJE', 'IMPACTO']);
 export const importSourceSchema = z.enum(['GOODREADS', 'BOOKMORY']);
+export const bookLanguageSchema = z.enum([
+  'es', 'en', 'fr', 'de', 'it', 'pt', 'nl', 'ko', 'ru',
+  'ca', 'eu', 'gl', 'ja', 'zh', 'ar', 'sv', 'no', 'da', 'fi', 'pl', 'el', 'tr',
+]);
 export const legacyBooleanSchema = z.union([z.boolean(), z.literal(1), z.literal(0), z.literal('1'), z.literal('0')]);
 
 function datesAreOrdered(start?: string, end?: string) {
@@ -85,6 +89,7 @@ const bookMutationFields = {
   saga: z.string().max(200).optional(), coverUrl: urlSchema.optional(), portada: urlSchema.optional(), portadaUrl: urlSchema.optional(),
   prioridad: prioritySchema.optional(), formato: formatSchema.optional(), estado: statusSchema.optional(), paginas: pageSchema.optional(),
   valoracion: ratingSchema.optional(), reflexion: longTextSchema.optional(), resena: longTextSchema.optional(),
+  idioma: bookLanguageSchema.optional(),
 };
 const goodreadsRowSchema = z.object({
   sourceRowId: z.string().max(500).optional(), rowId: z.string().max(500).optional(), id: z.string().max(500).optional(),
@@ -127,7 +132,8 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   editarClub: body({ clubId: identifierSchema, nombre: shortTextSchema.optional(), descripcion: textSchema.optional(), avatarUrl: avatarUrlSchema.optional() }),
   crearLibro: body({ libro: shortTextSchema.optional(), titulo: shortTextSchema.optional(), title: shortTextSchema.optional(), author: shortTextSchema.optional(), isbn: z.string().max(32).optional(), totalPages: pageSchema.optional(), confirmarNuevo: z.boolean().optional(), ...bookMutationFields }).refine((v) => Boolean(v.libro || v.titulo || v.title), { path: ['titulo'], message: 'Título obligatorio' }),
   editarLibro: body({ bookId: identifierSchema.optional(), id: identifierSchema.optional(), ...bookMutationFields }).refine((v) => Boolean(v.bookId || v.id), { path: ['bookId'], message: 'Identificador obligatorio' }),
-  anadirLibroExistente: body({ libro: identifierSchema, prioridad: prioritySchema, formato: formatSchema.optional() }),
+  anadirLibroExistente: body({ libro: identifierSchema, prioridad: prioritySchema, formato: formatSchema.optional(), idioma: bookLanguageSchema.optional() }),
+  actualizarIdiomaLibro: body({ bookId: identifierSchema, idioma: bookLanguageSchema }),
   actualizarPreferenciasLibro: body({ libro: identifierSchema, prioridad: prioritySchema, formato: formatSchema.optional() }),
   quitarLibroPendientes: bookBody, iniciarLectura: bookBody,
   actualizarEstado: body({ libro: identifierSchema, estado: statusSchema, valoracion: ratingSchema.optional(), reflexion: longTextSchema.optional(), motivoPausa: textSchema.optional(), fechaInicio: optionalDateSchema, fechaFin: optionalDateSchema, formato: formatSchema.optional() }).refine((v) => datesAreOrdered(v.fechaInicio, v.fechaFin), { path: ['fechaFin'], message: 'La fecha final no puede ser anterior a la inicial' }),

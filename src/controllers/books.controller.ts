@@ -14,6 +14,7 @@ import {
   crearLibro,
   quitarLibroPendientes,
   editarLibro,
+  actualizarIdiomaLibro,
   actualizarProgresoLectura,
   toggleProgressReaction,
 } from '../services/books.service.js';
@@ -105,6 +106,7 @@ export async function handleAnadirLibroExistente(req: Request, res: Response) {
     String(body.libro || ''),
     String(body.prioridad || ''),
     String(body.formato || ''),
+    String(body.idioma || ''),
   );
 
   return res.json(data);
@@ -188,6 +190,15 @@ export async function handleEditarLibro(
     bookId: req.body?.bookId ?? req.body?.id ?? '',
   });
 
+  return res.json(data);
+}
+
+export async function handleActualizarIdiomaLibro(req: Request, res: Response) {
+  const body = req.body ?? {};
+  const data = await actualizarIdiomaLibro(
+    String(body.bookId ?? ''),
+    String(body.idioma ?? ''),
+  );
   return res.json(data);
 }
 

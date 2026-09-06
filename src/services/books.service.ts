@@ -338,6 +338,7 @@ async function buscarLibroPorTitulo(
       standalone: true,
       goodreadsUrl: true,
       coverUrl: true,
+      language: true,
       isbn: true,
     publicationYear: true,
       totalPages: true,
@@ -843,6 +844,7 @@ export async function anadirLibroExistente(
   libro: string,
   prioridad?: string,
   formato?: string,
+  idioma?: string,
 ) {
   const user = await prisma.user.findUnique({
     where: {
@@ -886,6 +888,16 @@ export async function anadirLibroExistente(
       codigo: 'LIBRO_YA_EN_BIBLIOTECA',
       mensaje: 'Este libro ya está en tu biblioteca',
     };
+  }
+
+  // El idioma elegido a mano por la usuaria tiene prioridad sobre el que
+  // hubiera detectado automáticamente al crearse el libro.
+  const suppliedLanguage = String(idioma || '').trim();
+  if (suppliedLanguage && suppliedLanguage !== book.language) {
+    await prisma.book.update({
+      where: { id: book.id },
+      data: { language: suppliedLanguage },
+    });
   }
 
   await prisma.library.create({
@@ -945,6 +957,42 @@ export async function actualizarPreferenciasLibro(
     prioridad: priorityToFlutter(priorityFromFlutter(prioridad)),
     formato: formatToFlutter(formatFromFlutter(formato)),
   };
+}
+
+/**
+ * Corrige el idioma de un libro del catálogo (p. ej. cuando la detección
+ * automática por título acierta el idioma original pero no el de la edición
+ * que se está leyendo). Es un dato de catálogo, no de la biblioteca de una
+ * usuaria: afecta a todo el mundo que tenga ese libro.
+ */
+export async function actualizarIdiomaLibro(bookId: string, idioma: string) {
+  const id = String(bookId || '').trim();
+  const language = String(idioma || '').trim();
+
+  if (!id) {
+    return { ok: false, mensaje: 'Falta el identificador del libro' };
+  }
+  if (!language) {
+    return { ok: false, mensaje: 'Falta el idioma' };
+  }
+
+  const resolvedId = await resolveCanonicalBookId(prisma, id);
+  const book = await prisma.book.findFirst({
+    where: { id: resolvedId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!book) {
+    return { ok: false, mensaje: 'Libro no encontrado' };
+  }
+
+  await prisma.book.update({
+    where: { id: book.id },
+    data: { language },
+  });
+
+  invalidateAllLibraryCaches();
+
+  return { ok: true, idioma: language };
 }
 
 export async function iniciarLectura(
@@ -1549,6 +1597,9 @@ export async function crearLibro(data: any) {
   const suppliedCoverUrl = String(
     data.coverUrl || data.portadaUrl || data.portada || '',
   ).trim();
+  // Idioma elegido a mano por la usuaria en el formulario: tiene prioridad
+  // sobre lo que detecte automáticamente Google Books/OpenLibrary.
+  const suppliedLanguage = String(data.idioma || data.language || '').trim() || null;
   const paginas = Number(data.paginas || data.totalPages || 0);
 
   if (paginas < 0 || !Number.isInteger(paginas)) {
@@ -1622,6 +1673,15 @@ export async function crearLibro(data: any) {
         data: { coverUrl: suppliedCoverUrl },
       });
       existingBook.coverUrl = suppliedCoverUrl;
+    }
+
+    // El idioma elegido a mano por la usuaria tiene prioridad, igual que la portada.
+    if (suppliedLanguage && suppliedLanguage !== existingBook.language) {
+      await prisma.book.update({
+        where: { id: existingBook.id },
+        data: { language: suppliedLanguage },
+      });
+      existingBook.language = suppliedLanguage;
     }
 
     const existingLibrary =
@@ -1822,7 +1882,7 @@ logger.info({
             automaticCover?.publicationYear ?? null,
           totalPages: paginas > 0 ? paginas : null,
 
-          language: automaticCover?.language ?? null,
+          language: suppliedLanguage || automaticCover?.language || null,
         },
       });
 
@@ -2085,6 +2145,10 @@ export async function editarLibro(data: any) {
   const paginas = Number(data.paginas || data.totalPages || 0);
   const isbnFueEnviado = Object.prototype.hasOwnProperty.call(data, 'isbn');
   const isbn = String(data.isbn || '').trim() || null;
+  // El idioma elegido a mano por la usuaria tiene prioridad, igual que el
+  // isbn/la portada: solo lo tocamos si el cliente lo envía explícitamente.
+  const idiomaFueEnviado = Object.prototype.hasOwnProperty.call(data, 'idioma');
+  const idioma = String(data.idioma || '').trim() || null;
 
   if (paginasFueEnviada && (paginas < 0 || !Number.isInteger(paginas))) {
     return { ok: false, mensaje: 'El número de páginas no es válido' };
@@ -2244,6 +2308,8 @@ const editResult = await prisma.$transaction(async (tx) => {
       null,
 
     isbn: isbnFueEnviado ? isbn : actual.isbn,
+
+    language: idiomaFueEnviado ? idioma : actual.language,
 
     totalPages: paginasFueEnviada
       ? paginas > 0

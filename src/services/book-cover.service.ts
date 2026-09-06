@@ -229,6 +229,47 @@ function buildCoverUrl(coverId?: number) {
   return `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`;
 }
 
+// OpenLibrary devuelve el idioma en código MARC de 3 letras (spa, eng, fre…),
+// no en ISO 639-1. Lo normalizamos para que coincida con lo que espera el
+// resto de la app (es, en, fr…).
+const MARC_TO_ISO_639_1: Record<string, string> = {
+  spa: 'es',
+  eng: 'en',
+  fre: 'fr',
+  fra: 'fr',
+  ger: 'de',
+  deu: 'de',
+  ita: 'it',
+  por: 'pt',
+  dut: 'nl',
+  nld: 'nl',
+  kor: 'ko',
+  rus: 'ru',
+  cat: 'ca',
+  baq: 'eu',
+  eus: 'eu',
+  glg: 'gl',
+  jpn: 'ja',
+  chi: 'zh',
+  zho: 'zh',
+  ara: 'ar',
+  swe: 'sv',
+  nor: 'no',
+  dan: 'da',
+  fin: 'fi',
+  pol: 'pl',
+  gre: 'el',
+  ell: 'el',
+  tur: 'tr',
+};
+
+function normalizeLanguageCode(code: string | undefined) {
+  if (!code) return null;
+  const normalized = code.trim().toLowerCase();
+  if (!normalized) return null;
+  return MARC_TO_ISO_639_1[normalized] ?? normalized;
+}
+
 function buildCandidate(
   searchedTitle: string,
   document: OpenLibraryDocument,
@@ -270,10 +311,11 @@ function buildCandidate(
     isbn: selectIsbn(document.isbn),
     publicationYear:
       document.first_publish_year ?? null,
-    language:
+    language: normalizeLanguageCode(
       document.language?.includes('spa')
-        ? 'es'
-        : document.language?.[0] ?? null,
+        ? 'spa'
+        : document.language?.[0],
+    ),
     score,
     exactTitle:
       normalizeText(searchedTitle) ===
