@@ -370,7 +370,7 @@ export async function getLibrosGlobal(usuario: string) {
 async function _getLibrosGlobal(usuario: string) {
   const user = await prisma.user.findUnique({
     where: { name: usuario.trim() },
-    select: { id: true },
+    select: { id: true, activeClubId: true },
   });
 
   const library = await prisma.library.findMany({
@@ -388,6 +388,13 @@ async function _getLibrosGlobal(usuario: string) {
   return library.map((item) => ({
     bookId: item.book.id,
     usuario: item.user.name,
+    // Vista ClubReads: mezcla lectoras de todos los clubes. Solo revelamos
+    // el nombre de quienes comparten club con quien pregunta; el resto se
+    // agrupa en el cliente como "+N de otros clubes" para no exponer con
+    // quién lee gente de clubes ajenos al tuyo.
+    mismoClub: Boolean(
+      user?.activeClubId && item.user.activeClubId === user.activeClubId,
+    ),
     libro: item.book.title,
     autor: item.book.author?.name ?? '',
     genero: item.book.genre.name,
@@ -424,7 +431,7 @@ export async function getLibrosFinalizadosTodosGlobal(usuario: string) {
 async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
   const user = await prisma.user.findUnique({
     where: { name: usuario.trim() },
-    select: { id: true },
+    select: { id: true, activeClubId: true },
   });
 
   const library = await prisma.library.findMany({
@@ -436,7 +443,7 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
       userId: true,
       readingFormat: true,
       finishedAt: true,
-      user: { select: { name: true, avatarUrl: true } },
+      user: { select: { name: true, avatarUrl: true, activeClubId: true } },
       book: {
         select: {
           id: true,
@@ -469,6 +476,10 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
     return {
       bookId: item.book.id,
       usuario: item.user.name,
+      // Vista ClubReads: ver comentario en _getLibrosGlobal.
+      mismoClub: Boolean(
+        user?.activeClubId && item.user.activeClubId === user.activeClubId,
+      ),
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
