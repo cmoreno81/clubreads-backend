@@ -897,11 +897,18 @@ export async function actualizarFechasLectura(params: {
       lectura.status === ReadingStatus.READING ||
       lectura.status === ReadingStatus.REREADING;
 
-    if (lectura.status !== ReadingStatus.FINISHED && !esLecturaActiva) {
+    // Una lectura abandonada también guarda su fecha de cierre en
+    // finishedAt (igual que una terminada), así que se edita del mismo modo.
+    const esEditable =
+      esLecturaActiva ||
+      lectura.status === ReadingStatus.FINISHED ||
+      lectura.status === ReadingStatus.ABANDONED;
+
+    if (!esEditable) {
       return {
         ok: false,
         mensaje:
-          'Solo se pueden editar lecturas activas o terminadas',
+          'Solo se pueden editar lecturas activas, terminadas o abandonadas',
       };
     }
 
