@@ -15,6 +15,7 @@ import {
   quitarLibroPendientes,
   editarLibro,
   actualizarIdiomaLibro,
+  actualizarGeneroLibro,
   actualizarProgresoLectura,
   toggleProgressReaction,
 } from '../services/books.service.js';
@@ -198,6 +199,15 @@ export async function handleActualizarIdiomaLibro(req: Request, res: Response) {
   const data = await actualizarIdiomaLibro(
     String(body.bookId ?? ''),
     String(body.idioma ?? ''),
+  );
+  return res.json(data);
+}
+
+export async function handleActualizarGeneroLibro(req: Request, res: Response) {
+  const body = req.body ?? {};
+  const data = await actualizarGeneroLibro(
+    String(body.bookId ?? ''),
+    String(body.genero ?? ''),
   );
   return res.json(data);
 }

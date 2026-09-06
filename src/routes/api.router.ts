@@ -36,6 +36,7 @@ import {
   handleQuitarLibroPendientes,
   handleEditarLibro,
   handleActualizarIdiomaLibro,
+  handleActualizarGeneroLibro,
   handleActualizarProgresoLectura,
   handleToggleProgressReaction,
   handleActualizarPaginaLibrary,
@@ -532,6 +533,9 @@ export async function handleApi(
 
       case 'actualizarIdiomaLibro':
         return handleActualizarIdiomaLibro(req, res);
+
+      case 'actualizarGeneroLibro':
+        return handleActualizarGeneroLibro(req, res);
 
       case 'anadirLibroExistente':
         return handleAnadirLibroExistente(req, res);

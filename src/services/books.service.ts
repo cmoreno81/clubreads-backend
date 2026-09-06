@@ -995,6 +995,47 @@ export async function actualizarIdiomaLibro(bookId: string, idioma: string) {
   return { ok: true, idioma: language };
 }
 
+/**
+ * Corrige el género de un libro del catálogo desde la tarjeta, sin pasar por
+ * el formulario completo. Es un dato de catálogo, no de biblioteca personal:
+ * afecta a todo el mundo que tenga ese libro.
+ */
+export async function actualizarGeneroLibro(bookId: string, genero: string) {
+  const id = String(bookId || '').trim();
+  const genreName = String(genero || '').trim();
+
+  if (!id) {
+    return { ok: false, mensaje: 'Falta el identificador del libro' };
+  }
+  if (!genreName) {
+    return { ok: false, mensaje: 'Falta el género' };
+  }
+
+  const resolvedId = await resolveCanonicalBookId(prisma, id);
+  const book = await prisma.book.findFirst({
+    where: { id: resolvedId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!book) {
+    return { ok: false, mensaje: 'Libro no encontrado' };
+  }
+
+  const genre = await prisma.genre.upsert({
+    where: { name: genreName },
+    update: {},
+    create: { name: genreName },
+  });
+
+  await prisma.book.update({
+    where: { id: book.id },
+    data: { genreId: genre.id },
+  });
+
+  invalidateAllLibraryCaches();
+
+  return { ok: true, genero: genreName };
+}
+
 export async function iniciarLectura(
   usuario: string,
   libro: string,
