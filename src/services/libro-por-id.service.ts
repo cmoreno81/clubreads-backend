@@ -55,7 +55,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
             series: { select: { name: true } },
           },
         },
-        user: { select: { name: true, avatarUrl: true } },
+        user: { select: { name: true, avatarUrl: true, activeClubId: true } },
       },
     }),
 
@@ -89,7 +89,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
             },
           },
         },
-        user: { select: { name: true, avatarUrl: true } },
+        user: { select: { name: true, avatarUrl: true, activeClubId: true } },
       },
     }),
 
@@ -127,36 +127,51 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
     return 'PENDIENTE';
   };
 
-  const libros = libraryEntries.map((item) => ({
-    bookId: item.book.id,
-    usuario: item.user.name,
-    libro: item.book.title,
-    autor: item.book.author?.name ?? '',
-    genero: item.book.genre.name,
-    saga: item.book.series?.name ?? '',
-    numSaga: item.book.seriesOrder ?? '',
-    autoconclusivo: item.book.standalone ? 'Si' : 'No',
-    prioridad: priorityToFlutter(item.priority),
-    formato: formatToFlutter(item.readingFormat),
-    leyendo: statusToFlutter(item.status),
-    estado: statusToFlutter(item.status),
-    valoracion: '',
-    fechaAlta: item.book.createdAt.toISOString(),
-    startedAt: item.startedAt?.toISOString() ?? '',
-    pausedAt: item.pausedAt?.toISOString() ?? '',
-    pauseReason: item.pauseReason ?? '',
-    yaLoTengo: item.userId === user.id,
-    goodreads: item.book.goodreadsUrl ?? '',
-    coverUrl: item.book.coverUrl ?? '',
-    avatarUrl: item.user.avatarUrl ?? '',
-    paginas: item.book.totalPages,
-  }));
+  // Igual que en la vista ClubReads: mezclamos lectoras de todos los clubes,
+  // pero solo revelamos nombre y foto de quienes comparten club con quien
+  // pregunta. El resto se anonimiza ya desde el backend, nunca solo en el
+  // cliente, para que ninguna versión de la app filtre con quién lee gente
+  // de otros clubes.
+  const libros = libraryEntries.map((item) => {
+    const mismoClub = Boolean(
+      user.activeClubId && item.user.activeClubId === user.activeClubId,
+    );
+    return {
+      bookId: item.book.id,
+      usuario: mismoClub ? item.user.name : 'Lectora de otro club',
+      mismoClub,
+      libro: item.book.title,
+      autor: item.book.author?.name ?? '',
+      genero: item.book.genre.name,
+      saga: item.book.series?.name ?? '',
+      numSaga: item.book.seriesOrder ?? '',
+      autoconclusivo: item.book.standalone ? 'Si' : 'No',
+      prioridad: priorityToFlutter(item.priority),
+      formato: formatToFlutter(item.readingFormat),
+      leyendo: statusToFlutter(item.status),
+      estado: statusToFlutter(item.status),
+      valoracion: '',
+      fechaAlta: item.book.createdAt.toISOString(),
+      startedAt: item.startedAt?.toISOString() ?? '',
+      pausedAt: item.pausedAt?.toISOString() ?? '',
+      pauseReason: item.pauseReason ?? '',
+      yaLoTengo: item.userId === user.id,
+      goodreads: item.book.goodreadsUrl ?? '',
+      coverUrl: item.book.coverUrl ?? '',
+      avatarUrl: mismoClub ? item.user.avatarUrl ?? '' : '',
+      paginas: item.book.totalPages,
+    };
+  });
 
   const finalizados = completions.map((item) => {
     const review = item.book.reviews.find((r) => r.userId === item.userId);
+    const mismoClub = Boolean(
+      user.activeClubId && item.user.activeClubId === user.activeClubId,
+    );
     return {
       bookId: item.book.id,
-      usuario: item.user.name,
+      usuario: mismoClub ? item.user.name : 'Lectora de otro club',
+      mismoClub,
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
@@ -171,7 +186,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
       goodreads: item.book.goodreadsUrl ?? '',
       fecha: item.finishedAt ?? '',
       coverUrl: item.book.coverUrl ?? '',
-      avatarUrl: item.user.avatarUrl ?? '',
+      avatarUrl: mismoClub ? item.user.avatarUrl ?? '' : '',
       paginas: item.book.totalPages,
       yaLoTengo: item.userId === user.id,
       mes: item.finishedAt
