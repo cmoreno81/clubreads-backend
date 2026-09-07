@@ -236,6 +236,7 @@ export async function getGeneralDashboard(userId: string) {
     personalLibrary,
     seriesLibrary,
     communityFormats,
+    communityLanguages,
     latestBooks,
     hiddenSeries,
     trendingAuthorsRaw,
@@ -385,6 +386,16 @@ export async function getGeneralDashboard(userId: string) {
         where: { readingFormat: { not: null } },
         _count: { id: true },
       }),
+      // El idioma vive en Book, no en Library, así que groupBy no sirve
+      // (no agrupa por campos de una relación): usamos SQL directo.
+      prisma.$queryRaw<{ language: string; count: bigint }[]>`
+        SELECT b."language" AS language, COUNT(*)::bigint AS count
+        FROM "Library" l
+        JOIN "Book" b ON b.id = l."bookId"
+        WHERE b."language" IS NOT NULL AND b."deletedAt" IS NULL
+        GROUP BY b."language"
+        ORDER BY count DESC
+      `,
       // Las incorporaciones son altas reales en bibliotecas personales. El
       // catálogo también recibe libros desde sincronizadores externos y esos
       // deben mostrarse en «Próximos lanzamientos», no en este bloque.
@@ -889,6 +900,16 @@ export async function getGeneralDashboard(userId: string) {
           )?._count.id ?? 0,
         total: communityFormats.reduce(
           (sum, item) => sum + item._count.id,
+          0,
+        ),
+      },
+      idiomas: {
+        desglose: communityLanguages.map(({ language, count }) => ({
+          codigo: language,
+          cantidad: Number(count),
+        })),
+        total: communityLanguages.reduce(
+          (sum, item) => sum + Number(item.count),
           0,
         ),
       },
