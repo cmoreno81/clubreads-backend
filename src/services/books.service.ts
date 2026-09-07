@@ -613,7 +613,9 @@ async function _getLibros(usuario: string) {
 
     goodreads: item.book.goodreadsUrl ?? '',
     coverUrl: item.book.coverUrl ?? '',
-    idioma: item.book.language ?? '',
+    // El idioma personal (el de la edición que leyó ESTA lectora) tiene
+    // prioridad sobre el de referencia de la ficha, si difiere.
+    idioma: item.personalLanguage ?? item.book.language ?? '',
     avatarUrl: item.user.avatarUrl ?? '',
     paginas: item.book.totalPages,
   }));
@@ -685,7 +687,7 @@ export async function getLibrosFinalizados(usuario: string) {
       goodreads: item.book.goodreadsUrl ?? '',
       fecha: item.finishedAt ?? '',
       coverUrl: item.book.coverUrl ?? '',
-      idioma: item.book.language ?? '',
+      idioma: item.personalLanguage ?? item.book.language ?? '',
       avatarUrl: item.user.avatarUrl ?? '',
       paginas: item.book.totalPages,
       yaLoTengo: item.userId === user?.id,
@@ -723,6 +725,7 @@ async function _getLibrosFinalizadosTodos(usuario: string) {
       createdAt: true,   // cuándo el usuario añadió el libro a su biblioteca
       readingFormat: true,
       finishedAt: true,
+      personalLanguage: true,
       user: { select: { name: true, avatarUrl: true } },
       book: {
         select: {
@@ -787,7 +790,7 @@ async function _getLibrosFinalizadosTodos(usuario: string) {
       goodreads: item.book.goodreadsUrl ?? '',
       fecha: item.finishedAt ?? '',
       coverUrl: item.book.coverUrl ?? '',
-      idioma: item.book.language ?? '',
+      idioma: item.personalLanguage ?? item.book.language ?? '',
       avatarUrl: item.user.avatarUrl ?? '',
       paginas: item.book.totalPages,
       yaLoTengo: item.userId === user?.id,
@@ -818,6 +821,7 @@ export async function getLibrosFinalizadosPage(
       userId: true,
       readingFormat: true,
       finishedAt: true,
+      personalLanguage: true,
       user: { select: { name: true, avatarUrl: true } },
       book: {
         select: {
@@ -869,7 +873,7 @@ export async function getLibrosFinalizadosPage(
         goodreads: item.book.goodreadsUrl ?? '',
         fecha: item.finishedAt ?? '',
         coverUrl: item.book.coverUrl ?? '',
-        idioma: item.book.language ?? '',
+        idioma: item.personalLanguage ?? item.book.language ?? '',
         avatarUrl: item.user.avatarUrl ?? '',
         paginas: item.book.totalPages,
         yaLoTengo: item.userId === user?.id,
@@ -932,14 +936,18 @@ export async function anadirLibroExistente(
     };
   }
 
-  // El idioma elegido a mano por la usuaria tiene prioridad sobre el que
-  // hubiera detectado automáticamente al crearse el libro.
+  // El idioma elegido a mano por la usuaria solo rellena la ficha si esta
+  // aún no tenía uno. Si ya tenía uno distinto, se guarda como idioma
+  // personal de esta lectora en vez de sobrescribirlo para todo el mundo.
   const suppliedLanguage = String(idioma || '').trim();
-  if (suppliedLanguage && suppliedLanguage !== book.language) {
+  let personalLanguage: string | null = null;
+  if (suppliedLanguage && !book.language) {
     await prisma.book.update({
       where: { id: book.id },
       data: { language: suppliedLanguage },
     });
+  } else if (suppliedLanguage && suppliedLanguage !== book.language) {
+    personalLanguage = suppliedLanguage;
   }
 
   await prisma.library.create({
@@ -949,6 +957,7 @@ export async function anadirLibroExistente(
       status: ReadingStatus.PENDING,
       priority: priorityFromFlutter(prioridad),
       readingFormat: formatFromFlutter(formato),
+      personalLanguage,
     },
   });
 
@@ -1767,13 +1776,21 @@ export async function crearLibro(data: any) {
       existingBook.coverUrl = suppliedCoverUrl;
     }
 
-    // El idioma elegido a mano por la usuaria tiene prioridad, igual que la portada.
-    if (suppliedLanguage && suppliedLanguage !== existingBook.language) {
+    // El idioma elegido a mano por la usuaria tiene prioridad sobre el
+    // detectado automáticamente SOLO si la ficha aún no tenía uno asignado:
+    // ahí no hay conflicto, es rellenar un dato que faltaba.
+    // Si la ficha YA tenía un idioma distinto (p.ej. otra lectora ya lo puso
+    // en español y esta lo ha leído en inglés), NO lo sobrescribimos para
+    // todo el mundo: se guarda como su idioma personal más abajo.
+    let personalLanguage: string | null = null;
+    if (suppliedLanguage && !existingBook.language) {
       await prisma.book.update({
         where: { id: existingBook.id },
         data: { language: suppliedLanguage },
       });
       existingBook.language = suppliedLanguage;
+    } else if (suppliedLanguage && suppliedLanguage !== existingBook.language) {
+      personalLanguage = suppliedLanguage;
     }
 
     const existingLibrary =
@@ -1818,6 +1835,7 @@ export async function crearLibro(data: any) {
         status: ReadingStatus.PENDING,
         priority: priorityFromFlutter(data.prioridad),
         readingFormat: formatFromFlutter(data.formato),
+        personalLanguage,
       },
     });
 

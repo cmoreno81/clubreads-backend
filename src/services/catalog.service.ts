@@ -420,15 +420,20 @@ export async function importCatalogBook(
   if (!resolved.ok) return resolved;
   const book = resolved.book;
 
-  // El idioma elegido a mano por la usuaria tiene prioridad sobre el que
-  // trajera el catálogo externo (Google Books/OpenLibrary) o una importación.
+  // El idioma elegido a mano por la usuaria solo se aplica a la ficha
+  // compartida si esta aún no tenía uno (rellenar un dato que faltaba).
+  // Si la ficha YA tenía un idioma distinto, NO lo sobrescribimos para
+  // todo el mundo: se guarda como idioma personal de esta lectora.
   const suppliedLanguage = String(data.idioma ?? '').trim();
-  if (suppliedLanguage && suppliedLanguage !== book.language) {
+  let personalLanguage: string | null = null;
+  if (suppliedLanguage && !book.language) {
     await prisma.book.update({
       where: { id: book.id },
       data: { language: suppliedLanguage },
     });
     book.language = suppliedLanguage;
+  } else if (suppliedLanguage && suppliedLanguage !== book.language) {
+    personalLanguage = suppliedLanguage;
   }
 
   const existing = await prisma.library.findUnique({
@@ -471,6 +476,7 @@ export async function importCatalogBook(
         status: ReadingStatus.PENDING,
         priority: priorityFromFlutter(data.prioridad),
         readingFormat: formatFromFlutter(data.formato),
+        personalLanguage,
       },
     });
   } catch (e: unknown) {

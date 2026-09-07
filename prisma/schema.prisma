@@ -601,6 +601,10 @@ model Library {
 
   isFavorite Boolean @default(false)
 
+  /// Idioma en el que ESTA lectora leyó su copia, cuando difiere del idioma
+  /// de referencia de la ficha (Book.language). Null = usa el de la ficha.
+  personalLanguage String?
+
   lastProgress Int?
   currentPage  Int?
 
