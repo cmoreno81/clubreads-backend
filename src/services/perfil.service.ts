@@ -1,4 +1,4 @@
-import { ClubType, ReadingStatus } from '@prisma/client';
+import { ClubType, ProfileVisibility, ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
 import { backgroundError } from '../logging/logger.js';
@@ -132,6 +132,14 @@ export async function getPerfilUsuario(
     return {
       ok: false,
       mensaje: 'Usuaria no encontrada',
+    };
+  }
+
+  if (!ownProfile && user.profileVisibility === ProfileVisibility.PRIVADO) {
+    return {
+      ok: false,
+      mensaje: 'Esta usuaria ha marcado su perfil como privado',
+      privado: true,
     };
   }
 
@@ -676,9 +684,12 @@ export async function getPerfilHistorialPage(
       name: nombre,
       ...(club ? { clubMemberships: { some: { clubId: club.id } } } : {}),
     },
-    select: { id: true },
+    select: { id: true, profileVisibility: true },
   });
   if (!user) return { items: [], nextCursor: null, hasMore: false };
+  if (!ownProfile && user.profileVisibility === ProfileVisibility.PRIVADO) {
+    return { items: [], nextCursor: null, hasMore: false };
+  }
 
   const rows = await prisma.readingCompletion.findMany({
     where: {
@@ -1469,13 +1480,25 @@ export async function getFavoritosUsuario(params: {
   const user = profileId?.trim()
     ? await prisma.user.findUnique({
         where: { id: profileId.trim() },
-        select: { id: true, clubMemberships: { select: { clubId: true } } },
+        select: {
+          id: true,
+          profileVisibility: true,
+          clubMemberships: { select: { clubId: true } },
+        },
       })
     : await prisma.user.findFirst({
         where: { name: usuario.trim() },
-        select: { id: true, clubMemberships: { select: { clubId: true } } },
+        select: {
+          id: true,
+          profileVisibility: true,
+          clubMemberships: { select: { clubId: true } },
+        },
       });
   if (!user) return { ok: false, favoritos: [] };
+
+  if (user.id !== callerUserId && user.profileVisibility === ProfileVisibility.PRIVADO) {
+    return { ok: false, favoritos: [] };
+  }
 
   // El perfil consultado debe compartir al menos un club con quien pregunta —
   // si no, cualquier usuaria autenticada podría leer los favoritos de
@@ -1545,4 +1568,30 @@ export async function guardarPersonalidadLectora(params: {
   });
 
   return { ok: true, arquetipo };
+}
+
+// ─────────────────────────────────────────────
+// Privacidad del perfil (Ajustes)
+// ─────────────────────────────────────────────
+
+export async function getPrivacidadPerfil(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { profileVisibility: true },
+  });
+  return {
+    ok: true,
+    visibilidad: user?.profileVisibility ?? ProfileVisibility.CLUB,
+  };
+}
+
+export async function actualizarPrivacidadPerfil(
+  userId: string,
+  visibilidad: ProfileVisibility,
+) {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { profileVisibility: visibilidad },
+  });
+  return { ok: true, visibilidad };
 }

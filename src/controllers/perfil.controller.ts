@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { ProfileVisibility } from '@prisma/client';
 
 import {
   actualizarAvatarPerfil,
@@ -11,6 +12,8 @@ import {
   getFavoritosUsuario,
   getFavoritosDelClub,
   guardarPersonalidadLectora,
+  getPrivacidadPerfil,
+  actualizarPrivacidadPerfil,
 } from '../services/perfil.service.js';
 import { requestUserName } from '../middleware/auth.middleware.js';
 import {
@@ -151,4 +154,24 @@ export async function handleGuardarPersonalidadLectora(req: Request, res: Respon
   const arquetipo = String(req.body?.arquetipo ?? req.query?.arquetipo ?? '');
   const data = await guardarPersonalidadLectora({ usuario, arquetipo });
   return res.json(data);
+}
+
+export async function handleGetPrivacidadPerfil(req: Request, res: Response) {
+  return res.json(await getPrivacidadPerfil(req.auth!.userId));
+}
+
+export async function handleActualizarPrivacidadPerfil(
+  req: Request,
+  res: Response,
+) {
+  const visibilidad = String(req.body?.visibilidad ?? '');
+  if (
+    visibilidad !== ProfileVisibility.CLUB &&
+    visibilidad !== ProfileVisibility.PRIVADO
+  ) {
+    return res.status(400).json({ ok: false, mensaje: 'Valor de privacidad no válido' });
+  }
+  return res.json(
+    await actualizarPrivacidadPerfil(req.auth!.userId, visibilidad),
+  );
 }

@@ -378,6 +378,14 @@ model User {
 
   activeClub Club? @relation("ActiveClub", fields: [activeClubId], references: [id], onDelete: SetNull)
 
+  /// Tipos de notificación que la usuaria ha desactivado. Vacío = todas activas (default).
+  notificationsDisabled NotificationType[] @default([])
+
+  /// Quién puede ver el perfil y las estadísticas de esta usuaria.
+  /// CLUB = solo miembros de su club actual (comportamiento de siempre).
+  /// PRIVADO = nadie más que ella misma.
+  profileVisibility ProfileVisibility @default(CLUB)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1184,6 +1192,11 @@ enum NotificationType {
   NUEVA_MIEMBRO
   LOGRO_DESBLOQUEADO
   CLUB_BOOK_OF_YEAR
+}
+
+enum ProfileVisibility {
+  CLUB
+  PRIVADO
 }
 
 model Notification {

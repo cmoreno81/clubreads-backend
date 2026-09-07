@@ -78,6 +78,8 @@ import {
   handleGetFavoritos,
   handleGetFavoritosDelClub,
   handleGuardarPersonalidadLectora,
+  handleGetPrivacidadPerfil,
+  handleActualizarPrivacidadPerfil,
 } from '../controllers/perfil.controller.js';
 
 import {
@@ -130,7 +132,7 @@ import {
   handleConfirmGoodreadsImport,
   handlePreviewGoodreadsImport,
 } from '../controllers/goodreads-import.controller.js';
-import { handleEliminarNotificacion, handleEliminarTodasNotificaciones, handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas } from '../controllers/notifications.controller.js';
+import { handleEliminarNotificacion, handleEliminarTodasNotificaciones, handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas, handleGetPreferenciasNotificacion, handleActualizarPreferenciaNotificacion } from '../controllers/notifications.controller.js';
 import { handleGetSeriesOverrides, handleRemoveSeriesOverride, handleSetSeriesOverride } from '../controllers/series-override.controller.js';
 import { handleGetHiddenSeries, handleHideSeries, handleShowSeries, handleRemoveSeries, } from '../controllers/hidden-user-series.controller.js';
 import { handleSaveUserSeriesOrder } from '../controllers/user-series-order.controller.js';
@@ -185,6 +187,8 @@ export const POST_ONLY_ACTIONS = new Set([
   'marcarTodasLeidas',
   'eliminarNotificacion',
   'eliminarTodasNotificaciones',
+  'actualizarPreferenciaNotificacion',
+  'actualizarPrivacidadPerfil',
   'importarLibroCatalogo',
   'previsualizarImportacionGoodreads',
   'confirmarImportacionGoodreads',
@@ -381,7 +385,23 @@ export async function handleApi(
 
       case 'eliminarTodasNotificaciones':
         if (!req.auth) return requireAuthentication(req, res, () => {});
-        return handleEliminarTodasNotificaciones(req, res);  
+        return handleEliminarTodasNotificaciones(req, res);
+
+      case 'preferenciasNotificacion':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetPreferenciasNotificacion(req, res);
+
+      case 'actualizarPreferenciaNotificacion':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleActualizarPreferenciaNotificacion(req, res);
+
+      case 'privacidadPerfil':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetPrivacidadPerfil(req, res);
+
+      case 'actualizarPrivacidadPerfil':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleActualizarPrivacidadPerfil(req, res);
 
       case 'librosPorAutor':
         if (!req.auth) {

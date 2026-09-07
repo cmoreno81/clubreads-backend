@@ -10,6 +10,24 @@ import {
 // Crear notificaciones
 // ─────────────────────────────────────────────
 
+/**
+ * De una lista de userIds, devuelve solo quienes tienen ese tipo de
+ * notificación activado (no lo han desactivado en Ajustes).
+ */
+async function filterEnabledRecipients(
+  userIds: string[],
+  tipo: NotificationType,
+): Promise<string[]> {
+  if (userIds.length === 0) return [];
+  const disabled = await prisma.user.findMany({
+    where: { id: { in: userIds }, notificationsDisabled: { has: tipo } },
+    select: { id: true },
+  });
+  if (disabled.length === 0) return userIds;
+  const disabledSet = new Set(disabled.map((u) => u.id));
+  return userIds.filter((id) => !disabledSet.has(id));
+}
+
 /** Crea una notificación para un usuario */
 async function createNotification({
   userId,
@@ -28,6 +46,9 @@ async function createNotification({
   bookId?: string;
   extra?: Record<string, unknown>;
 }) {
+  const [habilitado] = await filterEnabledRecipients([userId], tipo);
+  if (!habilitado) return null;
+
   return prisma.notification.create({
     data: {
       userId,
@@ -67,9 +88,15 @@ async function notifyClubMembers({
     select: { userId: true },
   });
 
+  const destinatarios = await filterEnabledRecipients(
+    members.map((m) => m.userId),
+    tipo,
+  );
+  if (destinatarios.length === 0) return;
+
   await prisma.notification.createMany({
-    data: members.map((m) => ({
-      userId: m.userId,
+    data: destinatarios.map((userId) => ({
+      userId,
       tipo,
       titulo,
       mensaje,
@@ -498,9 +525,15 @@ export async function notifyLogroDesbloqueado({
 
   if (!user || members.length === 0) return;
 
+  const destinatarios = await filterEnabledRecipients(
+    members.map((m) => m.userId),
+    NotificationType.LOGRO_DESBLOQUEADO,
+  );
+  if (destinatarios.length === 0) return;
+
   await prisma.notification.createMany({
-    data: members.map((m) => ({
-      userId: m.userId,
+    data: destinatarios.map((userId) => ({
+      userId,
       tipo: 'LOGRO_DESBLOQUEADO' as const,
       titulo: 'Nuevo logro desbloqueado',
       mensaje: `${user.name} ha desbloqueado "${achievementTitle}" ${achievementIcon}`,
@@ -508,4 +541,63 @@ export async function notifyLogroDesbloqueado({
       extra: JSON.stringify({ achievementTitle, achievementIcon, logradoPor: user.name }),
     })),
   });
+}
+
+// ─────────────────────────────────────────────
+// Preferencias de notificación (Ajustes)
+// ─────────────────────────────────────────────
+
+/** Todos los tipos de notificación existentes, en el orden en que se muestran en Ajustes. */
+export const TIPOS_NOTIFICACION: NotificationType[] = [
+  NotificationType.CLUBVISION_ABIERTA,
+  NotificationType.CLUBVISION_RESULTADOS,
+  NotificationType.LECTURA_NUEVA,
+  NotificationType.LIBRO_NUEVO_BIBLIOTECA,
+  NotificationType.LIBRO_EMPEZADO,
+  NotificationType.LIBRO_TERMINADO,
+  NotificationType.COMENTARIO_LECTURA,
+  NotificationType.NUEVA_MIEMBRO,
+  NotificationType.LOGRO_DESBLOQUEADO,
+  NotificationType.CLUB_BOOK_OF_YEAR,
+];
+
+export async function getPreferenciasNotificacion(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { notificationsDisabled: true },
+  });
+  const desactivados = new Set(user?.notificationsDisabled ?? []);
+  return {
+    ok: true,
+    tipos: TIPOS_NOTIFICACION.map((tipo) => ({
+      tipo,
+      activado: !desactivados.has(tipo),
+    })),
+  };
+}
+
+export async function actualizarPreferenciaNotificacion(
+  userId: string,
+  tipo: NotificationType,
+  activado: boolean,
+) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { notificationsDisabled: true },
+  });
+  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+
+  const actuales = new Set(user.notificationsDisabled);
+  if (activado) {
+    actuales.delete(tipo);
+  } else {
+    actuales.add(tipo);
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { notificationsDisabled: { set: [...actuales] } },
+  });
+
+  return { ok: true };
 }

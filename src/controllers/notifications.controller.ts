@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { NotificationType } from '@prisma/client';
 import {
   getNotificaciones,
   getNotificacionesPage,
@@ -6,6 +7,9 @@ import {
   marcarLeida,
   marcarTodasLeidas,
   eliminarTodasNotificaciones,
+  getPreferenciasNotificacion,
+  actualizarPreferenciaNotificacion,
+  TIPOS_NOTIFICACION,
 } from '../services/notifications.service.js';
 import {
   hasExplicitPagination,
@@ -39,4 +43,22 @@ export async function handleMarcarTodasLeidas(req: Request, res: Response) {
 
 export async function handleEliminarTodasNotificaciones(req: Request, res: Response) {
   return res.json(await eliminarTodasNotificaciones(req.auth!.userId));
+}
+
+export async function handleGetPreferenciasNotificacion(req: Request, res: Response) {
+  return res.json(await getPreferenciasNotificacion(req.auth!.userId));
+}
+
+export async function handleActualizarPreferenciaNotificacion(
+  req: Request,
+  res: Response,
+) {
+  const tipo = String(req.body?.tipo ?? '') as NotificationType;
+  const activado = Boolean(req.body?.activado);
+  if (!TIPOS_NOTIFICACION.includes(tipo)) {
+    return res.status(400).json({ ok: false, mensaje: 'Tipo de notificación no válido' });
+  }
+  return res.json(
+    await actualizarPreferenciaNotificacion(req.auth!.userId, tipo, activado),
+  );
 }
