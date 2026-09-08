@@ -3,6 +3,13 @@ import { logger } from '../logging/logger.js';
 
 export type FeedbackCategory = 'bug' | 'sugerencia' | 'pregunta';
 
+export interface FeedbackImage {
+  /** Imagen adjunta en base64 */
+  base64: string;
+  /** Nombre del fichero de imagen (ej: "screenshot.jpg") */
+  fileName: string;
+}
+
 export interface FeedbackParams {
   /** Email de quien reporta (puede ser vacío si no está autenticada) */
   reporterEmail: string;
@@ -10,10 +17,8 @@ export interface FeedbackParams {
   category: FeedbackCategory;
   titulo: string;
   descripcion: string;
-  /** Imagen adjunta en base64 (opcional) */
-  imageBase64?: string;
-  /** Nombre del fichero de imagen (ej: "screenshot.jpg") */
-  imageFileName?: string;
+  /** Capturas adjuntas (0 o más) */
+  images?: FeedbackImage[];
 }
 
 export interface FeedbackResult {
@@ -248,12 +253,15 @@ export async function enviarFeedback(params: FeedbackParams): Promise<FeedbackRe
     return null;
   });
 
-  // Adjunta imagen al ticket si se proporcionó
-  if (ticketKey && params.imageBase64) {
-    const fileName = params.imageFileName || 'evidencia.jpg';
-    await attachImageToJiraIssue(ticketKey, params.imageBase64, fileName).catch((err) => {
-      logger.warn(err, 'Error al adjuntar imagen al ticket Jira');
-    });
+  // Adjunta las capturas al ticket, si se proporcionaron — una a una, para
+  // que un fallo puntual en una imagen no impida adjuntar el resto.
+  if (ticketKey && params.images?.length) {
+    for (const [index, image] of params.images.entries()) {
+      const fileName = image.fileName || `evidencia-${index + 1}.jpg`;
+      await attachImageToJiraIssue(ticketKey, image.base64, fileName).catch((err) => {
+        logger.warn(err, 'Error al adjuntar imagen al ticket Jira');
+      });
+    }
   }
 
   // Envía email de confirmación (no lanza error si falla)
