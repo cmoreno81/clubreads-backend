@@ -48,7 +48,7 @@ export async function getRanking(
 
   const deseados = new Map<string, number>();
   const leidos = new Map<string, number>();
-  const abandonados = new Map<string, number>();
+  const abandonados = new Map<string, { total: number; ultimoAbandono: Date }>();
   const bookDetails = new Map<
     string,
     { bookId: string; coverUrl: string }
@@ -73,10 +73,15 @@ for (const item of library) {
       );
     }
     if (item.status === ReadingStatus.ABANDONED) {
-      abandonados.set(
-        item.book.title,
-        (abandonados.get(item.book.title) ?? 0) + 1,
-      );
+      const current = abandonados.get(item.book.title);
+      const fecha = item.finishedAt ?? desde;
+      abandonados.set(item.book.title, {
+        total: (current?.total ?? 0) + 1,
+        ultimoAbandono:
+          current && current.ultimoAbandono > fecha
+            ? current.ultimoAbandono
+            : fecha,
+      });
     }
   }
 
@@ -159,12 +164,18 @@ for (const item of library) {
 
   const masAbandonados = top(
     Array.from(abandonados.entries())
-      .map(([libro, total]) => ({
+      .map(([libro, data]) => ({
         libro,
-        total,
+        total: data.total,
+        ultimoAbandono: data.ultimoAbandono,
         ...bookDetails.get(libro),
       }))
-      .sort((a, b) => b.total - a.total),
+      // Empate en nº de abandonos → gana el más reciente.
+      .sort(
+        (a, b) =>
+          b.total - a.total ||
+          b.ultimoAbandono.getTime() - a.ultimoAbandono.getTime(),
+      ),
   );
 
 const topLectoras = top(
