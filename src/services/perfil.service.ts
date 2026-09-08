@@ -12,7 +12,7 @@ import {
   subirAvatarDesdeUrl,
 } from './cloudinary.service.js';
 import { getCurrentClubContext } from './club-context.service.js';
-import { formatToFlutter } from './books.service.js';
+import { formatToFlutter, invalidateAllLibraryCaches } from './books.service.js';
 import { canonicalBookTitle } from './catalog.service.js';
 // Añadir import al inicio de perfil.service.ts:
 import { getUserSeriesOrders } from './user-series-order.service.js';
@@ -1103,6 +1103,11 @@ export async function actualizarFechasLectura(params: {
         },
       });
     });
+
+    // La biblioteca (Libros) tiene su propia caché de 30 s en memoria,
+    // independiente de esta edición: sin invalidarla, la valoración/picante
+    // recién guardados no se ven ahí hasta que expire sola.
+    invalidateAllLibraryCaches();
 
     return {
       ok: true,
