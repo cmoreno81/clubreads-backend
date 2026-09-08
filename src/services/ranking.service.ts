@@ -116,6 +116,27 @@ for (const item of library) {
     valoraciones.set(item.book.title, current);
   }
 
+  const picantes = new Map<
+    string,
+    {
+      suma: number;
+      total: number;
+    }
+  >();
+
+  for (const item of finalizaciones) {
+    if (item.spicyRating === null || item.spicyRating <= 0) continue;
+    const current = picantes.get(item.book.title) ?? {
+      suma: 0,
+      total: 0,
+    };
+
+    current.suma += item.spicyRating;
+    current.total += 1;
+
+    picantes.set(item.book.title, current);
+  }
+
   const masDeseados = top(
     Array.from(deseados.entries())
       .map(([libro, total]) => ({
@@ -168,6 +189,18 @@ const topLectoras = top(
       .sort((a, b) => b.media - a.media || b.votos - a.votos),
   );
 
+  const masPicantes = top(
+    Array.from(picantes.entries())
+      .map(([libro, data]) => ({
+        libro,
+        ...bookDetails.get(libro),
+        media: Number((data.suma / data.total).toFixed(2)),
+        votos: data.total,
+      }))
+      .filter((item) => item.votos >= 2)
+      .sort((a, b) => b.media - a.media || b.votos - a.votos),
+  );
+
   // ── Historial mensual: top lectoras por cada mes ya transcurrido ──
   const ahora = new Date();
   const mesActual = anio === ahora.getFullYear() ? ahora.getUTCMonth() : 11;
@@ -206,6 +239,7 @@ const topLectoras = top(
     masDeseados,
     masLeidos,
     mejorValorados,
+    masPicantes,
     masAbandonados,
     topLectoras,
     historicoMensual,
