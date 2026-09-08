@@ -3,6 +3,19 @@ import { prisma } from '../prisma.js';
 import { canonicalBookTitle } from './catalog.service.js';
 import { getCurrentClubContext } from './club-context.service.js';
 import { cleanText, cleanTextNullable, normalizeForComparison } from '../utils/text.js';
+import { logger } from '../logging/logger.js';
+
+// canonicalBookTitle() no toca la puntuación (se comparte con
+// importTitleVariants(), que sí necesita comas/dos puntos intactos para
+// distinguir subtítulo y saga). Aquí, en cambio, solo comparamos títulos
+// para "adoptar" la portada de un libro ya existente en el catálogo, así
+// que conviene ser más permisivos: dos títulos que solo difieren en una
+// coma, dos puntos, etc. (p. ej. "Todas las noches todas las ciudades"
+// tecleado a mano en la lista de deseos vs. "Todas las noches, todas las
+// ciudades" del catálogo) deben considerarse el mismo libro.
+function titleKeyForRecovery(value: string) {
+  return canonicalBookTitle(value).replace(/[,;:.!¡?¿'"«»]/g, ' ').replace(/\s+/g, ' ').trim();
+}
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -75,6 +88,7 @@ function formatItem(item: {
 
 async function recoverCatalogBook<
   T extends {
+    id?: string;
     title: string;
     author: string | null;
     coverUrl: string | null;
@@ -113,9 +127,9 @@ async function recoverCatalogBook<
     },
     take: 10,
   });
-  const normalizedTitle = canonicalBookTitle(item.title);
+  const normalizedTitle = titleKeyForRecovery(item.title);
   let catalogBook = exactTitleCandidates.find(
-    (candidate) => canonicalBookTitle(candidate.title) === normalizedTitle,
+    (candidate) => titleKeyForRecovery(candidate.title) === normalizedTitle,
   );
 
   if (!catalogBook?.coverUrl?.trim() && item.author?.trim()) {
@@ -135,11 +149,27 @@ async function recoverCatalogBook<
       take: 100,
     });
     catalogBook = authorCandidates.find(
-      (candidate) => canonicalBookTitle(candidate.title) === normalizedTitle,
+      (candidate) => titleKeyForRecovery(candidate.title) === normalizedTitle,
     );
   }
 
   if (!catalogBook?.coverUrl?.trim()) return item;
+
+  // Deja enlazado el libro encontrado para no tener que repetir esta misma
+  // búsqueda (hasta 100 candidatos por autor) en cada carga futura de la
+  // lista de deseos. Si falla el guardado, no rompe la respuesta: la
+  // portada se seguirá recuperando al vuelo en la siguiente carga.
+  if (item.id && !item.bookId) {
+    try {
+      await prisma.wishlistItem.update({
+        where: { id: item.id },
+        data: { bookId: catalogBook.id },
+      });
+    } catch (error) {
+      logger.warn(error, 'No se pudo enlazar el libro recuperado a la wishlist');
+    }
+  }
+
   return {
     ...item,
     bookId: item.bookId ?? catalogBook.id,
