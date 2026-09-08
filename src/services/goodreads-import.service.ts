@@ -323,10 +323,21 @@ function importedStatus(shelf: string) {
   return ReadingStatus.PENDING;
 }
 
+/**
+ * Un "read" cuenta como importable si tiene valoración — o siempre, cuando
+ * el archivo no es un export genuino de Goodreads (`requireRating = false`).
+ * Esto último cubre herramientas de terceros que imitan el formato de
+ * Goodreads (p. ej. ShelfBridge, para traer el histórico desde Fable) pero
+ * cuyo origen nunca exporta valoraciones por esta vía: exigir nota ahí
+ * dejaría fuera toda su lectura terminada, no solo la que de verdad no
+ * puntuaron.
+ */
 export function isRatedFinishedGoodreadsRow(
   row: Pick<GoodreadsRow, 'exclusiveShelf' | 'rating'>,
+  requireRating = true,
 ) {
-  return row.exclusiveShelf === 'read' && row.rating !== null;
+  if (row.exclusiveShelf !== 'read') return false;
+  return requireRating ? row.rating !== null : true;
 }
 
 function importedFinishedAt(row: GoodreadsRow, now = new Date()) {
@@ -606,11 +617,14 @@ export async function previewGoodreadsImport(
   userName: string,
   rawRows: unknown,
   rawSource: unknown,
+  requireRating = true,
 ) {
   const source = parseImportSource(rawSource);
   const user = await userForImport(userName);
   const rows = parseImportRows(rawRows);
-  const eligibleRows = rows.filter(isRatedFinishedGoodreadsRow);
+  const eligibleRows = rows.filter((row) =>
+    isRatedFinishedGoodreadsRow(row, requireRating),
+  );
   const items = await buildImportPreview(user.id, eligibleRows, source);
   return {
     ok: true,
@@ -785,11 +799,14 @@ export async function confirmGoodreadsImport(
   rawRows: unknown,
   rawResolutions?: unknown,
   rawSource?: unknown,
+  requireRating = true,
 ) {
   const source = parseImportSource(rawSource);
   const user = await userForImport(userName);
   const parsedRows = parseImportRows(rawRows);
-  const rows = parsedRows.filter(isRatedFinishedGoodreadsRow);
+  const rows = parsedRows.filter((row) =>
+    isRatedFinishedGoodreadsRow(row, requireRating),
+  );
   const resolutions = parseImportResolutions(rawResolutions);
   const validatedResolutions = new Map<number, string>();
   if (resolutions.size > 0) {

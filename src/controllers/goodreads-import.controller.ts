@@ -15,6 +15,7 @@ export async function handlePreviewGoodreadsImport(
       requestUserName(req),
       req.body?.libros,
       req.body?.source,
+      req.body?.requireRating !== false,
     ),
   );
 }
@@ -29,6 +30,7 @@ export async function handleConfirmGoodreadsImport(
       req.body?.libros,
       req.body?.resoluciones,
       req.body?.source,
+      req.body?.requireRating !== false,
     ),
   );
 }
