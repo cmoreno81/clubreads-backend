@@ -135,10 +135,14 @@ function buildChapters(
 export async function getLecturasActivas(usuario = '') {
   const { club } = await getCurrentClubContext(usuario);
   await synchronizeCurrentClubvision(usuario);
+  // Quien está releyendo cuenta igual que quien lee por primera vez: ambas
+  // son personas activamente leyendo este libro ahora mismo. Sin esto, una
+  // relectura + una lectura nueva del mismo libro sumaban solo 1 lectora en
+  // vez de 2, y la lectura libre nunca llegaba al mínimo para abrirse sola.
   const readingBooks = await prisma.library.groupBy({
     by: ['bookId'],
     where: {
-      status: ReadingStatus.READING,
+      status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] },
       user: { clubMemberships: { some: { clubId: club.id } } },
     },
     _count: {
@@ -237,7 +241,7 @@ export async function getLecturasActivas(usuario = '') {
   const compartidas = await prisma.library.groupBy({
     by: ['bookId'],
     where: {
-      status: ReadingStatus.READING,
+      status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] },
       user: { clubMemberships: { some: { clubId: club.id } } },
     },
     _count: {
