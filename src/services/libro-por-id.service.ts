@@ -3,6 +3,7 @@ import { prisma } from '../prisma.js';
 import { getCurrentClubContext } from './club-context.service.js';
 import { formatToFlutter } from './books.service.js';
 import { ratingToFlutter } from '../utils/rating.utils.js';
+import { spicyToFlutter } from '../utils/spicy.utils.js';
 
 /**
  * Devuelve los datos de un libro concreto para el usuario actual:
@@ -70,6 +71,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
         userId: true,
         readingFormat: true,
         finishedAt: true,
+        personalLanguage: true,
         book: {
           select: {
             id: true,
@@ -80,12 +82,13 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
             standalone: true,
             seriesOrder: true,
             createdAt: true,
+            language: true,
             author: { select: { name: true } },
             genre: { select: { name: true } },
             series: { select: { name: true } },
             reviews: {
               where: { deletedAt: null },
-              select: { userId: true, rating: true, review: true },
+              select: { userId: true, rating: true, spicyRating: true, review: true },
             },
           },
         },
@@ -179,6 +182,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
       valoracion: ratingToFlutter(review?.rating),
+      picante: spicyToFlutter(review?.spicyRating),
       formato: formatToFlutter(item.readingFormat),
       fechaAlta: item.book.createdAt.toISOString(),
       resena: review?.review ?? '',
@@ -186,6 +190,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
       goodreads: item.book.goodreadsUrl ?? '',
       fecha: item.finishedAt ?? '',
       coverUrl: item.book.coverUrl ?? '',
+      idioma: item.personalLanguage ?? item.book.language ?? '',
       avatarUrl: mismoClub ? item.user.avatarUrl ?? '' : '',
       paginas: item.book.totalPages,
       yaLoTengo: item.userId === user.id,

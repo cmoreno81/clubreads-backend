@@ -1087,6 +1087,96 @@ export async function actualizarGeneroLibro(bookId: string, genero: string) {
   return { ok: true, genero: genreName };
 }
 
+/**
+ * Edita la valoración/picante/reseña de un libro que la usuaria YA terminó,
+ * sin tocar su estado ni crear una nueva finalización. Existe para que la
+ * ficha del libro pueda ofrecer "editar mi valoración" sin obligar a pasar
+ * por "Otra vuelta" (relectura) — que crea un registro nuevo en vez de
+ * corregir el existente (así se generó el duplicado de Silvia).
+ */
+export async function actualizarValoracionLibro(params: {
+  usuario: string;
+  bookId: string;
+  valoracion?: unknown;
+  picante?: unknown;
+  resena?: unknown;
+}) {
+  const usuario = params.usuario.trim();
+  const bookId = String(params.bookId || '').trim();
+
+  if (!usuario) return { ok: false, mensaje: 'Falta la usuaria' };
+  if (!bookId) return { ok: false, mensaje: 'Falta el identificador del libro' };
+
+  const user = await prisma.user.findUnique({
+    where: { name: usuario },
+    select: { id: true },
+  });
+  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+
+  const resolvedBookId = await resolveCanonicalBookId(prisma, bookId);
+
+  const finalizacion = await prisma.readingCompletion.findFirst({
+    where: { userId: user.id, bookId: resolvedBookId },
+    orderBy: { finishedAt: 'desc' },
+  });
+
+  if (!finalizacion) {
+    return {
+      ok: false,
+      mensaje: 'Todavía no has terminado este libro',
+    };
+  }
+
+  const valoracionFueEnviada = params.valoracion !== undefined;
+  const picanteFueEnviado = params.picante !== undefined;
+  const resenaFueEnviada = params.resena !== undefined;
+
+  const rating = valoracionFueEnviada
+    ? ratingFromFlutter(String(params.valoracion ?? '').trim())
+    : finalizacion.rating;
+  const spicy = picanteFueEnviado
+    ? spicyFromFlutter(String(params.picante ?? '').trim())
+    : finalizacion.spicyRating;
+  const resena = resenaFueEnviada
+    ? String(params.resena ?? '').trim() || null
+    : finalizacion.review;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.readingCompletion.update({
+      where: { id: finalizacion.id },
+      data: { rating, spicyRating: spicy, review: resena },
+    });
+
+    // La Review "vigente" (la que se muestra en la ficha del libro) solo se
+    // toca si esta es la finalización más reciente — igual que en
+    // actualizarFechasLectura, para no pisar la reseña de una relectura
+    // posterior al editar una lectura antigua desde el historial.
+    const ultimaFinalizacion = await tx.readingCompletion.findFirst({
+      where: { userId: user.id, bookId: resolvedBookId },
+      orderBy: { finishedAt: 'desc' },
+      select: { id: true },
+    });
+    if (ultimaFinalizacion?.id !== finalizacion.id) return;
+
+    await tx.review.upsert({
+      where: { userId_bookId: { userId: user.id, bookId: resolvedBookId } },
+      update: { rating: rating ?? 0, spicyRating: spicy, review: resena, edited: true },
+      create: {
+        userId: user.id,
+        bookId: resolvedBookId,
+        rating: rating ?? 0,
+        spicyRating: spicy,
+        review: resena,
+        edited: true,
+      },
+    });
+  });
+
+  invalidateAllLibraryCaches();
+
+  return { ok: true };
+}
+
 export async function iniciarLectura(
   usuario: string,
   libro: string,

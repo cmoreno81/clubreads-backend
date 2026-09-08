@@ -16,6 +16,7 @@ import {
   editarLibro,
   actualizarIdiomaLibro,
   actualizarGeneroLibro,
+  actualizarValoracionLibro,
   actualizarProgresoLectura,
   toggleProgressReaction,
 } from '../services/books.service.js';
@@ -211,6 +212,18 @@ export async function handleActualizarGeneroLibro(req: Request, res: Response) {
     String(body.bookId ?? ''),
     String(body.genero ?? ''),
   );
+  return res.json(data);
+}
+
+export async function handleActualizarValoracionLibro(req: Request, res: Response) {
+  const body = req.body ?? {};
+  const data = await actualizarValoracionLibro({
+    usuario: requestUserName(req),
+    bookId: String(body.bookId ?? ''),
+    valoracion: body.valoracion,
+    picante: body.picante,
+    resena: body.resena,
+  });
   return res.json(data);
 }
 
