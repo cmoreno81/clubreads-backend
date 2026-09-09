@@ -87,3 +87,76 @@ test('las páginas 0 y total son válidas y superar el total se rechaza', async 
   assert.match(invalid.mensaje ?? '', /entre 0 y 100/);
   assert.equal(library.currentPage, 100);
 });
+
+test('avanzar páginas de verdad marca el check-in del día automáticamente', async () => {
+  const library = {
+    id: 'library-1', userId: 'user-1', bookId: 'book-1', currentPage: 10,
+    progressNote: null, book: { totalPages: 100 },
+  };
+  const checkins: Array<{ userId: string; date: string }> = [];
+  let checkinUpserts = 0;
+  const db = {
+    library: {
+      findFirst: async () => library,
+      update: async ({ data }: { data: { currentPage: number } }) => {
+        library.currentPage = data.currentPage;
+        return library;
+      },
+    },
+    progressReaction: { deleteMany: async () => ({ count: 0 }) },
+    book: { update: async () => library.book },
+    readingSession: { upsert: async () => ({}) },
+    dailyCheckin: {
+      upsert: async ({ create }: { create: { userId: string; date: string } }) => {
+        checkinUpserts++;
+        checkins.push(create);
+        return create;
+      },
+    },
+    $transaction: async (operations: Array<Promise<unknown>>) => Promise.all(operations),
+  };
+  const runtime = {
+    prismaClient: db as never,
+    now: () => new Date('2026-08-15T12:00:00.000Z'),
+  };
+
+  // Avanza páginas de verdad (10 -> 25): debe registrar el check-in de hoy.
+  await actualizarProgresoLectura('Ada', 'Libro', 25, '', 25, undefined, runtime);
+  assert.deepEqual(checkins, [{ userId: 'user-1', date: '2026-08-15' }]);
+
+  // Volver a mandar la misma página (sin avance real) no debe marcar de más
+  // — es idempotente porque es un upsert sobre la misma fecha, pero
+  // tampoco debería llamarse si no hubo páginas nuevas.
+  await actualizarProgresoLectura('Ada', 'Libro', 25, '', 25, undefined, runtime);
+  assert.equal(checkinUpserts, 1);
+});
+
+test('si falla el check-in automático, el progreso se guarda igualmente', async () => {
+  const library = {
+    id: 'library-1', userId: 'user-1', bookId: 'book-1', currentPage: 10,
+    progressNote: null, book: { totalPages: 100 },
+  };
+  const db = {
+    library: {
+      findFirst: async () => library,
+      update: async ({ data }: { data: { currentPage: number } }) => {
+        library.currentPage = data.currentPage;
+        return library;
+      },
+    },
+    progressReaction: { deleteMany: async () => ({ count: 0 }) },
+    book: { update: async () => library.book },
+    readingSession: { upsert: async () => ({}) },
+    dailyCheckin: {
+      upsert: async () => {
+        throw new Error('tabla no disponible');
+      },
+    },
+    $transaction: async (operations: Array<Promise<unknown>>) => Promise.all(operations),
+  };
+  const runtime = { prismaClient: db as never };
+
+  const result = await actualizarProgresoLectura('Ada', 'Libro', 30, '', 30, undefined, runtime);
+  assert.equal(result.ok, true);
+  assert.equal(library.currentPage, 30);
+});

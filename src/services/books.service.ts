@@ -1289,6 +1289,19 @@ export async function actualizarProgresoLectura(
     } catch {
       // Tabla ReadingSession aún no migrada — se ignora sin afectar el progreso
     }
+
+    // Avanzar páginas de verdad hoy cuenta como día leído para la racha,
+    // sin tener que ir aparte al mapa de calor a marcarlo a mano (idempotente:
+    // si ya había check-in hoy, no lo toca). Igual que arriba, best-effort.
+    try {
+      await db.dailyCheckin.upsert({
+        where: { userId_date: { userId: lectura.userId, date: today } },
+        create: { userId: lectura.userId, date: today },
+        update: {},
+      });
+    } catch {
+      // No debe romper el progreso si falla el check-in automático.
+    }
   }
 
   return { ok: true, progreso: porcentaje, paginaActual: pagina };
