@@ -128,13 +128,32 @@ export async function mergeBooks(sourceIdValue: string, canonicalIdValue: string
       },
     });
 
+    // Si el libro origen y el canónico están en idiomas distintos (el caso
+    // típico: misma novela en dos ediciones/idiomas), quien leía el origen
+    // dependía del idioma DEL LIBRO para saber en qué idioma lo leyó — no
+    // tenía por qué rellenar personalLanguage a mano, porque coincidía con
+    // el del libro. Al fusionar, ese libro desaparece y su fila pasa a
+    // apuntar al canónico (que puede estar en otro idioma), así que hay que
+    // "congelar" el idioma implícito del origen en personalLanguage para no
+    // perderlo silenciosamente.
+    const sourceLanguage = source.language?.trim() || null;
+    const canonicalLanguage = canonical.language?.trim() || null;
+    const inferredLanguage =
+      sourceLanguage && sourceLanguage !== canonicalLanguage ? sourceLanguage : null;
+
     for (const sourceLibrary of source.library) {
       const targetLibrary = await tx.library.findUnique({
         where: { userId_bookId: { userId: sourceLibrary.userId, bookId: canonicalId } },
         include: { progressReactions: true },
       });
       if (!targetLibrary) {
-        await tx.library.update({ where: { id: sourceLibrary.id }, data: { bookId: canonicalId } });
+        await tx.library.update({
+          where: { id: sourceLibrary.id },
+          data: {
+            bookId: canonicalId,
+            personalLanguage: sourceLibrary.personalLanguage ?? inferredLanguage,
+          },
+        });
         continue;
       }
       for (const reaction of sourceLibrary.progressReactions) {
@@ -152,6 +171,8 @@ export async function mergeBooks(sourceIdValue: string, canonicalIdValue: string
         data: {
           status: preferred.status,
           priority: preferred.priority,
+          personalLanguage:
+            targetLibrary.personalLanguage ?? sourceLibrary.personalLanguage ?? inferredLanguage,
           readingFormat: targetLibrary.readingFormat ?? sourceLibrary.readingFormat,
           startedAt: targetLibrary.startedAt ?? sourceLibrary.startedAt,
           finishedAt: targetLibrary.finishedAt ?? sourceLibrary.finishedAt,
