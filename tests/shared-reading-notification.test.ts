@@ -18,6 +18,13 @@ test('crear una lectura compartida avisa al club salvo a quien la crea', () => {
     notifications,
     /notifyLecturaCompartida[\s\S]*excludeUserId: creadoraUserId/,
   );
-  assert.match(notifications, /titulo: '📖 Nueva lectura compartida'/);
+  assert.match(notifications, /titulo: abiertaEnSolitario/);
+  assert.match(notifications, /'📖 Nueva lectura compartida'/);
+  assert.match(notifications, /'💬 Conversación abierta'/);
   assert.match(notifications, /tipo: NotificationType\.LECTURA_NUEVA/);
+});
+
+test('el aviso distingue si la lectura se abre en solitario o ya hay 2+ lectoras', () => {
+  assert.match(readings, /lectorasActivas/);
+  assert.match(readings, /abiertaEnSolitario: lectorasActivas < 2/);
 });

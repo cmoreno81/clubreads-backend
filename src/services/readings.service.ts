@@ -507,12 +507,24 @@ export async function crearLectura(data: {
   }
 
   if (user && created) {
+    // Antes solo se llegaba aquí con 2+ lectoras a la vez (era la única
+    // forma de crear una lectura libre); ahora también se puede abrir con
+    // una sola persona leyendo, así que el aviso al resto del club tiene
+    // que dejar claro si de momento va en solitario o si ya sois varias.
+    const lectorasActivas = await prisma.library.count({
+      where: {
+        bookId: book.id,
+        status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] },
+        user: { clubMemberships: { some: { clubId: club.id } } },
+      },
+    });
     void notifyLecturaCompartida({
       clubId: club.id,
       creadoraUserId: user.id,
       bookTitle: book.title,
       bookId: book.id,
       readingId: notificationReadingId,
+      abiertaEnSolitario: lectorasActivas < 2,
     }).catch(backgroundError('shared_reading_notification_failed'));
   }
 

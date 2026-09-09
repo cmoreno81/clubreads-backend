@@ -187,19 +187,28 @@ export async function notifyLecturaCompartida({
   bookTitle,
   bookId,
   readingId,
+  abiertaEnSolitario = false,
 }: {
   clubId: string;
   creadoraUserId: string;
   bookTitle: string;
   bookId: string;
   readingId?: string;
+  // true cuando quien la abre es, de momento, la única persona leyendo el
+  // libro (antes esto no podía pasar: solo se llegaba a crear una lectura
+  // libre una vez había 2+ lectoras a la vez, así que el aviso de "nueva
+  // lectura compartida" siempre era certero). El texto avisa de que aún no
+  // hay más gente, en vez de dar a entender que ya sois varias.
+  abiertaEnSolitario?: boolean;
 }) {
   await notifyClubMembers({
     clubId,
     excludeUserId: creadoraUserId,
     tipo: NotificationType.LECTURA_NUEVA,
-    titulo: '📖 Nueva lectura compartida',
-    mensaje: `Se ha abierto "${bookTitle}" en Lecturas compartidas.`,
+    titulo: abiertaEnSolitario ? '💬 Conversación abierta' : '📖 Nueva lectura compartida',
+    mensaje: abiertaEnSolitario
+      ? `Se ha abierto una conversación sobre "${bookTitle}" — únete si tú también lo estás leyendo.`
+      : `Se ha abierto "${bookTitle}" en Lecturas compartidas.`,
     bookId,
     extra: { bookTitle, ...(readingId ? { readingId } : {}) },
   });
