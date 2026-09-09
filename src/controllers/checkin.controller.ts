@@ -1,13 +1,28 @@
 import type { Request, Response } from 'express';
-import { doCheckIn, getCheckinHistory, getHeatmap, getWrapped } from '../services/checkin.service.js';
+import {
+  doCheckIn,
+  getCheckinHistory,
+  getHeatmap,
+  getWrapped,
+  undoCheckIn,
+} from '../services/checkin.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function handleDoCheckin(req: Request, res: Response) {
   const userId = req.auth!.userId;
   const note: string | undefined = req.body?.nota ?? req.query.nota as string | undefined;
+  const fecha: string | undefined = req.body?.fecha;
 
-  const result = await doCheckIn(userId, note);
+  const result = await doCheckIn(userId, note, fecha);
+  return res.json(result);
+}
+
+export async function handleUndoCheckin(req: Request, res: Response) {
+  const userId = req.auth!.userId;
+  const fecha: string = req.body?.fecha ?? '';
+
+  const result = await undoCheckIn(userId, fecha);
   return res.json(result);
 }
 

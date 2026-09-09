@@ -143,6 +143,7 @@ import {
 } from '../controllers/reading-challenge.controller.js';
 import {
   handleDoCheckin,
+  handleUndoCheckin,
   handleGetCheckinHistory,
   handleGetHeatmap,
   handleGetWrapped,
@@ -199,6 +200,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'crearClub',
   'crearEspacioPersonal',
   'doCheckin',
+  'undoCheckin',
   'unirseClub',
   'seleccionarClub',
   'invitacionClub',
@@ -782,6 +784,10 @@ export async function handleApi(
       case 'doCheckin':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleDoCheckin(req, res);
+
+      case 'undoCheckin':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleUndoCheckin(req, res);
 
       case 'historialCheckin':
         if (!req.auth) return requireAuthentication(req, res, () => {});

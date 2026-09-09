@@ -20,6 +20,46 @@ function yearEnd(year: number): Date {
   return new Date(`${year + 1}-01-01T00:00:00.000Z`);
 }
 
+// Cuántos días hacia atrás se puede marcar/desmarcar un check-in a
+// posteriori (incluye hoy). "Se me olvidó ayer" es el caso real que motivó
+// esto — una semana da margen sin abrir la puerta a reescribir la racha de
+// meses atrás.
+const EDITABLE_WINDOW_DAYS = 7;
+
+/**
+ * Valida que `fecha` (si se indica) sea una fecha "YYYY-MM-DD" real, no
+ * futura y dentro de la ventana editable. Sin `fecha`, usa hoy (siempre
+ * válido). Devuelve la fecha ya normalizada o un mensaje de error.
+ */
+export function resolveEditableDate(
+  fecha?: string,
+): { ok: true; date: string } | { ok: false; mensaje: string } {
+  if (!fecha || !fecha.trim()) return { ok: true, date: todayString() };
+
+  const trimmed = fecha.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return { ok: false, mensaje: 'Fecha no válida' };
+  }
+  const parsed = new Date(`${trimmed}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== trimmed) {
+    return { ok: false, mensaje: 'Fecha no válida' };
+  }
+
+  const today = new Date(`${todayString()}T00:00:00.000Z`);
+  const diffDays = Math.round((today.getTime() - parsed.getTime()) / 86_400_000);
+  if (diffDays < 0) {
+    return { ok: false, mensaje: 'No se puede marcar un día futuro' };
+  }
+  if (diffDays >= EDITABLE_WINDOW_DAYS) {
+    return {
+      ok: false,
+      mensaje: `Solo se pueden corregir los últimos ${EDITABLE_WINDOW_DAYS} días`,
+    };
+  }
+
+  return { ok: true, date: trimmed };
+}
+
 export type WrappedBookOfYearStatus =
   | 'NOT_STARTED'
   | 'IN_PROGRESS'
@@ -42,21 +82,41 @@ export function getWrappedBookOfYearStatus(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Registra el check-in del día de hoy (idempotente).
+ * Registra el check-in de un día (idempotente). Sin `fecha`, es el de hoy;
+ * con `fecha`, corrige un día de dentro de la ventana editable (p. ej. "se
+ * me olvidó marcar ayer") — ver [resolveEditableDate].
  * Devuelve el check-in y la racha actual.
  */
-export async function doCheckIn(userId: string, note?: string) {
-  const today = todayString();
+export async function doCheckIn(userId: string, note?: string, fecha?: string) {
+  const resolved = resolveEditableDate(fecha);
+  if (!resolved.ok) return { ok: false as const, mensaje: resolved.mensaje };
+  const { date } = resolved;
 
   const checkin = await prisma.dailyCheckin.upsert({
-    where: { userId_date: { userId, date: today } },
-    create: { userId, date: today, note: note?.trim() || null },
+    where: { userId_date: { userId, date } },
+    create: { userId, date, note: note?.trim() || null },
     update: { note: note?.trim() ?? undefined },
   });
 
   const streak = await getStreak(userId);
 
-  return { ok: true, date: today, checkin, streak };
+  return { ok: true, date, checkin, streak };
+}
+
+/**
+ * Deshace el check-in de un día dentro de la ventana editable (corregir
+ * una marca puesta por error). Idempotente: si ese día no tenía check-in,
+ * no falla. Devuelve la racha resultante.
+ */
+export async function undoCheckIn(userId: string, fecha: string) {
+  const resolved = resolveEditableDate(fecha);
+  if (!resolved.ok) return { ok: false as const, mensaje: resolved.mensaje };
+  const { date } = resolved;
+
+  await prisma.dailyCheckin.deleteMany({ where: { userId, date } });
+
+  const streak = await getStreak(userId);
+  return { ok: true as const, date, streak };
 }
 
 /**
@@ -211,9 +271,23 @@ export async function getHeatmap(userId: string, year: number) {
     levelMap.set(date, Math.min(4, current + 1));
   }
 
-  const days: { date: string; level: number }[] = [];
+  // Páginas reales leídas ese día, para que la ficha de cada día del mapa de
+  // calor pueda mostrarlas (varias sesiones del mismo día ya se agregan en
+  // ReadingSession, así que como mucho hay una entrada por fecha).
+  const pagesReadMap = new Map<string, number>();
+  for (const s of sessions) {
+    pagesReadMap.set(s.date, (pagesReadMap.get(s.date) ?? 0) + s.pagesRead);
+  }
+  const checkinDates = new Set(checkins.map((c) => c.date));
+
+  const days: { date: string; level: number; pagesRead: number; checkedIn: boolean }[] = [];
   for (const [date, level] of levelMap.entries()) {
-    days.push({ date, level });
+    days.push({
+      date,
+      level,
+      pagesRead: pagesReadMap.get(date) ?? 0,
+      checkedIn: checkinDates.has(date),
+    });
   }
   days.sort((a, b) => a.date.localeCompare(b.date));
 
