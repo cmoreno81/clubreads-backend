@@ -414,9 +414,11 @@ export async function syncAchievementsForUser(userId: string, userName: string, 
   if (!data.ok || !Array.isArray(data.achievements)) return;
 
   const newUnlocks: AchievementDefinition[] = [];
+  const unlockedIds = new Set<string>();
 
   for (const ach of data.achievements) {
     if (!ach.unlocked) continue;
+    unlockedIds.add(ach.id);
 
     const already = await prisma.achievementUnlock.findUnique({
       where: { userId_achievementId: { userId, achievementId: ach.id } },
@@ -428,6 +430,26 @@ export async function syncAchievementsForUser(userId: string, userName: string, 
       data: { userId, achievementId: ach.id },
     });
     newUnlocks.push(ach);
+  }
+
+  // Revocar logros persistidos que ya no correspondan — p. ej. al corregir
+  // una finalización marcada por error (Corregir finalización), el libro
+  // que hizo cruzar el umbral de un logro deja de contar, y ese logro no
+  // debería seguir marcado como conseguido.
+  const persistedUnlocks = await prisma.achievementUnlock.findMany({
+    where: {
+      userId,
+      achievementId: { in: data.achievements.map((a) => a.id) },
+    },
+    select: { achievementId: true },
+  });
+  const staleAchievementIds = persistedUnlocks
+    .map((u) => u.achievementId)
+    .filter((id) => !unlockedIds.has(id));
+  if (staleAchievementIds.length > 0) {
+    await prisma.achievementUnlock.deleteMany({
+      where: { userId, achievementId: { in: staleAchievementIds } },
+    });
   }
 
   // Disparar notificaciones para los nuevos desbloqueos

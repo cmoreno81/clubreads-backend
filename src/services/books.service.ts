@@ -1367,6 +1367,7 @@ export async function actualizarEstado(
 
 let startedReading = false;
 let finishedNotificationClubIds: string[] = [];
+let correctedFinalizationClubIds: string[] = [];
 
 await client.$transaction(async (tx) => {
   /*
@@ -1502,6 +1503,14 @@ await client.$transaction(async (tx) => {
       await tx.readingCompletion.delete({
         where: { id: lastCompletion.id },
       });
+      // La finalización borrada pudo haber desbloqueado algún logro (p. ej.
+      // "5 libros este mes"); sin re-sincronizar, el logro se queda marcado
+      // como conseguido aunque ya no corresponda.
+      const memberships = await tx.clubMember.findMany({
+        where: { userId: user.id },
+        select: { clubId: true },
+      });
+      correctedFinalizationClubIds = memberships.map(({ clubId }) => clubId);
     }
 
     const previousCompletion = await tx.readingCompletion.findFirst({
@@ -1691,6 +1700,15 @@ for (const clubId of finishedNotificationClubIds) {
 // Sincronizar logros al terminar un libro
 if (finishedNotificationClubIds.length > 0) {
   for (const clubId of finishedNotificationClubIds) {
+    void syncAchievementsForUser(user.id, user.name, clubId).catch(() => {});
+  }
+}
+
+// Sincronizar logros también al corregir una finalización marcada por
+// error (FINISHED -> PENDING): un logro desbloqueado por ese libro debe
+// dejar de aparecer si ya no corresponde.
+if (correctedFinalizationClubIds.length > 0) {
+  for (const clubId of correctedFinalizationClubIds) {
     void syncAchievementsForUser(user.id, user.name, clubId).catch(() => {});
   }
 }
