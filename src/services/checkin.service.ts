@@ -98,8 +98,12 @@ export function getWrappedBookOfYearStatus(
  * Si se indica `rango`, además dice cuántas páginas se leyeron ese día
  * (usando el valor representativo del tramo — ver PAGE_RANGE_REPRESENTATIVE)
  * para que el mapa de calor pinte el color real, no solo "hubo actividad".
- * Sobrescribe la sesión de ese día si ya existía (es una corrección del
- * día completo, no un incremento).
+ * No pisa páginas reales ya registradas ese día (p. ej. por progreso real
+ * de lectura vía `actualizarProgresoLectura`): solo escribe el valor del
+ * tramo si el día no tenía sesión, o si la que tenía ya era en sí misma
+ * una corrección manual anterior (su valor coincide con uno de los
+ * representativos del tramo) — así se puede seguir corrigiendo un día ya
+ * editado a mano, sin arriesgarse a machacar un dato real.
  *
  * Devuelve el check-in y la racha actual.
  */
@@ -121,12 +125,21 @@ export async function doCheckIn(
 
   if (rango && rango in PAGE_RANGE_REPRESENTATIVE) {
     const pagesRead = PAGE_RANGE_REPRESENTATIVE[rango];
+    const valoresManuales: number[] = Object.values(PAGE_RANGE_REPRESENTATIVE);
     try {
-      await prisma.readingSession.upsert({
+      const existente = await prisma.readingSession.findUnique({
         where: { userId_date: { userId, date } },
-        create: { userId, date, pagesRead },
-        update: { pagesRead },
       });
+      const eraDatoReal = existente != null && !valoresManuales.includes(existente.pagesRead);
+      if (!eraDatoReal) {
+        await prisma.readingSession.upsert({
+          where: { userId_date: { userId, date } },
+          create: { userId, date, pagesRead },
+          update: { pagesRead },
+        });
+      }
+      // Si había un dato real (no coincide con ningún representativo del
+      // tramo), no se toca: el tramo elegido a mano no debe pisarlo.
     } catch {
       // Tabla ReadingSession aún no migrada en este entorno — el check-in
       // ya se guardó, así que no se pierde la racha por esto.
