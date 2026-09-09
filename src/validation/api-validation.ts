@@ -130,7 +130,10 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   actualizarEstadoEditorialSaga: body({ sagaId: identifierSchema, estadoEditorial: z.enum(['UNKNOWN', 'ONGOING', 'COMPLETED']), totalPrevisto: positiveIntegerSchema.optional() }),
   crearClub: body({ nombre: shortTextSchema, descripcion: textSchema.optional() }),
   crearEspacioPersonal: emptyBody,
-  doCheckin: body({ fecha: optionalDateSchema }),
+  doCheckin: body({
+    fecha: optionalDateSchema,
+    rango: z.enum(['HASTA_50', 'DE_50_A_75', 'DE_75_A_100', 'MAS_DE_100']).optional(),
+  }),
   undoCheckin: body({ fecha: dateSchema }),
   unirseClub: body({ codigo: z.string().trim().min(1).max(100) }),
   seleccionarClub: idBody('clubId'), invitacionClub: idBody('clubId'), salirClub: idBody('clubId'),

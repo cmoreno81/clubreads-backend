@@ -9,12 +9,16 @@ import {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+const RANGOS_PAGINAS = ['HASTA_50', 'DE_50_A_75', 'DE_75_A_100', 'MAS_DE_100'] as const;
+
 export async function handleDoCheckin(req: Request, res: Response) {
   const userId = req.auth!.userId;
   const note: string | undefined = req.body?.nota ?? req.query.nota as string | undefined;
   const fecha: string | undefined = req.body?.fecha;
+  const rangoRaw = req.body?.rango;
+  const rango = RANGOS_PAGINAS.includes(rangoRaw) ? rangoRaw : undefined;
 
-  const result = await doCheckIn(userId, note, fecha);
+  const result = await doCheckIn(userId, note, fecha, rango);
   return res.json(result);
 }
 

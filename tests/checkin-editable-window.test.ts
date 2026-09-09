@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { resolveEditableDate } from '../src/services/checkin.service.js';
+import {
+  resolveEditableDate,
+  levelForPagesRead,
+  PAGE_RANGE_REPRESENTATIVE,
+} from '../src/services/checkin.service.js';
 
 function daysAgo(n: number): string {
   const d = new Date();
@@ -18,20 +22,11 @@ test('sin fecha, usa hoy', () => {
   assert.deepEqual(result, { ok: true, date: daysAgo(0) });
 });
 
-test('acepta hoy y hasta 6 días atrás (ventana de 7 días)', () => {
-  for (let n = 0; n <= 6; n++) {
+test('acepta cualquier día pasado, sin límite de ventana', () => {
+  for (const n of [0, 1, 6, 7, 30, 365, 3650]) {
     const result = resolveEditableDate(daysAgo(n));
     assert.deepEqual(result, { ok: true, date: daysAgo(n) });
   }
-});
-
-test('rechaza el día 7 hacia atrás y más allá (fuera de la ventana)', () => {
-  const result = resolveEditableDate(daysAgo(7));
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.match(result.mensaje, /últimos 7 días/);
-
-  const farther = resolveEditableDate(daysAgo(30));
-  assert.equal(farther.ok, false);
 });
 
 test('rechaza fechas futuras', () => {
@@ -45,4 +40,23 @@ test('rechaza formatos y fechas inválidas', () => {
     const result = resolveEditableDate(value);
     assert.equal(result.ok, false, `esperaba rechazar "${value}"`);
   }
+});
+
+test('levelForPagesRead sigue los tramos 0-50/50-75/75-100/100+', () => {
+  assert.equal(levelForPagesRead(0), 0);
+  assert.equal(levelForPagesRead(1), 1);
+  assert.equal(levelForPagesRead(50), 1);
+  assert.equal(levelForPagesRead(51), 2);
+  assert.equal(levelForPagesRead(75), 2);
+  assert.equal(levelForPagesRead(76), 3);
+  assert.equal(levelForPagesRead(100), 3);
+  assert.equal(levelForPagesRead(101), 4);
+  assert.equal(levelForPagesRead(500), 4);
+});
+
+test('los valores representativos de cada tramo caen en su propio nivel', () => {
+  assert.equal(levelForPagesRead(PAGE_RANGE_REPRESENTATIVE.HASTA_50), 1);
+  assert.equal(levelForPagesRead(PAGE_RANGE_REPRESENTATIVE.DE_50_A_75), 2);
+  assert.equal(levelForPagesRead(PAGE_RANGE_REPRESENTATIVE.DE_75_A_100), 3);
+  assert.equal(levelForPagesRead(PAGE_RANGE_REPRESENTATIVE.MAS_DE_100), 4);
 });

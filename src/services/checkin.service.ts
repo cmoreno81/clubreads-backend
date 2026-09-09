@@ -20,16 +20,11 @@ function yearEnd(year: number): Date {
   return new Date(`${year + 1}-01-01T00:00:00.000Z`);
 }
 
-// Cuántos días hacia atrás se puede marcar/desmarcar un check-in a
-// posteriori (incluye hoy). "Se me olvidó ayer" es el caso real que motivó
-// esto — una semana da margen sin abrir la puerta a reescribir la racha de
-// meses atrás.
-const EDITABLE_WINDOW_DAYS = 7;
-
 /**
- * Valida que `fecha` (si se indica) sea una fecha "YYYY-MM-DD" real, no
- * futura y dentro de la ventana editable. Sin `fecha`, usa hoy (siempre
- * válido). Devuelve la fecha ya normalizada o un mensaje de error.
+ * Valida que `fecha` (si se indica) sea una fecha "YYYY-MM-DD" real y no
+ * futura — cualquier día pasado se puede corregir, sin límite de ventana.
+ * Sin `fecha`, usa hoy (siempre válido). Devuelve la fecha ya normalizada
+ * o un mensaje de error.
  */
 export function resolveEditableDate(
   fecha?: string,
@@ -46,19 +41,33 @@ export function resolveEditableDate(
   }
 
   const today = new Date(`${todayString()}T00:00:00.000Z`);
-  const diffDays = Math.round((today.getTime() - parsed.getTime()) / 86_400_000);
-  if (diffDays < 0) {
+  if (parsed.getTime() > today.getTime()) {
     return { ok: false, mensaje: 'No se puede marcar un día futuro' };
-  }
-  if (diffDays >= EDITABLE_WINDOW_DAYS) {
-    return {
-      ok: false,
-      mensaje: `Solo se pueden corregir los últimos ${EDITABLE_WINDOW_DAYS} días`,
-    };
   }
 
   return { ok: true, date: trimmed };
 }
+
+// Umbrales de intensidad del mapa de calor, en páginas leídas ese día.
+// Se usan tanto para colorear días con progreso real (ReadingSession, vía
+// actualizarProgresoLectura) como para elegir el valor representativo al
+// marcar un día a mano por tramo de páginas (ver PAGE_RANGE_REPRESENTATIVE).
+export function levelForPagesRead(pagesRead: number): number {
+  if (pagesRead > 100) return 4;
+  if (pagesRead > 75) return 3;
+  if (pagesRead > 50) return 2;
+  if (pagesRead > 0) return 1;
+  return 0;
+}
+
+// Valor representativo (punto medio) de cada tramo, para cuando se marca un
+// día a mano eligiendo un rango en vez de un número exacto de páginas.
+export const PAGE_RANGE_REPRESENTATIVE: Record<'HASTA_50' | 'DE_50_A_75' | 'DE_75_A_100' | 'MAS_DE_100', number> = {
+  HASTA_50: 25,
+  DE_50_A_75: 60,
+  DE_75_A_100: 85,
+  MAS_DE_100: 120,
+};
 
 export type WrappedBookOfYearStatus =
   | 'NOT_STARTED'
@@ -83,11 +92,23 @@ export function getWrappedBookOfYearStatus(
 
 /**
  * Registra el check-in de un día (idempotente). Sin `fecha`, es el de hoy;
- * con `fecha`, corrige un día de dentro de la ventana editable (p. ej. "se
- * me olvidó marcar ayer") — ver [resolveEditableDate].
+ * con `fecha`, corrige cualquier día pasado (p. ej. "se me olvidó marcar
+ * ayer") — ver [resolveEditableDate].
+ *
+ * Si se indica `rango`, además dice cuántas páginas se leyeron ese día
+ * (usando el valor representativo del tramo — ver PAGE_RANGE_REPRESENTATIVE)
+ * para que el mapa de calor pinte el color real, no solo "hubo actividad".
+ * Sobrescribe la sesión de ese día si ya existía (es una corrección del
+ * día completo, no un incremento).
+ *
  * Devuelve el check-in y la racha actual.
  */
-export async function doCheckIn(userId: string, note?: string, fecha?: string) {
+export async function doCheckIn(
+  userId: string,
+  note?: string,
+  fecha?: string,
+  rango?: keyof typeof PAGE_RANGE_REPRESENTATIVE,
+) {
   const resolved = resolveEditableDate(fecha);
   if (!resolved.ok) return { ok: false as const, mensaje: resolved.mensaje };
   const { date } = resolved;
@@ -98,15 +119,31 @@ export async function doCheckIn(userId: string, note?: string, fecha?: string) {
     update: { note: note?.trim() ?? undefined },
   });
 
+  if (rango && rango in PAGE_RANGE_REPRESENTATIVE) {
+    const pagesRead = PAGE_RANGE_REPRESENTATIVE[rango];
+    try {
+      await prisma.readingSession.upsert({
+        where: { userId_date: { userId, date } },
+        create: { userId, date, pagesRead },
+        update: { pagesRead },
+      });
+    } catch {
+      // Tabla ReadingSession aún no migrada en este entorno — el check-in
+      // ya se guardó, así que no se pierde la racha por esto.
+    }
+  }
+
   const streak = await getStreak(userId);
 
   return { ok: true, date, checkin, streak };
 }
 
 /**
- * Deshace el check-in de un día dentro de la ventana editable (corregir
- * una marca puesta por error). Idempotente: si ese día no tenía check-in,
- * no falla. Devuelve la racha resultante.
+ * Deshace el check-in de un día (corregir una marca puesta por error).
+ * También borra la sesión de páginas de ese día si la hubiera — "quitar
+ * marca" deja el día completamente sin actividad, no solo sin check-in.
+ * Idempotente: si ese día no tenía nada, no falla. Devuelve la racha
+ * resultante.
  */
 export async function undoCheckIn(userId: string, fecha: string) {
   const resolved = resolveEditableDate(fecha);
@@ -114,6 +151,11 @@ export async function undoCheckIn(userId: string, fecha: string) {
   const { date } = resolved;
 
   await prisma.dailyCheckin.deleteMany({ where: { userId, date } });
+  try {
+    await prisma.readingSession.deleteMany({ where: { userId, date } });
+  } catch {
+    // Tabla ReadingSession aún no migrada en este entorno — no bloquea.
+  }
 
   const streak = await getStreak(userId);
   return { ok: true as const, date, streak };
@@ -226,15 +268,15 @@ export async function getHeatmap(userId: string, year: number) {
     select: { progressUpdatedAt: true },
   });
 
-  // 4. Libros terminados (siempre suma +1 al nivel del día)
+  // 4. Libros terminados (siempre suma +1 al nivel del día, y se marca en
+  // el mapa como incentivo — "¡terminaste un libro este día!")
   const completionDays = await prisma.readingCompletion.findMany({
     where: { userId, finishedAt: { gte: start, lt: end } },
-    select: { finishedAt: true },
+    select: { finishedAt: true, book: { select: { title: true } } },
   });
 
   // ── Construir mapa de intensidad ──────────────────────────────────────────
-  // Nivel basado en páginas leídas ese día:
-  //   ≥ 80 páginas → 4  |  40-79 → 3  |  16-39 → 2  |  1-15 → 1
+  // Nivel basado en páginas leídas ese día — ver levelForPagesRead().
   // Si no hay datos de páginas pero hubo check-in o progreso → nivel 1
   // Terminar un libro sube el nivel en +1 (máximo 4)
 
@@ -242,7 +284,7 @@ export async function getHeatmap(userId: string, year: number) {
 
   // Sesiones con páginas reales → determinan la intensidad base
   for (const s of sessions) {
-    const level = s.pagesRead >= 80 ? 4 : s.pagesRead >= 40 ? 3 : s.pagesRead >= 16 ? 2 : 1;
+    const level = levelForPagesRead(s.pagesRead);
     const current = levelMap.get(s.date) ?? 0;
     levelMap.set(s.date, Math.max(current, level));
   }
@@ -280,13 +322,27 @@ export async function getHeatmap(userId: string, year: number) {
   }
   const checkinDates = new Set(checkins.map((c) => c.date));
 
-  const days: { date: string; level: number; pagesRead: number; checkedIn: boolean }[] = [];
+  // Títulos terminados por día — para el marcador de "libro terminado" y su
+  // mensaje en la ficha del día ("🎉 Terminaste 'X'").
+  const finishedTitlesByDate = new Map<string, string[]>();
+  for (const c of completionDays) {
+    const date = c.finishedAt.toISOString().slice(0, 10);
+    finishedTitlesByDate.set(date, [...(finishedTitlesByDate.get(date) ?? []), c.book.title]);
+  }
+  const days: {
+    date: string;
+    level: number;
+    pagesRead: number;
+    checkedIn: boolean;
+    finishedBooks: string[];
+  }[] = [];
   for (const [date, level] of levelMap.entries()) {
     days.push({
       date,
       level,
       pagesRead: pagesReadMap.get(date) ?? 0,
       checkedIn: checkinDates.has(date),
+      finishedBooks: finishedTitlesByDate.get(date) ?? [],
     });
   }
   days.sort((a, b) => a.date.localeCompare(b.date));
