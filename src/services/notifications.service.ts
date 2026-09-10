@@ -553,6 +553,97 @@ export async function notifyLogroDesbloqueado({
 }
 
 // ─────────────────────────────────────────────
+// Ligas de ClubReads
+// ─────────────────────────────────────────────
+
+/** Resultado de temporada, una notificación por participante. */
+export async function notifyLigaResultado(
+  season: number,
+  entradas: { userId: string; rank: number; total: number; puntos: number }[],
+) {
+  if (entradas.length === 0) return;
+  const destinatarios = new Set(
+    await filterEnabledRecipients(
+      entradas.map((e) => e.userId),
+      NotificationType.LIGA_RESULTADO,
+    ),
+  );
+  const data = entradas
+    .filter((e) => destinatarios.has(e.userId))
+    .map((e) => {
+      const podio = e.rank <= 3;
+      const medalla = e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : '🥉';
+      return {
+        userId: e.userId,
+        tipo: NotificationType.LIGA_RESULTADO,
+        titulo: podio
+          ? `${medalla} ¡Podio en las Ligas!`
+          : 'Temporada de Ligas cerrada',
+        mensaje: podio
+          ? `Acabaste ${e.rank}º de ${e.total} en la temporada ${season + 1}. ¡Enhorabuena!`
+          : `Quedaste ${e.rank}º de ${e.total} en la temporada ${season + 1} con ${e.puntos} puntos. Empieza una nueva.`,
+        extra: JSON.stringify({ season, rank: e.rank, total: e.total }),
+      };
+    });
+  if (data.length > 0) await prisma.notification.createMany({ data });
+}
+
+/** Aviso de que la temporada está a punto de cerrarse. */
+export async function notifyLigaCierreProximo(
+  season: number,
+  entradas: {
+    userId: string;
+    rank: number;
+    total: number;
+    puntosAlPodio: number;
+    horasRestantes: number;
+  }[],
+) {
+  if (entradas.length === 0) return;
+  const destinatarios = new Set(
+    await filterEnabledRecipients(
+      entradas.map((e) => e.userId),
+      NotificationType.LIGA_CIERRE_PROXIMO,
+    ),
+  );
+  const data = entradas
+    .filter((e) => destinatarios.has(e.userId))
+    .map((e) => {
+      const horas = Math.max(1, Math.round(e.horasRestantes));
+      const cola =
+        e.rank > 3 && e.puntosAlPodio > 0
+          ? ` El podio está a ${e.puntosAlPodio} puntos.`
+          : e.rank <= 3
+            ? ' ¡Aguanta en el podio!'
+            : '';
+      return {
+        userId: e.userId,
+        tipo: NotificationType.LIGA_CIERRE_PROXIMO,
+        titulo: 'La temporada de Ligas está por cerrarse',
+        mensaje: `Quedan unas ${horas} h. Vas ${e.rank}º de ${e.total}.${cola}`,
+        extra: JSON.stringify({ season }),
+      };
+    });
+  if (data.length > 0) await prisma.notification.createMany({ data });
+}
+
+/** ¿Ya se envió el aviso de cierre de esta temporada a este usuario? */
+export async function yaAvisadoCierreLiga(
+  userId: string,
+  season: number,
+): Promise<boolean> {
+  const n = await prisma.notification.findFirst({
+    where: {
+      userId,
+      tipo: NotificationType.LIGA_CIERRE_PROXIMO,
+      extra: { contains: `"season":${season}` },
+    },
+    select: { id: true },
+  });
+  return n != null;
+}
+
+// ─────────────────────────────────────────────
 // Preferencias de notificación (Ajustes)
 // ─────────────────────────────────────────────
 
@@ -568,6 +659,8 @@ export const TIPOS_NOTIFICACION: NotificationType[] = [
   NotificationType.NUEVA_MIEMBRO,
   NotificationType.LOGRO_DESBLOQUEADO,
   NotificationType.CLUB_BOOK_OF_YEAR,
+  NotificationType.LIGA_RESULTADO,
+  NotificationType.LIGA_CIERRE_PROXIMO,
 ];
 
 export async function getPreferenciasNotificacion(userId: string) {

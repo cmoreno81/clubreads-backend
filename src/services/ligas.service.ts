@@ -19,6 +19,11 @@
 
 import type { RankingEventType } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import {
+  notifyLigaCierreProximo,
+  notifyLigaResultado,
+  yaAvisadoCierreLiga,
+} from './notifications.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Temporadas
@@ -575,7 +580,66 @@ export async function cerrarTemporada(season: number): Promise<number> {
       update: { totalPoints: fila.puntos, rank: fila.puesto },
     });
   }
+
+  // Notificación de resultado a cada participante (best-effort).
+  try {
+    await notifyLigaResultado(
+      season,
+      tabla.map((f) => ({
+        userId: f.userId,
+        rank: f.puesto,
+        total: tabla.length,
+        puntos: f.puntos,
+      })),
+    );
+  } catch (error) {
+    console.error('Ligas: no se pudo notificar el resultado:', error);
+  }
+
   return tabla.length;
+}
+
+/**
+ * Aviso de cierre inminente: cuando falten <=24 h para el fin de la
+ * temporada en curso, avisa una sola vez a cada participante de su
+ * posición y de a cuántos puntos está el podio. Idempotente.
+ */
+export async function avisarCierreProximo(
+  season: number,
+  now: Date = new Date(),
+): Promise<number> {
+  const msRestantes = seasonEndsAt(season).getTime() - now.getTime();
+  const horasRestantes = msRestantes / 3_600_000;
+  if (horasRestantes <= 0 || horasRestantes > 24) return 0;
+
+  const tabla = await tablaTemporada(season);
+  if (tabla.length === 0) return 0;
+  const puntosPodio = tabla[Math.min(2, tabla.length - 1)].puntos;
+
+  const entradas: {
+    userId: string;
+    rank: number;
+    total: number;
+    puntosAlPodio: number;
+    horasRestantes: number;
+  }[] = [];
+  for (const fila of tabla) {
+    if (await yaAvisadoCierreLiga(fila.userId, season)) continue;
+    entradas.push({
+      userId: fila.userId,
+      rank: fila.puesto,
+      total: tabla.length,
+      puntosAlPodio: Math.max(0, puntosPodio - fila.puntos),
+      horasRestantes,
+    });
+  }
+
+  try {
+    await notifyLigaCierreProximo(season, entradas);
+  } catch (error) {
+    console.error('Ligas: no se pudo notificar el cierre próximo:', error);
+  }
+  return entradas.length;
 }
 
 /** ¿Ya se cerró esta temporada? (existe al menos un snapshot). */

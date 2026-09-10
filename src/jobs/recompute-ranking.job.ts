@@ -12,6 +12,7 @@
 
 import { prisma } from '../prisma.js';
 import {
+  avisarCierreProximo,
   cerrarTemporada,
   currentSeasonNumber,
   recalcularTemporada,
@@ -39,6 +40,12 @@ async function main() {
   console.log(
     `Ligas: temporada ${season} recalculada para ${ok}/${participantes.length} participantes`,
   );
+
+  // Aviso de cierre inminente de la temporada en curso (una vez por usuario).
+  const avisados = await avisarCierreProximo(season);
+  if (avisados > 0) {
+    console.log(`Ligas: aviso de cierre enviado a ${avisados} participantes.`);
+  }
 
   // Cierre de la temporada anterior si procede.
   const anterior = season - 1;
