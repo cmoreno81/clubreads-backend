@@ -407,6 +407,10 @@ model User {
   proposedReadings              ClubReadingProposal[]           @relation("ProposedReadings")
   proposalApprovals             ClubReadingProposalApproval[]   @relation("ProposalApprovals")
 
+  rankingParticipation RankingParticipation?
+  rankingPointEvents   RankingPointEvent[]
+  rankingSeasonResults RankingSeasonResult[]
+
   @@index([activeClubId])
 }
 
@@ -1390,4 +1394,63 @@ model WishlistItem {
   @@index([userId, releaseDate])
   @@index([userId, purchasedAt])
   @@index([bookId])
+}
+
+//
+// LIGAS DE CLUBREADS — ranking individual por temporadas quincenales
+//
+
+/// Una usuaria participa en las Ligas solo si ha dado su consentimiento
+/// explícito (opt-in desde Ajustes). Sin fila aquí: no puntúa, no aparece
+/// en ninguna tabla y no ve la sección competitiva.
+model RankingParticipation {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  optedInAt DateTime @default(now())
+}
+
+enum RankingEventType {
+  CHECKIN
+  STREAK_BONUS
+  PAGES
+  BOOK_FINISHED
+  FIRST_BOOK_OF_MONTH
+  SAGA_COMPLETED
+  REVIEW
+  BOOK_OF_YEAR_PICK
+  QUIZ
+}
+
+/// Libro mayor de puntos. Cada acción puntuable de una temporada se
+/// materializa aquí con una `dedupeKey` determinista, de modo que
+/// recalcular una temporada es idempotente y revertir una acción
+/// (des-finalizar un libro, quitar una marca de racha) solo borra su fila.
+model RankingPointEvent {
+  id           String           @id @default(cuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seasonNumber Int
+  type         RankingEventType
+  points       Int
+  /// p. ej. "checkin:2026-09-15", "book:<completionId>", "saga:<seriesId>"
+  dedupeKey String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, seasonNumber, dedupeKey])
+  @@index([seasonNumber, userId])
+}
+
+/// Instantánea al cerrar una temporada: permite el histórico permanente
+/// (mejor puesto, temporadas jugadas, podios…) aunque los puntos "vivos"
+/// se reseteen cada quincena.
+model RankingSeasonResult {
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seasonNumber Int
+  totalPoints  Int
+  rank         Int
+  createdAt    DateTime @default(now())
+
+  @@id([userId, seasonNumber])
+  @@index([seasonNumber, rank])
 }

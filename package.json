@@ -16,6 +16,8 @@
     "audit:details": "tsx scripts/audit-details.ts",
     "audit:auth-clubs": "tsx scripts/audit-auth-clubs.ts",
     "clubvision:open": "node dist/jobs/open-clubvision.job.js",
+    "ligas:recompute": "node dist/jobs/recompute-ranking.job.js",
+    "ligas:close-season": "node dist/jobs/close-ranking-season.job.js",
     "covers:preview": "tsx scripts/backfill-missing-covers.ts",
     "covers:apply": "tsx scripts/backfill-missing-covers.ts --apply",
     "covers:scheduled": "node dist/jobs/missing-cover-backfill.job.js",

@@ -180,6 +180,8 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   vincularCandidataHistoricaLibroDelAnioClub: body({ anio: positiveIntegerSchema, resultId: identifierSchema, bookId: identifierSchema }),
   sincronizarCandidatasLibroDelAnioClub: body({ anio: positiveIntegerSchema }),
   abrirVotacionLibroDelAnioClub: body({ anio: positiveIntegerSchema }),
+  unirseLiga: emptyBody,
+  salirLiga: emptyBody,
 };
 
 export const actionQuerySchemas: Record<string, z.ZodType> = {
@@ -194,6 +196,7 @@ export const actionQuerySchemas: Record<string, z.ZodType> = {
   libroDelAnioClub: z.object({ action: z.literal('libroDelAnioClub'), anio: positiveIntegerSchema }).passthrough(),
   prepararLibroDelAnioClub: z.object({ action: z.literal('prepararLibroDelAnioClub'), anio: positiveIntegerSchema }).passthrough(),
   historialLibroDelAnioClub: z.object({ action: z.literal('historialLibroDelAnioClub') }).passthrough(),
+  liga: z.object({ action: z.literal('liga') }).passthrough(),
 };
 
 function invalidFields(error: z.ZodError) {

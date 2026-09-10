@@ -148,6 +148,11 @@ import {
   handleGetHeatmap,
   handleGetWrapped,
 } from '../controllers/checkin.controller.js';
+import {
+  handleGetLiga,
+  handleUnirseLiga,
+  handleSalirLiga,
+} from '../controllers/ligas.controller.js';
 import { validateActionInput } from '../validation/api-validation.js';
 import { handleChooseAnnualBookOfYear, handleChooseBookOfYearDuel, handleGetClubBooksOfYear, handleGetMyBookOfYear, handleGetPublicBookOfYear, handleSaveMonthlyBookOfYear } from '../controllers/book-of-year.controller.js';
 import { handleReactionDetails } from '../controllers/reaction-details.controller.js';
@@ -252,6 +257,8 @@ export const POST_ONLY_ACTIONS = new Set([
   'vincularCandidataHistoricaLibroDelAnioClub',
   'sincronizarCandidatasLibroDelAnioClub',
   'abrirVotacionLibroDelAnioClub',
+  'unirseLiga',
+  'salirLiga',
 ]);
 
 export function enforceActionMethod(
@@ -800,6 +807,18 @@ export async function handleApi(
       case 'wrappedAnual':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetWrapped(req, res);
+
+      case 'liga':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetLiga(req, res);
+
+      case 'unirseLiga':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleUnirseLiga(req, res);
+
+      case 'salirLiga':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleSalirLiga(req, res);
 
       default:
         return res.status(400).json({
