@@ -224,10 +224,7 @@ test('las portadas vacías se completan sin sustituir las existentes', () => {
 test('reconoce títulos de Goodreads con la saga y el volumen entre paréntesis', () => {
   assert.deepEqual(
     importTitleVariants('Magnolia Parks (Magnolia Parks Universe, #1)'),
-    [
-      'magnolia parks (magnolia parks universe, #1)',
-      'magnolia parks',
-    ],
+    ['magnolia parks'],
   );
   assert.ok(
     importTitleVariants('Dungeon Crawler Carl (Dungeon Crawler Carl, #1)')

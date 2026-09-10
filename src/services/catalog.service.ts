@@ -124,6 +124,15 @@ export function canonicalBookTitle(value: string) {
     )
     .replace(/\b(?:edicion|edición)\s+(?:especial|limitada|de lujo)\b/g, ' ')
     .replace(/\s*[:\-–—]\s*(?:standard|special|limited|deluxe)\b.*$/g, '')
+    // Sufijo de saga/posición al final del título, en cualquiera de los
+    // formatos habituales de importación:
+    //   "The Hunger Games (The Hunger Games, #1)"
+    //   "Catching Fire (Deluxe Edition) (Hunger Games, Book Two)"
+    //   "Trono de cristal (Trono de Cristal 1)"  ·  "... (Saga, Libro 2)"
+    .replace(
+      /\s*\([^()]*?(?:,?\s*#\s*\d+|,?\s*(?:book|libro)\s+[a-z0-9]+|\s+\d+)\s*\)\s*$/,
+      ' ',
+    )
     .trim()
     .replace(/\s+/g, ' ');
 }
