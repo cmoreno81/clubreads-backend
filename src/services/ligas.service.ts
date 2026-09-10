@@ -427,8 +427,6 @@ export async function salirDeLaLiga(userId: string) {
 // Tabla de la liga
 // ─────────────────────────────────────────────────────────────────────────────
 
-const RECALCULO_TABLA_MAX_PARTICIPANTES = 250;
-
 type FilaTabla = {
   puesto: number;
   userId: string;
@@ -491,21 +489,13 @@ export async function getLiga(userId: string, now: Date = new Date()) {
     };
   }
 
-  // Mantener el ranking fresco. En beta (pocos participantes) se recalcula
-  // toda la tabla en cada carga; si crece, solo tu fila y lo demás lo deja
-  // al job periódico.
-  const totalParticipantes = await prisma.rankingParticipation.count();
-  if (totalParticipantes <= RECALCULO_TABLA_MAX_PARTICIPANTES) {
-    const ids = (
-      await prisma.rankingParticipation.findMany({ select: { userId: true } })
-    ).map((p) => p.userId);
-    for (const id of ids) {
-      await recalcularTemporada(id, season).catch(() => undefined);
-    }
-  } else {
-    await recalcularTemporada(userId, season).catch(() => undefined);
-  }
+  // Al abrir la pantalla solo se recalcula TU fila (barato y hace que tus
+  // puntos se vean al instante). El resto de la tabla la refresca el job
+  // `ligas:recompute` cada pocas horas — suficiente para una temporada de
+  // dos semanas y no carga el servidor compartido en cada visita.
+  await recalcularTemporada(userId, season).catch(() => undefined);
 
+  const totalParticipantes = await prisma.rankingParticipation.count();
   const tabla = await tablaTemporada(season);
   const miFila = tabla.find((f) => f.userId === userId);
   const miPuesto = miFila?.puesto ?? tabla.length + 1;
