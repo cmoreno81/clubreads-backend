@@ -32,7 +32,7 @@ export const SEASON_LENGTH_DAYS = 14;
  * de la feature: nada anterior a esta fecha puntúa ("empezamos limpios").
  * Debe ser un "YYYY-MM-DD". Ajustar a la fecha real de despliegue.
  */
-export const SEASON_EPOCH = '2026-09-14';
+export const SEASON_EPOCH = '2026-09-10';
 
 const MS_DAY = 86_400_000;
 
