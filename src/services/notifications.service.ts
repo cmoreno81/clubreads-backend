@@ -557,9 +557,24 @@ export async function notifyLogroDesbloqueado({
 // ─────────────────────────────────────────────
 
 /** Resultado de temporada, una notificación por participante. */
+const NOMBRE_DIVISION: Record<string, string> = {
+  BRONCE: 'Bronce',
+  PLATA: 'Plata',
+  ORO: 'Oro',
+  PLATINO: 'Platino',
+  DIAMANTE: 'Diamante',
+};
+
 export async function notifyLigaResultado(
   season: number,
-  entradas: { userId: string; rank: number; total: number; puntos: number }[],
+  entradas: {
+    userId: string;
+    rank: number;
+    total: number;
+    puntos: number;
+    division: string;
+    nuevaDivision: string | null;
+  }[],
 ) {
   if (entradas.length === 0) return;
   const destinatarios = new Set(
@@ -573,16 +588,26 @@ export async function notifyLigaResultado(
     .map((e) => {
       const podio = e.rank <= 3;
       const medalla = e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : '🥉';
+      const divisionActual = NOMBRE_DIVISION[e.division] ?? e.division;
+      const orden = ['BRONCE', 'PLATA', 'ORO', 'PLATINO', 'DIAMANTE'];
+      let cambioTexto = '';
+      if (e.nuevaDivision != null && e.nuevaDivision !== e.division) {
+        const nueva = NOMBRE_DIVISION[e.nuevaDivision] ?? e.nuevaDivision;
+        const sube = orden.indexOf(e.nuevaDivision) > orden.indexOf(e.division);
+        cambioTexto = sube
+          ? ` ¡Asciendes a ${nueva} la próxima temporada!`
+          : ` Bajas a ${nueva} la próxima temporada.`;
+      }
       return {
         userId: e.userId,
         tipo: NotificationType.LIGA_RESULTADO,
         titulo: podio
-          ? `${medalla} ¡Podio en las Ligas!`
-          : 'Temporada de Ligas cerrada',
+          ? `${medalla} ¡Podio en ${divisionActual}!`
+          : `Temporada de Ligas cerrada (${divisionActual})`,
         mensaje: podio
-          ? `Acabaste ${e.rank}º de ${e.total} en la temporada ${season + 1}. ¡Enhorabuena!`
-          : `Quedaste ${e.rank}º de ${e.total} en la temporada ${season + 1} con ${e.puntos} puntos. Empieza una nueva.`,
-        extra: JSON.stringify({ season, rank: e.rank, total: e.total }),
+          ? `Acabaste ${e.rank}º de ${e.total} en tu división esta temporada.${cambioTexto}`
+          : `Quedaste ${e.rank}º de ${e.total} en tu división con ${e.puntos} puntos.${cambioTexto} Empieza una nueva.`,
+        extra: JSON.stringify({ season, rank: e.rank, total: e.total, division: e.division }),
       };
     });
   if (data.length > 0) await prisma.notification.createMany({ data });
@@ -643,6 +668,44 @@ export async function yaAvisadoCierreLiga(
   return n != null;
 }
 
+/** Aviso de que una racha larga se rompe hoy si no se hace check-in. */
+export async function notifyLigaRachaEnRiesgo(
+  userId: string,
+  dias: number,
+  fecha: string,
+) {
+  const [habilitado] = await filterEnabledRecipients(
+    [userId],
+    NotificationType.LIGA_RACHA_EN_RIESGO,
+  );
+  if (!habilitado) return null;
+  return prisma.notification.create({
+    data: {
+      userId,
+      tipo: NotificationType.LIGA_RACHA_EN_RIESGO,
+      titulo: '🔥 Tu racha está en juego',
+      mensaje: `Llevas ${dias} días seguidos leyendo. Si no marcas hoy, la racha se rompe y el bonus de las Ligas vuelve a empezar desde +1.`,
+      extra: JSON.stringify({ date: fecha }),
+    },
+  });
+}
+
+/** ¿Ya se avisó hoy de que la racha está en riesgo? */
+export async function yaAvisadoRachaHoy(
+  userId: string,
+  fecha: string,
+): Promise<boolean> {
+  const n = await prisma.notification.findFirst({
+    where: {
+      userId,
+      tipo: NotificationType.LIGA_RACHA_EN_RIESGO,
+      extra: { contains: `"date":"${fecha}"` },
+    },
+    select: { id: true },
+  });
+  return n != null;
+}
+
 // ─────────────────────────────────────────────
 // Preferencias de notificación (Ajustes)
 // ─────────────────────────────────────────────
@@ -661,6 +724,7 @@ export const TIPOS_NOTIFICACION: NotificationType[] = [
   NotificationType.CLUB_BOOK_OF_YEAR,
   NotificationType.LIGA_RESULTADO,
   NotificationType.LIGA_CIERRE_PROXIMO,
+  NotificationType.LIGA_RACHA_EN_RIESGO,
 ];
 
 export async function getPreferenciasNotificacion(userId: string) {

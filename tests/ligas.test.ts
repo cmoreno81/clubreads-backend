@@ -2,17 +2,25 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  RETO_SEMANAL_DIAS_OBJETIVO,
+  RETO_SEMANAL_PUNTOS,
   SEASON_EPOCH,
   SEASON_LENGTH_DAYS,
   bonusPorRacha,
+  calcularCambiosDivision,
+  calcularCuotaAscensoDescenso,
   calcularTendencia,
   currentSeasonNumber,
   daysBetween,
+  divisionInferior,
+  divisionSuperior,
   puntosPorLibro,
   puntosPorPaginas,
   seasonEndsAt,
   seasonNumberForDate,
   seasonWindow,
+  semanaDe,
+  type FilaTabla,
   tzMidnightUtc,
 } from '../src/services/ligas.service.js';
 
@@ -98,4 +106,69 @@ test('calcularTendencia: subir de puesto numérico es bajar en la clasificación
 
 test('calcularTendencia: mismo puesto es igual', () => {
   assert.deepEqual(calcularTendencia(4, 4), { tendencia: 'igual', delta: 0 });
+});
+
+// ── Divisiones ──────────────────────────────────────────────────────────────
+
+test('divisionSuperior/divisionInferior no se salen del rango', () => {
+  assert.equal(divisionSuperior('BRONCE'), 'PLATA');
+  assert.equal(divisionSuperior('DIAMANTE'), 'DIAMANTE'); // techo
+  assert.equal(divisionInferior('PLATA'), 'BRONCE');
+  assert.equal(divisionInferior('BRONCE'), 'BRONCE'); // suelo
+});
+
+test('calcularCuotaAscensoDescenso: con menos de 3 nadie se mueve', () => {
+  assert.deepEqual(calcularCuotaAscensoDescenso(1), { suben: 0, bajan: 0 });
+  assert.deepEqual(calcularCuotaAscensoDescenso(2), { suben: 0, bajan: 0 });
+});
+
+test('calcularCuotaAscensoDescenso: deja siempre a alguien en medio', () => {
+  assert.deepEqual(calcularCuotaAscensoDescenso(3), { suben: 1, bajan: 1 });
+  assert.deepEqual(calcularCuotaAscensoDescenso(5), { suben: 1, bajan: 1 });
+});
+
+test('calcularCuotaAscensoDescenso: ~20% arriba y abajo en divisiones grandes', () => {
+  assert.deepEqual(calcularCuotaAscensoDescenso(25), { suben: 5, bajan: 5 });
+  assert.deepEqual(calcularCuotaAscensoDescenso(10), { suben: 2, bajan: 2 });
+});
+
+function filaDePrueba(userId: string, puesto: number): FilaTabla {
+  return { userId, puesto, nombre: userId, avatarUrl: null, puntos: 100 - puesto, esTu: false };
+}
+
+test('calcularCambiosDivision: sube el top, baja la cola, nadie en medio se mueve', () => {
+  const tabla = [1, 2, 3, 4, 5].map((n) => filaDePrueba(`u${n}`, n));
+  const cambios = calcularCambiosDivision(tabla, 'PLATA');
+  assert.equal(cambios.get('u1'), 'ORO');
+  assert.equal(cambios.get('u5'), 'BRONCE');
+  assert.equal(cambios.has('u2'), false);
+  assert.equal(cambios.has('u3'), false);
+  assert.equal(cambios.has('u4'), false);
+});
+
+test('calcularCambiosDivision: en Diamante no hay ascenso; en Bronce no hay descenso', () => {
+  const tabla = [1, 2, 3, 4, 5].map((n) => filaDePrueba(`u${n}`, n));
+  const enDiamante = calcularCambiosDivision(tabla, 'DIAMANTE');
+  assert.equal(enDiamante.has('u1'), false); // no hay división por encima
+  assert.equal(enDiamante.get('u5'), 'PLATINO');
+
+  const enBronce = calcularCambiosDivision(tabla, 'BRONCE');
+  assert.equal(enBronce.get('u1'), 'PLATA');
+  assert.equal(enBronce.has('u5'), false); // no hay división por debajo
+});
+
+// ── Semana del reto (lunes a domingo) ───────────────────────────────────────
+
+test('semanaDe: cualquier día de la semana da el mismo lunes de inicio', () => {
+  // 2026-09-14 es lunes; 2026-09-20 es domingo de esa misma semana.
+  assert.deepEqual(semanaDe('2026-09-14'), { inicio: '2026-09-14', fin: '2026-09-21' });
+  assert.deepEqual(semanaDe('2026-09-17'), { inicio: '2026-09-14', fin: '2026-09-21' });
+  assert.deepEqual(semanaDe('2026-09-20'), { inicio: '2026-09-14', fin: '2026-09-21' });
+  // El lunes siguiente ya es otra semana.
+  assert.deepEqual(semanaDe('2026-09-21'), { inicio: '2026-09-21', fin: '2026-09-28' });
+});
+
+test('el reto semanal tiene un objetivo y una recompensa fijados', () => {
+  assert.equal(RETO_SEMANAL_DIAS_OBJETIVO, 5);
+  assert.equal(RETO_SEMANAL_PUNTOS, 30);
 });

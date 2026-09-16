@@ -17,12 +17,14 @@
  * siguiente recálculo.
  */
 
-import type { RankingEventType } from '@prisma/client';
+import type { RankingDivision, RankingEventType } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import {
   notifyLigaCierreProximo,
+  notifyLigaRachaEnRiesgo,
   notifyLigaResultado,
   yaAvisadoCierreLiga,
+  yaAvisadoRachaHoy,
 } from './notifications.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,6 +193,16 @@ function longitudRachaHasta(dia: string, diasConCheckin: Set<string>): number {
     cursor = addDaysStr(cursor, -1);
   }
   return n;
+}
+
+/** Igual que `longitudRachaHasta`, pero consultando la BD directamente. */
+async function longitudRachaEnDb(userId: string, hastaDia: string): Promise<number> {
+  const desde = addDaysStr(hastaDia, -400);
+  const dias = await prisma.dailyCheckin.findMany({
+    where: { userId, date: { gte: desde, lte: hastaDia } },
+    select: { date: true },
+  });
+  return longitudRachaHasta(hastaDia, new Set(dias.map((d) => d.date)));
 }
 
 /**
@@ -424,10 +436,50 @@ export async function salirDeLaLiga(userId: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Divisiones (ascenso/descenso)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** De menor a mayor. Todo el mundo empieza en Bronce. */
+export const ORDEN_DIVISIONES: RankingDivision[] = [
+  'BRONCE',
+  'PLATA',
+  'ORO',
+  'PLATINO',
+  'DIAMANTE',
+];
+
+export function divisionSuperior(d: RankingDivision): RankingDivision {
+  const i = ORDEN_DIVISIONES.indexOf(d);
+  return ORDEN_DIVISIONES[Math.min(i + 1, ORDEN_DIVISIONES.length - 1)];
+}
+
+export function divisionInferior(d: RankingDivision): RankingDivision {
+  const i = ORDEN_DIVISIONES.indexOf(d);
+  return ORDEN_DIVISIONES[Math.max(i - 1, 0)];
+}
+
+/**
+ * Cuántas personas suben y cuántas bajan en una división de `size`
+ * participantes: ~20% arriba y ~20% abajo, dejando siempre a alguien sin
+ * moverse en medio. Con menos de 3 personas no hay suficiente gente para
+ * que ascender/descender tenga sentido, así que nadie se mueve.
+ */
+export function calcularCuotaAscensoDescenso(size: number): {
+  suben: number;
+  bajan: number;
+} {
+  if (size < 3) return { suben: 0, bajan: 0 };
+  const cuota = Math.max(1, Math.round(size * 0.2));
+  const tope = Math.floor((size - 1) / 2); // deja >=1 persona en medio
+  const n = Math.min(cuota, tope);
+  return { suben: n, bajan: n };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Tabla de la liga
 // ─────────────────────────────────────────────────────────────────────────────
 
-type FilaTabla = {
+export type FilaTabla = {
   puesto: number;
   userId: string;
   nombre: string;
@@ -472,38 +524,76 @@ async function tendenciasPara(
   return mapa;
 }
 
+/** Divisiones que tienen al menos una participante ahora mismo. */
+async function divisionesEnUso(): Promise<RankingDivision[]> {
+  const filas = await prisma.rankingParticipation.findMany({
+    select: { division: true },
+    distinct: ['division'],
+  });
+  return filas.map((f) => f.division);
+}
+
 /**
- * Registra la posición actual de cada participante para poder comparar en
- * el siguiente ciclo. Se llama desde el cron `ligas:recompute`, DESPUÉS de
- * recalcular los puntos de todo el mundo — nunca desde `getLiga` (que solo
- * recalcula la fila de quien mira la pantalla).
+ * Registra la posición actual de cada participante (dentro de su división)
+ * para poder comparar en el siguiente ciclo. Se llama desde el cron
+ * `ligas:recompute`, DESPUÉS de recalcular los puntos de todo el mundo —
+ * nunca desde `getLiga` (que solo recalcula la fila de quien mira la
+ * pantalla).
  */
 export async function actualizarTendencias(season: number): Promise<void> {
-  const tabla = await tablaTemporada(season);
-  if (tabla.length === 0) return;
+  for (const division of await divisionesEnUso()) {
+    const tabla = await tablaTemporada(season, division);
+    if (tabla.length === 0) continue;
 
-  const existentes = await prisma.rankingRankSnapshot.findMany({
-    where: { seasonNumber: season },
-    select: { userId: true, rank: true },
-  });
-  const rankAnterior = new Map(existentes.map((e) => [e.userId, e.rank]));
-
-  for (const fila of tabla) {
-    const previousRank = rankAnterior.get(fila.userId) ?? null;
-    await prisma.rankingRankSnapshot.upsert({
-      where: {
-        userId_seasonNumber: { userId: fila.userId, seasonNumber: season },
-      },
-      create: {
-        userId: fila.userId,
-        seasonNumber: season,
-        rank: fila.puesto,
-        previousRank,
-        points: fila.puntos,
-      },
-      update: { rank: fila.puesto, previousRank, points: fila.puntos },
+    const existentes = await prisma.rankingRankSnapshot.findMany({
+      where: { seasonNumber: season, userId: { in: tabla.map((f) => f.userId) } },
+      select: { userId: true, rank: true },
     });
+    const rankAnterior = new Map(existentes.map((e) => [e.userId, e.rank]));
+
+    for (const fila of tabla) {
+      const previousRank = rankAnterior.get(fila.userId) ?? null;
+      await prisma.rankingRankSnapshot.upsert({
+        where: {
+          userId_seasonNumber: { userId: fila.userId, seasonNumber: season },
+        },
+        create: {
+          userId: fila.userId,
+          seasonNumber: season,
+          rank: fila.puesto,
+          previousRank,
+          points: fila.puntos,
+        },
+        update: { rank: fila.puesto, previousRank, points: fila.puntos },
+      });
+    }
   }
+}
+
+/**
+ * Puntos del bonus de racha de HOY (aprox. su racha actual, tope 15) para
+ * cada usuaria, si ya ha hecho check-in hoy. Se usa para la insignia 🔥 de
+ * la tabla — barato porque reutiliza el evento que ya se guarda al puntuar.
+ */
+async function rachasActivasHoy(
+  season: number,
+  userIds: string[],
+  now: Date,
+): Promise<Map<string, number>> {
+  const mapa = new Map<string, number>();
+  if (userIds.length === 0) return mapa;
+  const hoy = todayInTz(now);
+  const eventos = await prisma.rankingPointEvent.findMany({
+    where: {
+      userId: { in: userIds },
+      seasonNumber: season,
+      type: 'STREAK_BONUS',
+      dedupeKey: `streak:${hoy}`,
+    },
+    select: { userId: true, points: true },
+  });
+  for (const e of eventos) mapa.set(e.userId, e.points);
+  return mapa;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -513,7 +603,11 @@ export async function actualizarTendencias(season: number): Promise<void> {
 /** Cuánto ha aportado cada tipo de acción a la puntuación de una lectora esta temporada. */
 export async function desgloseLiga(targetUserId: string, now: Date = new Date()) {
   const season = currentSeasonNumber(now);
-  if (!(await esParticipante(targetUserId))) {
+  const participacion = await prisma.rankingParticipation.findUnique({
+    where: { userId: targetUserId },
+    select: { division: true },
+  });
+  if (!participacion) {
     return { ok: false as const, mensaje: 'Esta usuaria no participa en la liga.' };
   }
   const user = await prisma.user.findUnique({
@@ -529,7 +623,7 @@ export async function desgloseLiga(targetUserId: string, now: Date = new Date())
       _sum: { points: true },
       _count: { _all: true },
     }),
-    tablaTemporada(season),
+    tablaTemporada(season, participacion.division),
   ]);
   const fila = tabla.find((f) => f.userId === targetUserId);
 
@@ -538,6 +632,7 @@ export async function desgloseLiga(targetUserId: string, now: Date = new Date())
     userId: targetUserId,
     nombre: user.name,
     avatarUrl: user.avatarUrl,
+    division: participacion.division,
     puesto: fila?.puesto ?? null,
     puntos: fila?.puntos ?? 0,
     desglose: eventos
@@ -550,8 +645,12 @@ export async function desgloseLiga(targetUserId: string, now: Date = new Date())
   };
 }
 
-async function tablaTemporada(season: number): Promise<FilaTabla[]> {
+async function tablaTemporada(
+  season: number,
+  division: RankingDivision,
+): Promise<FilaTabla[]> {
   const participantes = await prisma.rankingParticipation.findMany({
+    where: { division },
     select: { userId: true },
   });
   const ids = participantes.map((p) => p.userId);
@@ -593,27 +692,40 @@ async function tablaTemporada(season: number): Promise<FilaTabla[]> {
 export async function getLiga(userId: string, now: Date = new Date()) {
   const season = currentSeasonNumber(now);
   const terminaEn = seasonEndsAt(season).toISOString();
-  const participando = await esParticipante(userId);
+  const participacion = await prisma.rankingParticipation.findUnique({
+    where: { userId },
+    select: { division: true },
+  });
 
-  if (!participando) {
+  if (!participacion) {
     return {
       ok: true as const,
       participando: false,
       temporada: { numero: season, terminaEn },
     };
   }
+  const division = participacion.division;
 
   // Al abrir la pantalla solo se recalcula TU fila (barato y hace que tus
   // puntos se vean al instante). El resto de la tabla la refresca el job
   // `ligas:recompute` cada pocas horas — suficiente para una temporada de
   // dos semanas y no carga el servidor compartido en cada visita.
   await recalcularTemporada(userId, season).catch(() => undefined);
+  await calcularRetoSemanal(userId, now).catch(() => undefined);
 
-  const totalParticipantes = await prisma.rankingParticipation.count();
-  const tabla = await tablaTemporada(season);
+  const tabla = await tablaTemporada(season, division);
+  const totalParticipantes = tabla.length;
   const miFila = tabla.find((f) => f.userId === userId);
   const miPuesto = miFila?.puesto ?? tabla.length + 1;
   const misPuntos = miFila?.puntos ?? 0;
+  const delante = tabla.find((f) => f.puesto === miPuesto - 1) ?? null;
+  const siguienteObjetivo = delante
+    ? {
+        nombre: delante.nombre,
+        puntos: delante.puntos,
+        diferencia: Math.max(1, delante.puntos - misPuntos),
+      }
+    : null;
 
   // Top 10 + ventana de ±2 alrededor de mí si estoy fuera del top.
   const visibles = new Map<number, FilaTabla>();
@@ -624,19 +736,22 @@ export async function getLiga(userId: string, now: Date = new Date()) {
   const filasBase = [...visibles.values()]
     .sort((a, b) => a.puesto - b.puesto)
     .map((f) => ({ ...f, esTu: f.userId === userId }));
-  const tendencias = await tendenciasPara(
-    season,
-    filasBase.map((f) => f.userId),
-  );
+  const idsVisibles = filasBase.map((f) => f.userId);
+
+  const [tendencias, rachasHoy] = await Promise.all([
+    tendenciasPara(season, idsVisibles),
+    rachasActivasHoy(season, idsVisibles, now),
+  ]);
   const filas = filasBase.map((f) => ({
     ...f,
     ...(tendencias.get(f.userId) ?? { tendencia: null, delta: null }),
+    rachaHoy: rachasHoy.get(f.userId) ?? null,
   }));
 
   // Histórico permanente.
   const resultados = await prisma.rankingSeasonResult.findMany({
     where: { userId },
-    select: { rank: true, totalPoints: true },
+    select: { rank: true, totalPoints: true, division: true },
   });
   const historico = {
     temporadasJugadas: resultados.length,
@@ -647,7 +762,16 @@ export async function getLiga(userId: string, now: Date = new Date()) {
       ? Math.max(...resultados.map((r) => r.totalPoints))
       : null,
     podios: resultados.filter((r) => r.rank <= 3).length,
+    mejorDivision: resultados.length
+      ? resultados.reduce((best, r) =>
+          ORDEN_DIVISIONES.indexOf(r.division) > ORDEN_DIVISIONES.indexOf(best)
+            ? r.division
+            : best,
+        resultados[0].division)
+      : null,
   };
+
+  const retoSemanal = await estadoRetoSemanal(userId, now);
 
   return {
     ok: true as const,
@@ -656,11 +780,14 @@ export async function getLiga(userId: string, now: Date = new Date()) {
       numero: season,
       terminaEn,
       totalParticipantes,
+      division,
     },
     miPuesto,
     misPuntos,
+    siguienteObjetivo,
     tabla: filas,
     historico,
+    retoSemanal,
   };
 }
 
@@ -668,7 +795,34 @@ export async function getLiga(userId: string, now: Date = new Date()) {
 // Cierre de temporada (job)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Recalcula, ordena y congela el resultado de una temporada. Idempotente. */
+/**
+ * A quién asciende/desciende una tabla ya cerrada: top N sube de división
+ * (salvo en Diamante, techo), últimas N bajan (salvo en Bronce, suelo).
+ */
+export function calcularCambiosDivision(
+  tabla: FilaTabla[],
+  division: RankingDivision,
+): Map<string, RankingDivision> {
+  const cambios = new Map<string, RankingDivision>();
+  const { suben, bajan } = calcularCuotaAscensoDescenso(tabla.length);
+  if (suben > 0 && division !== 'DIAMANTE') {
+    for (const fila of tabla.slice(0, suben)) {
+      cambios.set(fila.userId, divisionSuperior(division));
+    }
+  }
+  if (bajan > 0 && division !== 'BRONCE') {
+    for (const fila of tabla.slice(-bajan)) {
+      cambios.set(fila.userId, divisionInferior(division));
+    }
+  }
+  return cambios;
+}
+
+/**
+ * Recalcula, ordena y congela el resultado de una temporada — por
+ * división, cada una compite solo contra sí misma. Aplica ascensos y
+ * descensos para la temporada siguiente. Idempotente.
+ */
 export async function cerrarTemporada(season: number): Promise<number> {
   const participantes = await prisma.rankingParticipation.findMany({
     select: { userId: true },
@@ -677,44 +831,60 @@ export async function cerrarTemporada(season: number): Promise<number> {
     await recalcularTemporada(userId, season).catch(() => undefined);
   }
 
-  const tabla = await tablaTemporada(season);
-  for (const fila of tabla) {
-    await prisma.rankingSeasonResult.upsert({
-      where: {
-        userId_seasonNumber: { userId: fila.userId, seasonNumber: season },
-      },
-      create: {
-        userId: fila.userId,
-        seasonNumber: season,
-        totalPoints: fila.puntos,
-        rank: fila.puesto,
-      },
-      update: { totalPoints: fila.puntos, rank: fila.puesto },
-    });
+  let totalCerrados = 0;
+  for (const division of await divisionesEnUso()) {
+    const tabla = await tablaTemporada(season, division);
+    if (tabla.length === 0) continue;
+    totalCerrados += tabla.length;
+
+    for (const fila of tabla) {
+      await prisma.rankingSeasonResult.upsert({
+        where: {
+          userId_seasonNumber: { userId: fila.userId, seasonNumber: season },
+        },
+        create: {
+          userId: fila.userId,
+          seasonNumber: season,
+          totalPoints: fila.puntos,
+          rank: fila.puesto,
+          division,
+        },
+        update: { totalPoints: fila.puntos, rank: fila.puesto, division },
+      });
+    }
+
+    const cambios = calcularCambiosDivision(tabla, division);
+    for (const [userId, nuevaDivision] of cambios) {
+      await prisma.rankingParticipation
+        .update({ where: { userId }, data: { division: nuevaDivision } })
+        .catch(() => undefined);
+    }
+
+    // Notificación de resultado a cada participante (best-effort).
+    try {
+      await notifyLigaResultado(
+        season,
+        tabla.map((f) => ({
+          userId: f.userId,
+          rank: f.puesto,
+          total: tabla.length,
+          puntos: f.puntos,
+          division,
+          nuevaDivision: cambios.get(f.userId) ?? null,
+        })),
+      );
+    } catch (error) {
+      console.error('Ligas: no se pudo notificar el resultado:', error);
+    }
   }
 
-  // Notificación de resultado a cada participante (best-effort).
-  try {
-    await notifyLigaResultado(
-      season,
-      tabla.map((f) => ({
-        userId: f.userId,
-        rank: f.puesto,
-        total: tabla.length,
-        puntos: f.puntos,
-      })),
-    );
-  } catch (error) {
-    console.error('Ligas: no se pudo notificar el resultado:', error);
-  }
-
-  return tabla.length;
+  return totalCerrados;
 }
 
 /**
  * Aviso de cierre inminente: cuando falten <=24 h para el fin de la
- * temporada en curso, avisa una sola vez a cada participante de su
- * posición y de a cuántos puntos está el podio. Idempotente.
+ * temporada en curso, avisa una sola vez a cada participante (dentro de su
+ * división) de su posición y de a cuántos puntos está el podio. Idempotente.
  */
 export async function avisarCierreProximo(
   season: number,
@@ -724,34 +894,38 @@ export async function avisarCierreProximo(
   const horasRestantes = msRestantes / 3_600_000;
   if (horasRestantes <= 0 || horasRestantes > 24) return 0;
 
-  const tabla = await tablaTemporada(season);
-  if (tabla.length === 0) return 0;
-  const puntosPodio = tabla[Math.min(2, tabla.length - 1)].puntos;
+  let totalAvisados = 0;
+  for (const division of await divisionesEnUso()) {
+    const tabla = await tablaTemporada(season, division);
+    if (tabla.length === 0) continue;
+    const puntosPodio = tabla[Math.min(2, tabla.length - 1)].puntos;
 
-  const entradas: {
-    userId: string;
-    rank: number;
-    total: number;
-    puntosAlPodio: number;
-    horasRestantes: number;
-  }[] = [];
-  for (const fila of tabla) {
-    if (await yaAvisadoCierreLiga(fila.userId, season)) continue;
-    entradas.push({
-      userId: fila.userId,
-      rank: fila.puesto,
-      total: tabla.length,
-      puntosAlPodio: Math.max(0, puntosPodio - fila.puntos),
-      horasRestantes,
-    });
-  }
+    const entradas: {
+      userId: string;
+      rank: number;
+      total: number;
+      puntosAlPodio: number;
+      horasRestantes: number;
+    }[] = [];
+    for (const fila of tabla) {
+      if (await yaAvisadoCierreLiga(fila.userId, season)) continue;
+      entradas.push({
+        userId: fila.userId,
+        rank: fila.puesto,
+        total: tabla.length,
+        puntosAlPodio: Math.max(0, puntosPodio - fila.puntos),
+        horasRestantes,
+      });
+    }
 
-  try {
-    await notifyLigaCierreProximo(season, entradas);
-  } catch (error) {
-    console.error('Ligas: no se pudo notificar el cierre próximo:', error);
+    try {
+      await notifyLigaCierreProximo(season, entradas);
+    } catch (error) {
+      console.error('Ligas: no se pudo notificar el cierre próximo:', error);
+    }
+    totalAvisados += entradas.length;
   }
-  return entradas.length;
+  return totalAvisados;
 }
 
 /** ¿Ya se cerró esta temporada? (existe al menos un snapshot). */
@@ -760,4 +934,138 @@ export async function temporadaCerrada(season: number): Promise<boolean> {
     where: { seasonNumber: season },
   });
   return n > 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reto semanal
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Independiente de las temporadas de 14 días: semanas de lunes a domingo
+// (Europe/Madrid). Reto fijo de partida: check-in 5 de los 7 días de la
+// semana. El bonus se calcula igual que el resto de eventos (dedupeKey
+// determinista) y aterriza en la temporada en la que cae "hoy" — se
+// recalcula en cada ciclo del cron y al abrir la pantalla, así que se
+// autocorrige si un check-in se revierte.
+
+export const RETO_SEMANAL_DIAS_OBJETIVO = 5;
+export const RETO_SEMANAL_PUNTOS = 30;
+
+/** Lunes (inicio, incluido) y el lunes siguiente (fin, excluido) de la semana de `dia`. */
+export function semanaDe(dia: string): { inicio: string; fin: string } {
+  const [y, m, d] = dia.split('-').map(Number);
+  const diaSemana = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = domingo
+  const offsetALunes = (diaSemana + 6) % 7;
+  const inicio = addDaysStr(dia, -offsetALunes);
+  return { inicio, fin: addDaysStr(inicio, 7) };
+}
+
+async function diasConCheckinEnSemana(userId: string, dia: string): Promise<number> {
+  const { inicio, fin } = semanaDe(dia);
+  return prisma.dailyCheckin.count({
+    where: { userId, date: { gte: inicio, lt: fin } },
+  });
+}
+
+/**
+ * Recalcula (idempotente) el bonus del reto semanal de esta usuaria para la
+ * semana de "hoy". Se llama desde `getLiga` (tu propia fila, al instante) y
+ * desde el cron (todo el mundo).
+ */
+export async function calcularRetoSemanal(
+  userId: string,
+  now: Date = new Date(),
+): Promise<void> {
+  const hoy = todayInTz(now);
+  const season = currentSeasonNumber(now);
+  if (!(await esParticipante(userId))) return;
+
+  const dias = await diasConCheckinEnSemana(userId, hoy);
+  const { inicio } = semanaDe(hoy);
+  const dedupeKey = `weekly:${inicio}`;
+  const cumplido = dias >= RETO_SEMANAL_DIAS_OBJETIVO;
+
+  if (cumplido) {
+    await prisma.rankingPointEvent.upsert({
+      where: { userId_seasonNumber_dedupeKey: { userId, seasonNumber: season, dedupeKey } },
+      create: {
+        userId,
+        seasonNumber: season,
+        type: 'WEEKLY_CHALLENGE',
+        points: RETO_SEMANAL_PUNTOS,
+        dedupeKey,
+      },
+      update: {},
+    });
+  } else {
+    await prisma.rankingPointEvent
+      .deleteMany({ where: { userId, seasonNumber: season, dedupeKey } })
+      .catch(() => undefined);
+  }
+}
+
+/** Tu progreso del reto semanal, para mostrar una barrita en la pantalla. */
+export async function estadoRetoSemanal(userId: string, now: Date = new Date()) {
+  const hoy = todayInTz(now);
+  const dias = await diasConCheckinEnSemana(userId, hoy);
+  return {
+    objetivo: RETO_SEMANAL_DIAS_OBJETIVO,
+    progreso: Math.min(dias, RETO_SEMANAL_DIAS_OBJETIVO),
+    puntos: RETO_SEMANAL_PUNTOS,
+    completado: dias >= RETO_SEMANAL_DIAS_OBJETIVO,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Aviso de racha en riesgo
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RACHA_EN_RIESGO_HORA_DESDE = 20; // 20:00 Madrid
+const RACHA_EN_RIESGO_HORA_HASTA = 23; // hasta las 23:00 Madrid
+const RACHA_EN_RIESGO_DIAS_MINIMOS = 3; // no molestamos por una racha de 1-2 días
+
+/**
+ * Por la tarde-noche (hora de Madrid), avisa a quien tiene una racha larga
+ * en marcha y todavía no ha hecho check-in hoy, para que no se le rompa sin
+ * darse cuenta. Como máximo un aviso por persona y día. Fuera de esa franja
+ * horaria no hace nada — se puede llamar en cada ciclo del cron sin miedo.
+ */
+export async function avisarRachaEnRiesgo(now: Date = new Date()): Promise<number> {
+  const horaMadrid = Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: TZ,
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).format(now),
+  );
+  if (horaMadrid < RACHA_EN_RIESGO_HORA_DESDE || horaMadrid >= RACHA_EN_RIESGO_HORA_HASTA) {
+    return 0;
+  }
+
+  const hoy = todayInTz(now);
+  const ayer = addDaysStr(hoy, -1);
+
+  const participantes = await prisma.rankingParticipation.findMany({
+    select: { userId: true },
+  });
+
+  let avisados = 0;
+  for (const { userId } of participantes) {
+    const [hoyMarcado, ayerMarcado, yaAvisado] = await Promise.all([
+      prisma.dailyCheckin.findUnique({ where: { userId_date: { userId, date: hoy } } }),
+      prisma.dailyCheckin.findUnique({ where: { userId_date: { userId, date: ayer } } }),
+      yaAvisadoRachaHoy(userId, hoy),
+    ]);
+    if (hoyMarcado || !ayerMarcado || yaAvisado) continue;
+
+    const dias = await longitudRachaEnDb(userId, ayer);
+    if (dias < RACHA_EN_RIESGO_DIAS_MINIMOS) continue;
+
+    try {
+      await notifyLigaRachaEnRiesgo(userId, dias, hoy);
+      avisados += 1;
+    } catch (error) {
+      console.error(`Ligas: no se pudo avisar de racha en riesgo a ${userId}:`, error);
+    }
+  }
+  return avisados;
 }

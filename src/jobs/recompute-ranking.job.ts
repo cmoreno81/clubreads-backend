@@ -14,6 +14,8 @@ import { prisma } from '../prisma.js';
 import {
   actualizarTendencias,
   avisarCierreProximo,
+  avisarRachaEnRiesgo,
+  calcularRetoSemanal,
   cerrarTemporada,
   currentSeasonNumber,
   recalcularTemporada,
@@ -23,7 +25,8 @@ import {
 async function main() {
   await prisma.$queryRaw`SELECT 1`;
 
-  const season = currentSeasonNumber();
+  const now = new Date();
+  const season = currentSeasonNumber(now);
   const participantes = await prisma.rankingParticipation.findMany({
     select: { userId: true },
   });
@@ -32,6 +35,7 @@ async function main() {
   for (const { userId } of participantes) {
     try {
       await recalcularTemporada(userId, season);
+      await calcularRetoSemanal(userId, now);
       ok += 1;
     } catch (error) {
       console.error(`Ligas: fallo recalculando ${userId}:`, error);
@@ -42,6 +46,15 @@ async function main() {
     `Ligas: temporada ${season} recalculada para ${ok}/${participantes.length} participantes`,
   );
 
+  // Aviso de racha en riesgo (solo hace algo entre las 20:00 y las 23:00 de Madrid).
+  const enRiesgo = await avisarRachaEnRiesgo(now).catch((error) => {
+    console.error('Ligas: no se pudo avisar de racha en riesgo:', error);
+    return 0;
+  });
+  if (enRiesgo > 0) {
+    console.log(`Ligas: aviso de racha en riesgo enviado a ${enRiesgo} participantes.`);
+  }
+
   // Guarda la posición de cada participante para el indicador de
   // sube/baja puestos del siguiente ciclo.
   await actualizarTendencias(season).catch((error) => {
@@ -49,7 +62,7 @@ async function main() {
   });
 
   // Aviso de cierre inminente de la temporada en curso (una vez por usuario).
-  const avisados = await avisarCierreProximo(season);
+  const avisados = await avisarCierreProximo(season, now);
   if (avisados > 0) {
     console.log(`Ligas: aviso de cierre enviado a ${avisados} participantes.`);
   }

@@ -1205,6 +1205,7 @@ enum NotificationType {
   CLUB_BOOK_OF_YEAR
   LIGA_RESULTADO
   LIGA_CIERRE_PROXIMO
+  LIGA_RACHA_EN_RIESGO
 }
 
 enum ProfileVisibility {
@@ -1413,9 +1414,20 @@ model WishlistItem {
 /// explícito (opt-in desde Ajustes). Sin fila aquí: no puntúa, no aparece
 /// en ninguna tabla y no ve la sección competitiva.
 model RankingParticipation {
-  userId    String   @id
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  optedInAt DateTime @default(now())
+  userId    String          @id
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  optedInAt DateTime        @default(now())
+  /// División en la que compite ESTA temporada. Solo cambia al cerrar una
+  /// temporada (ascenso/descenso) — nunca a mitad de partida.
+  division  RankingDivision @default(BRONCE)
+}
+
+enum RankingDivision {
+  BRONCE
+  PLATA
+  ORO
+  PLATINO
+  DIAMANTE
 }
 
 enum RankingEventType {
@@ -1428,6 +1440,7 @@ enum RankingEventType {
   REVIEW
   BOOK_OF_YEAR_PICK
   QUIZ
+  WEEKLY_CHALLENGE
 }
 
 /// Libro mayor de puntos. Cada acción puntuable de una temporada se
@@ -1454,11 +1467,14 @@ model RankingPointEvent {
 /// se reseteen cada quincena.
 model RankingSeasonResult {
   userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   seasonNumber Int
   totalPoints  Int
   rank         Int
-  createdAt    DateTime @default(now())
+  /// División en la que se jugó esta temporada (para el histórico:
+  /// "mejor división alcanzada", etc.).
+  division     RankingDivision @default(BRONCE)
+  createdAt    DateTime        @default(now())
 
   @@id([userId, seasonNumber])
   @@index([seasonNumber, rank])
