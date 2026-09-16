@@ -16,6 +16,9 @@ import {
   getConversacionesLibroPage,
   marcarConversacionVista,
 } from '../services/readings.service.js';
+import { linkBookEditions } from '../services/book-identity.service.js';
+import { requireClubMember } from '../services/club-context.service.js';
+import { prisma } from '../prisma.js';
 import { requestUserName } from '../middleware/auth.middleware.js';
 import {
   hasExplicitPagination,
@@ -32,6 +35,30 @@ export async function handleLecturasActivas(req: Request, res: Response) {
   const data = await getLecturasActivas(
     requestUserName(req),
   );
+  return res.json(data);
+}
+
+/**
+ * Vincula dos fichas como la misma obra (ediciones en idiomas distintos que
+ * se ha decidido NO fusionar) para que compartan lectura conjunta y
+ * conversación. No mueve datos: solo asigna un `workId` común. El libro
+ * "actual" se identifica por título, igual que el resto de acciones de
+ * lectura conjunta (crearLectura, configuracionLectura...); el otro, por
+ * bookId, tal y como lo devuelve el buscador del catálogo.
+ */
+export async function handleVincularEdicionLibro(req: Request, res: Response) {
+  const body = req.body ?? {};
+  await requireClubMember(requestUserName(req));
+  const libro = String(body.libro || '').trim();
+  const otroBookId = String(body.otroBookId || '').trim();
+  if (!libro || !otroBookId) {
+    return res.json({ ok: false, mensaje: 'Faltan los dos libros a vincular' });
+  }
+  const book = await prisma.book.findFirst({ where: { title: libro } });
+  if (!book) {
+    return res.json({ ok: false, mensaje: 'Libro no encontrado' });
+  }
+  const data = await linkBookEditions(book.id, otroBookId);
   return res.json(data);
 }
 

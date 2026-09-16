@@ -26,6 +26,26 @@ import { backgroundError } from '../logging/logger.js';
 import { normalizeReadingType } from '../validation/api-enums.js';
 import { activityTimestamp } from '../utils/activity-timestamp.js';
 
+/**
+ * Filtro de libro para buscar/crear lecturas conjuntas, resuelto por título
+ * (como siempre) pero extendido a las ediciones "hermanas" vinculadas por
+ * `workId` (misma obra, fichas distintas — p.ej. una edición en español y
+ * otra en inglés que la lectora ha decidido no fusionar). Así, sea cual sea
+ * la edición desde la que alguien abre "Leer capítulos", todas comparten la
+ * misma lectura y conversación por capítulo.
+ */
+async function bookFilterForLectura(
+  titulo: string,
+): Promise<Prisma.BookWhereInput> {
+  const title = titulo.trim();
+  const book = await prisma.book.findFirst({
+    where: { title },
+    select: { id: true, workId: true },
+  });
+  if (!book) return { title };
+  return book.workId ? { workId: book.workId } : { id: book.id };
+}
+
 function tipoFromFlutter(tipo: string): ReadingType {
   return normalizeReadingType(tipo) === 'CLUBVISION'
     ? ReadingType.CLUBVISION
@@ -375,13 +395,18 @@ export async function crearLectura(data: {
 
   if (!book) return { ok: false, mensaje: 'Libro no encontrado' };
 
+  // Clave del lock: si el libro tiene ediciones hermanas (workId), se
+  // comparte entre todas para que no puedan crearse dos lecturas activas
+  // a la vez, una por cada edición.
+  const lockKey = book.workId ?? book.id;
+
   let created = false;
   let notificationReadingId: string | undefined;
   try {
     const outcome = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`
         SELECT pg_advisory_xact_lock(
-          hashtextextended(${`reading:active:${club.id}:${book.id}`}, 0)
+          hashtextextended(${`reading:active:${club.id}:${lockKey}`}, 0)
         )::text
       `;
       if (requestedType === ReadingType.CLUBVISION) {
@@ -393,7 +418,7 @@ export async function crearLectura(data: {
       }
       const existing = await tx.reading.findFirst({
         where: {
-          bookId: book.id,
+          book: book.workId ? { workId: book.workId } : { id: book.id },
           clubId: club.id,
           status: ReadingSessionStatus.ACTIVE,
         },
@@ -541,7 +566,7 @@ export async function getConfiguracionLectura(
 
   const reading = await prisma.reading.findFirst({
     where: {
-      book: { title },
+      book: await bookFilterForLectura(title),
       clubId: club.id,
       status: ReadingSessionStatus.ACTIVE,
     },
@@ -630,9 +655,7 @@ export async function marcarConversacionVista(data: {
       reading: {
         clubId: club.id,
         status: ReadingSessionStatus.ACTIVE,
-        book: {
-          title: libro,
-        },
+        book: await bookFilterForLectura(libro),
       },
     },
     select: {
@@ -680,7 +703,7 @@ export async function getComentariosLectura(
       title: capitulo,
       reading: {
         clubId: club.id,
-        book: { title: libro },
+        book: await bookFilterForLectura(libro),
         status: ReadingSessionStatus.ACTIVE,
       },
     },
@@ -800,7 +823,7 @@ export async function getComentariosLecturaPage(
       title: capitulo,
       reading: {
         clubId: club.id,
-        book: { title: libro },
+        book: await bookFilterForLectura(libro),
         status: ReadingSessionStatus.ACTIVE,
       },
     },
@@ -957,9 +980,7 @@ export async function enviarComentarioLectura(data: {
       reading: {
         clubId: club.id,
         status: ReadingSessionStatus.ACTIVE,
-        book: {
-          title: libro,
-        },
+        book: await bookFilterForLectura(libro),
       },
     },
     include: { reading: { select: { id: true, bookId: true } } },
@@ -1279,9 +1300,7 @@ export async function getConversacionesLibro(libro: string, usuario = '') {
   const readings = await prisma.reading.findMany({
     where: {
       clubId: club.id,
-      book: {
-        title: libro.trim(),
-      },
+      book: await bookFilterForLectura(libro),
     },
     include: {
       conversations: {
@@ -1357,7 +1376,7 @@ export async function getConversacionesLibroPage(
   const readings = await prisma.reading.findMany({
     where: {
       clubId: club.id,
-      book: { title: libro.trim() },
+      book: await bookFilterForLectura(libro),
       ...descendingCursorFilter('startedAt', pagination.cursor),
     },
     select: {

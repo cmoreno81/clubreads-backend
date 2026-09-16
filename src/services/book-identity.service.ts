@@ -1,4 +1,8 @@
-import type { Prisma, PrismaClient } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { Prisma } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
+
+import { prisma } from '../prisma.js';
 
 type Database = Prisma.TransactionClient | PrismaClient;
 
@@ -68,6 +72,63 @@ export async function lockBookIdentity(
       SELECT pg_advisory_xact_lock(hashtextextended(${`book:${key}`}, 0))::text
     `;
   }
+}
+
+/**
+ * Vincula dos ediciones del mismo libro (p. ej. la ficha en español y la
+ * ficha en inglés) que se ha decidido dejar SEPARADAS — cada una conserva
+ * su propio idioma, carátula, lectoras y estadísticas — pero que deben
+ * compartir la lectura conjunta y su conversación por capítulo cuando el
+ * club la lea en grupo. A diferencia de `mergeBooks`, esto no mueve ni
+ * borra ningún dato: solo asigna un `workId` común (nuevo o ya existente en
+ * cualquiera de los dos) a ambos libros, y a cualquier otra edición que ya
+ * compartiera `workId` con alguno de ellos.
+ */
+export async function linkBookEditions(bookIdAValue: string, bookIdBValue: string) {
+  return prisma.$transaction(async (tx) => {
+    const bookIdA = await resolveCanonicalBookId(tx, bookIdAValue);
+    const bookIdB = await resolveCanonicalBookId(tx, bookIdBValue);
+
+    if (bookIdA === bookIdB) {
+      const book = await tx.book.findUnique({ where: { id: bookIdA }, select: { workId: true } });
+      return { ok: true as const, workId: book?.workId ?? null, sameBook: true as const };
+    }
+
+    const orderedIds = [bookIdA, bookIdB].sort();
+    await tx.$queryRaw`
+      SELECT "id" FROM "Book"
+      WHERE "id" IN (${Prisma.join(orderedIds)})
+      ORDER BY "id" FOR UPDATE
+    `;
+
+    const [bookA, bookB] = await Promise.all([
+      tx.book.findUnique({ where: { id: bookIdA }, select: { id: true, workId: true, deletedAt: true } }),
+      tx.book.findUnique({ where: { id: bookIdB }, select: { id: true, workId: true, deletedAt: true } }),
+    ]);
+    if (!bookA || bookA.deletedAt) return { ok: false as const, mensaje: 'Libro no encontrado' };
+    if (!bookB || bookB.deletedAt) return { ok: false as const, mensaje: 'Libro no encontrado' };
+
+    const workId = bookA.workId ?? bookB.workId ?? randomUUID();
+
+    // Si cada libro ya pertenecía a un grupo distinto, se fusionan los dos
+    // grupos bajo el mismo workId en vez de dejar uno huérfano.
+    const staleWorkIds = [bookA.workId, bookB.workId].filter(
+      (id): id is string => Boolean(id) && id !== workId,
+    );
+    if (staleWorkIds.length > 0) {
+      await tx.book.updateMany({
+        where: { workId: { in: staleWorkIds } },
+        data: { workId },
+      });
+    }
+
+    await tx.book.updateMany({
+      where: { id: { in: [bookIdA, bookIdB] } },
+      data: { workId },
+    });
+
+    return { ok: true as const, workId, sameBook: false as const };
+  });
 }
 
 export function isUniqueBookIdentityError(error: unknown) {

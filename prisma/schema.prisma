@@ -244,6 +244,14 @@ model Book {
 
   canonicalKey String?
 
+  /// Agrupa ediciones "hermanas" de la misma obra que se ha decidido NO
+  /// fusionar (p. ej. la misma novela en español e inglés, cada una con su
+  /// propio idioma/carátula/lectoras) pero que deben compartir la lectura
+  /// conjunta y su conversación por capítulos cuando el club la lea en
+  /// grupo. Null = no vinculado a ninguna otra edición. Se asigna desde la
+  /// app al configurar una lectura conjunta (vincularEdicionLibro).
+  workId String?
+
   publicationYear Int?
 
   /// Fecha editorial exacta cuando está disponible. Puede ser futura.
@@ -295,6 +303,7 @@ model Book {
   @@index([normalizedIsbn])
   @@index([publicationDate])
   @@index([language])
+  @@index([workId])
 }
 
 /// Procedencia de los metadatos editoriales de un libro. No duplica el catálogo.

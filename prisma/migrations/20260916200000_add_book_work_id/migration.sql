@@ -1,0 +1,3 @@
+ALTER TABLE "Book" ADD COLUMN IF NOT EXISTS "workId" TEXT;
+
+CREATE INDEX IF NOT EXISTS "Book_workId_idx" ON "Book"("workId");
