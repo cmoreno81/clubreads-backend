@@ -556,6 +556,119 @@ export async function crearLectura(data: {
   return { ok: true };
 }
 
+/**
+ * Corrige la configuración de una lectura conjunta ya creada (número de
+ * capítulos, prólogo, epílogo) — para cuando alguien se equivocó al
+ * configurarla o quiere ajustarla más adelante. Cualquier miembro del club
+ * puede editarla, igual que puede crearla.
+ *
+ * Los espacios de conversación se identifican por título ("Capítulo 3",
+ * "Prólogo"...), así que añadir capítulos es siempre seguro; pero quitar
+ * capítulos o el prólogo/epílogo borra su conversación (con sus
+ * comentarios, si los hubiera) — por eso se bloquea la operación completa
+ * si algún espacio a quitar ya tiene comentarios, en vez de perderlos en
+ * silencio.
+ */
+export async function editarLectura(data: {
+  usuario?: string;
+  libro: string;
+  capitulos: number;
+  prologo: boolean;
+  epilogo: boolean;
+}) {
+  const { club } = await requireClubMember(data.usuario);
+  const title = String(data.libro || '').trim();
+  const capitulos = Number(data.capitulos || 0);
+
+  if (!title) return { ok: false, mensaje: 'Falta el libro' };
+  if (!capitulos || capitulos <= 0) {
+    return { ok: false, mensaje: 'Número de capítulos no válido' };
+  }
+
+  const bookFilter = await bookFilterForLectura(title);
+
+  return prisma.$transaction(async (tx) => {
+    const reading = await tx.reading.findFirst({
+      where: {
+        book: bookFilter,
+        clubId: club.id,
+        status: ReadingSessionStatus.ACTIVE,
+      },
+      include: {
+        conversations: {
+          include: {
+            comments: { where: { deletedAt: null }, select: { id: true } },
+          },
+        },
+      },
+    });
+    if (!reading) {
+      return { ok: false, mensaje: 'No hay una lectura activa para este libro' };
+    }
+
+    const targetTitles: string[] = [];
+    if (data.prologo) targetTitles.push('Prólogo');
+    for (let i = 1; i <= capitulos; i++) targetTitles.push(`Capítulo ${i}`);
+    if (data.epilogo) targetTitles.push('Epílogo');
+    targetTitles.push('💭 Reflexión final');
+    const targetSet = new Set(targetTitles);
+
+    const existentes = new Map(reading.conversations.map((c) => [c.title, c]));
+    const aQuitar = reading.conversations.filter((c) => !targetSet.has(c.title));
+    const conComentarios = aQuitar.find((c) => c.comments.length > 0);
+    if (conComentarios) {
+      return {
+        ok: false,
+        mensaje: `No se puede quitar "${conComentarios.title}": ya tiene comentarios.`,
+      };
+    }
+
+    if (aQuitar.length > 0) {
+      await tx.conversation.deleteMany({
+        where: { id: { in: aQuitar.map((c) => c.id) } },
+      });
+    }
+
+    const aCrear = targetTitles.filter((t) => !existentes.has(t));
+    if (aCrear.length > 0) {
+      await tx.conversation.createMany({
+        data: aCrear.map((chapterTitle) => ({
+          readingId: reading.id,
+          title: chapterTitle,
+          // Orden provisional: se recalcula para todas justo debajo.
+          order: 0,
+        })),
+      });
+    }
+
+    const orderByTitle = new Map(targetTitles.map((t, i) => [t, i]));
+    const conversacionesActuales = await tx.conversation.findMany({
+      where: { readingId: reading.id },
+      select: { id: true, title: true, order: true },
+    });
+    for (const conversation of conversacionesActuales) {
+      const nuevoOrden = orderByTitle.get(conversation.title);
+      if (nuevoOrden !== undefined && nuevoOrden !== conversation.order) {
+        await tx.conversation.update({
+          where: { id: conversation.id },
+          data: { order: nuevoOrden },
+        });
+      }
+    }
+
+    await tx.reading.update({
+      where: { id: reading.id },
+      data: {
+        chapters: capitulos,
+        hasPrologue: data.prologo,
+        hasEpilogue: data.epilogo,
+      },
+    });
+
+    return { ok: true };
+  });
+}
+
 export async function getConfiguracionLectura(
   libro: string,
   usuarioActual: string,

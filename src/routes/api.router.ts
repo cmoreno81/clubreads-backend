@@ -50,6 +50,7 @@ import { handleDashboard, handleAfinidadDetalle } from '../controllers/dashboard
 import {
   handleLecturasActivas,
   handleCrearLectura,
+  handleEditarLectura,
   handleVincularEdicionLibro,
   handleConfiguracionLectura,
   handleComentariosLectura,
@@ -228,6 +229,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'enviarVotacion',
   'iniciarClubvisionBienvenida',
   'crearLectura',
+  'editarLectura',
   'vincularEdicionLibro',
   'guardarComentarioLectura',
   'responderComentario',
@@ -643,6 +645,9 @@ export async function handleApi(
 
       case 'crearLectura':
         return handleCrearLectura(req, res);
+
+      case 'editarLectura':
+        return handleEditarLectura(req, res);
 
       case 'vincularEdicionLibro':
         return handleVincularEdicionLibro(req, res);

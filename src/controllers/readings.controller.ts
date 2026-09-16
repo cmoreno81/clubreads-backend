@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import {
   getLecturasActivas,
   crearLectura,
+  editarLectura,
   getConfiguracionLectura,
   getComentariosLectura,
   getComentariosLecturaPage,
@@ -75,6 +76,19 @@ export async function handleCrearLectura(req: Request, res: Response) {
     paginas:
       body.paginas === undefined ? undefined : Number(body.paginas),
     tipo: String(body.tipo || 'LIBRE'),
+  });
+
+  return res.json(data);
+}
+
+export async function handleEditarLectura(req: Request, res: Response) {
+  const body = req.body ?? {};
+  const data = await editarLectura({
+    usuario: requestUserName(req),
+    libro: String(body.libro || ''),
+    capitulos: Number(body.capitulos || 0),
+    prologo: String(body.prologo || '') === '1' || body.prologo === true,
+    epilogo: String(body.epilogo || '') === '1' || body.epilogo === true,
   });
 
   return res.json(data);
