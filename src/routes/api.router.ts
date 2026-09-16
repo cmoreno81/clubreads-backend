@@ -150,6 +150,7 @@ import {
 } from '../controllers/checkin.controller.js';
 import {
   handleGetLiga,
+  handleGetLigaDesglose,
   handleUnirseLiga,
   handleSalirLiga,
 } from '../controllers/ligas.controller.js';
@@ -811,6 +812,10 @@ export async function handleApi(
       case 'liga':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetLiga(req, res);
+
+      case 'ligaDesglose':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetLigaDesglose(req, res);
 
       case 'unirseLiga':
         if (!req.auth) return requireAuthentication(req, res, () => {});

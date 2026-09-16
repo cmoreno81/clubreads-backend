@@ -12,6 +12,7 @@
 
 import { prisma } from '../prisma.js';
 import {
+  actualizarTendencias,
   avisarCierreProximo,
   cerrarTemporada,
   currentSeasonNumber,
@@ -40,6 +41,12 @@ async function main() {
   console.log(
     `Ligas: temporada ${season} recalculada para ${ok}/${participantes.length} participantes`,
   );
+
+  // Guarda la posición de cada participante para el indicador de
+  // sube/baja puestos del siguiente ciclo.
+  await actualizarTendencias(season).catch((error) => {
+    console.error('Ligas: no se pudieron actualizar las tendencias:', error);
+  });
 
   // Aviso de cierre inminente de la temporada en curso (una vez por usuario).
   const avisados = await avisarCierreProximo(season);

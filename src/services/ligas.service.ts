@@ -436,6 +436,120 @@ type FilaTabla = {
   esTu: boolean;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tendencia (sube/baja puestos desde el último ciclo del cron)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type Tendencia = 'sube' | 'baja' | 'igual' | null;
+
+/**
+ * Compara la posición anterior con la actual. `previousRank` más alto que
+ * `rank` significa que ha mejorado (puesto 8 → puesto 5 = sube 3).
+ * `previousRank` null = aún no hay dato del ciclo anterior (recién unida).
+ */
+export function calcularTendencia(
+  previousRank: number | null,
+  rank: number,
+): { tendencia: Tendencia; delta: number | null } {
+  if (previousRank == null) return { tendencia: null, delta: null };
+  const delta = previousRank - rank;
+  return { tendencia: delta > 0 ? 'sube' : delta < 0 ? 'baja' : 'igual', delta };
+}
+
+async function tendenciasPara(
+  season: number,
+  userIds: string[],
+): Promise<Map<string, { tendencia: Tendencia; delta: number | null }>> {
+  const mapa = new Map<string, { tendencia: Tendencia; delta: number | null }>();
+  if (userIds.length === 0) return mapa;
+  const snapshots = await prisma.rankingRankSnapshot.findMany({
+    where: { seasonNumber: season, userId: { in: userIds } },
+    select: { userId: true, rank: true, previousRank: true },
+  });
+  for (const s of snapshots) {
+    mapa.set(s.userId, calcularTendencia(s.previousRank, s.rank));
+  }
+  return mapa;
+}
+
+/**
+ * Registra la posición actual de cada participante para poder comparar en
+ * el siguiente ciclo. Se llama desde el cron `ligas:recompute`, DESPUÉS de
+ * recalcular los puntos de todo el mundo — nunca desde `getLiga` (que solo
+ * recalcula la fila de quien mira la pantalla).
+ */
+export async function actualizarTendencias(season: number): Promise<void> {
+  const tabla = await tablaTemporada(season);
+  if (tabla.length === 0) return;
+
+  const existentes = await prisma.rankingRankSnapshot.findMany({
+    where: { seasonNumber: season },
+    select: { userId: true, rank: true },
+  });
+  const rankAnterior = new Map(existentes.map((e) => [e.userId, e.rank]));
+
+  for (const fila of tabla) {
+    const previousRank = rankAnterior.get(fila.userId) ?? null;
+    await prisma.rankingRankSnapshot.upsert({
+      where: {
+        userId_seasonNumber: { userId: fila.userId, seasonNumber: season },
+      },
+      create: {
+        userId: fila.userId,
+        seasonNumber: season,
+        rank: fila.puesto,
+        previousRank,
+        points: fila.puntos,
+      },
+      update: { rank: fila.puesto, previousRank, points: fila.puntos },
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Desglose de puntos de una participante
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Cuánto ha aportado cada tipo de acción a la puntuación de una lectora esta temporada. */
+export async function desgloseLiga(targetUserId: string, now: Date = new Date()) {
+  const season = currentSeasonNumber(now);
+  if (!(await esParticipante(targetUserId))) {
+    return { ok: false as const, mensaje: 'Esta usuaria no participa en la liga.' };
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: { name: true, avatarUrl: true },
+  });
+  if (!user) return { ok: false as const, mensaje: 'Usuaria no encontrada' };
+
+  const [eventos, tabla] = await Promise.all([
+    prisma.rankingPointEvent.groupBy({
+      by: ['type'],
+      where: { userId: targetUserId, seasonNumber: season },
+      _sum: { points: true },
+      _count: { _all: true },
+    }),
+    tablaTemporada(season),
+  ]);
+  const fila = tabla.find((f) => f.userId === targetUserId);
+
+  return {
+    ok: true as const,
+    userId: targetUserId,
+    nombre: user.name,
+    avatarUrl: user.avatarUrl,
+    puesto: fila?.puesto ?? null,
+    puntos: fila?.puntos ?? 0,
+    desglose: eventos
+      .map((e) => ({
+        tipo: e.type,
+        puntos: e._sum.points ?? 0,
+        eventos: e._count._all,
+      }))
+      .sort((a, b) => b.puntos - a.puntos),
+  };
+}
+
 async function tablaTemporada(season: number): Promise<FilaTabla[]> {
   const participantes = await prisma.rankingParticipation.findMany({
     select: { userId: true },
@@ -507,9 +621,17 @@ export async function getLiga(userId: string, now: Date = new Date()) {
   for (const f of tabla) {
     if (Math.abs(f.puesto - miPuesto) <= 2) visibles.set(f.puesto, f);
   }
-  const filas = [...visibles.values()]
+  const filasBase = [...visibles.values()]
     .sort((a, b) => a.puesto - b.puesto)
     .map((f) => ({ ...f, esTu: f.userId === userId }));
+  const tendencias = await tendenciasPara(
+    season,
+    filasBase.map((f) => f.userId),
+  );
+  const filas = filasBase.map((f) => ({
+    ...f,
+    ...(tendencias.get(f.userId) ?? { tendencia: null, delta: null }),
+  }));
 
   // Histórico permanente.
   const resultados = await prisma.rankingSeasonResult.findMany({

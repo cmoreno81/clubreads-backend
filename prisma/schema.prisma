@@ -407,9 +407,10 @@ model User {
   proposedReadings              ClubReadingProposal[]           @relation("ProposedReadings")
   proposalApprovals             ClubReadingProposalApproval[]   @relation("ProposalApprovals")
 
-  rankingParticipation RankingParticipation?
-  rankingPointEvents   RankingPointEvent[]
-  rankingSeasonResults RankingSeasonResult[]
+  rankingParticipation  RankingParticipation?
+  rankingPointEvents    RankingPointEvent[]
+  rankingSeasonResults  RankingSeasonResult[]
+  rankingRankSnapshots  RankingRankSnapshot[]
 
   @@index([activeClubId])
 }
@@ -1461,4 +1462,21 @@ model RankingSeasonResult {
 
   @@id([userId, seasonNumber])
   @@index([seasonNumber, rank])
+}
+
+/// Última posición conocida de cada participante en la temporada en curso,
+/// junto con la anterior — se actualiza en cada ciclo del cron
+/// `ligas:recompute` (cada 1-3 h). Permite mostrar si alguien sube o baja
+/// puestos desde el último recálculo, sin guardar un histórico completo.
+model RankingRankSnapshot {
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seasonNumber Int
+  rank         Int
+  previousRank Int?
+  points       Int
+  updatedAt    DateTime @updatedAt
+
+  @@id([userId, seasonNumber])
+  @@index([seasonNumber])
 }

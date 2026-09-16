@@ -5,6 +5,7 @@ import {
   SEASON_EPOCH,
   SEASON_LENGTH_DAYS,
   bonusPorRacha,
+  calcularTendencia,
   currentSeasonNumber,
   daysBetween,
   puntosPorLibro,
@@ -79,4 +80,22 @@ test('puntosPorLibro: 40 normal, 20 relectura o libro corto', () => {
   assert.equal(puntosPorLibro({ isReread: false, totalPages: 30 }), 20);
   assert.equal(puntosPorLibro({ isReread: false, totalPages: 49 }), 20);
   assert.equal(puntosPorLibro({ isReread: false, totalPages: 50 }), 40);
+});
+
+// ── Tendencia (sube/baja puestos) ───────────────────────────────────────────
+
+test('calcularTendencia: sin dato anterior no hay tendencia', () => {
+  assert.deepEqual(calcularTendencia(null, 5), { tendencia: null, delta: null });
+});
+
+test('calcularTendencia: bajar de puesto numérico es subir en la clasificación', () => {
+  assert.deepEqual(calcularTendencia(8, 5), { tendencia: 'sube', delta: 3 });
+});
+
+test('calcularTendencia: subir de puesto numérico es bajar en la clasificación', () => {
+  assert.deepEqual(calcularTendencia(2, 6), { tendencia: 'baja', delta: -4 });
+});
+
+test('calcularTendencia: mismo puesto es igual', () => {
+  assert.deepEqual(calcularTendencia(4, 4), { tendencia: 'igual', delta: 0 });
 });

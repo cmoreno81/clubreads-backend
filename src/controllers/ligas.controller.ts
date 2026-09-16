@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 
 import {
+  desgloseLiga,
   getLiga,
   salirDeLaLiga,
   unirseALaLiga,
@@ -9,6 +10,11 @@ import {
 export async function handleGetLiga(req: Request, res: Response) {
   const userId = req.auth!.userId;
   return res.json(await getLiga(userId));
+}
+
+export async function handleGetLigaDesglose(req: Request, res: Response) {
+  const targetUserId = String(req.query.userId ?? '').trim();
+  return res.json(await desgloseLiga(targetUserId));
 }
 
 export async function handleUnirseLiga(req: Request, res: Response) {

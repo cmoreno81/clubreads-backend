@@ -197,6 +197,7 @@ export const actionQuerySchemas: Record<string, z.ZodType> = {
   prepararLibroDelAnioClub: z.object({ action: z.literal('prepararLibroDelAnioClub'), anio: positiveIntegerSchema }).passthrough(),
   historialLibroDelAnioClub: z.object({ action: z.literal('historialLibroDelAnioClub') }).passthrough(),
   liga: z.object({ action: z.literal('liga') }).passthrough(),
+  ligaDesglose: z.object({ action: z.literal('ligaDesglose'), userId: identifierSchema }).passthrough(),
 };
 
 function invalidFields(error: z.ZodError) {
