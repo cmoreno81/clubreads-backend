@@ -781,15 +781,17 @@ export async function getGeneralDashboard(userId: string) {
       miembros: club._count.members,
       lecturasActivas: club.readings.length,
     })),
-    leyendoAhora: user.library.map(({ book, lastProgress, currentPage }) => ({
-      id: book.id,
-      titulo: book.title,
-      genero: book.genre.name,
-      coverUrl: book.coverUrl ?? '',
-      progreso: lastProgress ?? 0,
-      paginaActual: currentPage,
-      paginas: book.totalPages,
-    })),
+    leyendoAhora: user.library.map(
+      ({ book, lastProgress, currentPage, personalTotalPages }) => ({
+        id: book.id,
+        titulo: book.title,
+        genero: book.genre.name,
+        coverUrl: book.coverUrl ?? '',
+        progreso: lastProgress ?? 0,
+        paginaActual: currentPage,
+        paginas: personalTotalPages ?? book.totalPages,
+      }),
+    ),
     miBiblioteca: personalLibrary
       .sort((left, right) => {
         const priority = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;

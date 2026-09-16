@@ -617,6 +617,12 @@ model Library {
   /// de referencia de la ficha (Book.language). Null = usa el de la ficha.
   personalLanguage String?
 
+  /// Nº de páginas de ESTA edición, cuando difiere del total de referencia
+  /// de la ficha (Book.totalPages) — típicamente tras fusionar ediciones en
+  /// distinto idioma con paginación distinta. Solo afecta al progreso propio
+  /// de esta lectora; nunca sobrescribe el dato compartido del libro.
+  personalTotalPages Int?
+
   lastProgress Int?
   currentPage  Int?
 

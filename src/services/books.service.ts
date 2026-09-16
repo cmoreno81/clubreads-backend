@@ -1233,7 +1233,7 @@ export async function actualizarProgresoLectura(
     pagina = Math.round(Number(paginaActual));
     const totalPaginas = totalFueEnviado
       ? totalEnviado
-      : lectura.book.totalPages;
+      : (lectura.personalTotalPages ?? lectura.book.totalPages);
     if (!totalPaginas) {
       return { ok: false, mensaje: 'El libro no tiene páginas configuradas' };
     }
@@ -1249,6 +1249,17 @@ export async function actualizarProgresoLectura(
   }
 
   const today = now.toISOString().slice(0, 10);
+
+  // Si el libro ya tiene páginas de referencia (dato compartido, típicamente
+  // de otra edición/idioma tras una fusión) y esta lectora indica un total
+  // distinto, es SU edición la que difiere: se guarda como su propio
+  // ajuste (personalTotalPages) y NUNCA se sobrescribe el dato del libro,
+  // que afectaría a todas las demás lectoras. Solo se establece el total
+  // global cuando el libro aún no tenía ninguno (primera vez que se conoce).
+  const totalYaConocido = lectura.book.totalPages != null;
+  const totalDifiereDelGlobal =
+    totalFueEnviado && totalYaConocido && totalEnviado !== lectura.book.totalPages;
+  const estableceTotalGlobal = totalFueEnviado && !totalYaConocido;
 
   // Transacción principal: actualizar progreso del libro
   await db.$transaction([
@@ -1266,9 +1277,12 @@ export async function actualizarProgresoLectura(
         currentPage: pagina,
         progressNote: comentario.trim() || null,
         progressUpdatedAt: now,
+        ...(totalDifiereDelGlobal
+          ? { personalTotalPages: totalEnviado }
+          : {}),
       },
     }),
-    ...(totalFueEnviado
+    ...(estableceTotalGlobal
       ? [
           db.book.update({
             where: { id: lectura.bookId },
