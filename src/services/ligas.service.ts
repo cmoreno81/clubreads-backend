@@ -26,6 +26,7 @@ import {
   yaAvisadoCierreLiga,
   yaAvisadoRachaHoy,
 } from './notifications.service.js';
+import { getActiveDates } from './checkin.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Temporadas
@@ -184,11 +185,15 @@ type EventoBorrador = {
   dedupeKey: string;
 };
 
-/** Longitud de la racha de check-ins que termina EXACTAMENTE en `dia`. */
-function longitudRachaHasta(dia: string, diasConCheckin: Set<string>): number {
+/**
+ * Longitud de la racha de días activos (check-in, progreso o libro
+ * terminado — ver `getActiveDates` en checkin.service) que termina
+ * EXACTAMENTE en `dia`.
+ */
+function longitudRachaHasta(dia: string, diasActivos: Set<string>): number {
   let n = 0;
   let cursor = dia;
-  while (diasConCheckin.has(cursor)) {
+  while (diasActivos.has(cursor)) {
     n += 1;
     cursor = addDaysStr(cursor, -1);
   }
@@ -198,11 +203,8 @@ function longitudRachaHasta(dia: string, diasConCheckin: Set<string>): number {
 /** Igual que `longitudRachaHasta`, pero consultando la BD directamente. */
 async function longitudRachaEnDb(userId: string, hastaDia: string): Promise<number> {
   const desde = addDaysStr(hastaDia, -400);
-  const dias = await prisma.dailyCheckin.findMany({
-    where: { userId, date: { gte: desde, lte: hastaDia } },
-    select: { date: true },
-  });
-  return longitudRachaHasta(hastaDia, new Set(dias.map((d) => d.date)));
+  const diasActivos = await getActiveDates(userId, desde, hastaDia);
+  return longitudRachaHasta(hastaDia, diasActivos);
 }
 
 /**
@@ -227,13 +229,11 @@ export async function calcularEventosTemporada(
 
   if (checkins.length > 0) {
     // Para calcular la racha necesitamos también días anteriores a la
-    // temporada (una racha puede venir de lejos).
+    // temporada (una racha puede venir de lejos), y no solo check-ins:
+    // un día en el que solo se actualizó progreso también cuenta para no
+    // romper la racha (misma definición que el mapa de calor).
     const lookbackDesde = addDaysStr(startDate, -400);
-    const historicos = await prisma.dailyCheckin.findMany({
-      where: { userId, date: { gte: lookbackDesde, lt: endDate } },
-      select: { date: true },
-    });
-    const diasConCheckin = new Set(historicos.map((c) => c.date));
+    const diasActivos = await getActiveDates(userId, lookbackDesde, addDaysStr(endDate, -1));
 
     for (const { date } of checkins) {
       eventos.push({
@@ -241,7 +241,7 @@ export async function calcularEventosTemporada(
         points: PUNTOS.CHECKIN,
         dedupeKey: `checkin:${date}`,
       });
-      const bonus = bonusPorRacha(longitudRachaHasta(date, diasConCheckin));
+      const bonus = bonusPorRacha(longitudRachaHasta(date, diasActivos));
       if (bonus > 0) {
         eventos.push({
           type: 'STREAK_BONUS',

@@ -201,22 +201,72 @@ export async function getCheckinHistory(userId: string, days = 365) {
 }
 
 /**
- * Calcula la racha actual de días consecutivos con check-in.
+ * Fechas (YYYY-MM-DD) con actividad lectora entre `sinceStr` y `untilStr`
+ * (ambos inclusive), combinando las mismas cuatro señales que ya pinta el
+ * mapa de calor: check-in explícito, sesión de lectura con páginas, progreso
+ * de un libro actualizado, y libro terminado. Se exporta para que la racha
+ * (aquí y en Ligas) use exactamente la misma definición de "día activo" que
+ * el calendario — antes solo miraba check-ins, así que un día en el que
+ * solo se actualizaban páginas aparecía coloreado mientras rompía la racha
+ * en silencio.
+ */
+export async function getActiveDates(
+  userId: string,
+  sinceStr: string,
+  untilStr: string,
+): Promise<Set<string>> {
+  const since = new Date(`${sinceStr}T00:00:00.000Z`);
+  const untilExclusive = new Date(
+    new Date(`${untilStr}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000,
+  );
+
+  const dates = new Set<string>();
+
+  const checkins = await prisma.dailyCheckin.findMany({
+    where: { userId, date: { gte: sinceStr, lte: untilStr } },
+    select: { date: true },
+  });
+  for (const c of checkins) dates.add(c.date);
+
+  try {
+    const sessions = await prisma.readingSession.findMany({
+      where: { userId, date: { gte: sinceStr, lte: untilStr } },
+      select: { date: true },
+    });
+    for (const s of sessions) dates.add(s.date);
+  } catch {
+    // Tabla ReadingSession aún no migrada en este entorno.
+  }
+
+  const progressDays = await prisma.library.findMany({
+    where: { userId, progressUpdatedAt: { gte: since, lt: untilExclusive } },
+    select: { progressUpdatedAt: true },
+  });
+  for (const p of progressDays) {
+    if (p.progressUpdatedAt) dates.add(p.progressUpdatedAt.toISOString().slice(0, 10));
+  }
+
+  const completionDays = await prisma.readingCompletion.findMany({
+    where: { userId, finishedAt: { gte: since, lt: untilExclusive } },
+    select: { finishedAt: true },
+  });
+  for (const c of completionDays) dates.add(c.finishedAt.toISOString().slice(0, 10));
+
+  return dates;
+}
+
+/**
+ * Calcula la racha actual de días consecutivos con actividad lectora
+ * (check-in, progreso, o libro terminado — ver getActiveDates).
  */
 async function getStreak(userId: string): Promise<number> {
   // Traemos los últimos 400 días para cubrir rachas largas
   const since = new Date();
   since.setDate(since.getDate() - 400);
   const sinceStr = since.toISOString().slice(0, 10);
-
-  const rows = await prisma.dailyCheckin.findMany({
-    where: { userId, date: { gte: sinceStr } },
-    orderBy: { date: 'desc' },
-    select: { date: true },
-  });
-
-  const dates = new Set(rows.map((r) => r.date));
   const today = todayString();
+
+  const dates = await getActiveDates(userId, sinceStr, today);
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = yesterday.toISOString().slice(0, 10);
