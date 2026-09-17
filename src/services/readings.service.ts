@@ -39,10 +39,10 @@ async function bookFilterForLectura(
 ): Promise<Prisma.BookWhereInput> {
   const title = titulo.trim();
   const book = await prisma.book.findFirst({
-    where: { title },
+    where: { title, deletedAt: null },
     select: { id: true, workId: true },
   });
-  if (!book) return { title };
+  if (!book) return { title, deletedAt: null };
   return book.workId ? { workId: book.workId } : { id: book.id };
 }
 
@@ -340,7 +340,7 @@ export async function getLecturasActivas(usuario = '') {
       const book =
         latestResult?.winnerBook ??
         (await prisma.book.findFirst({
-          where: { title: winnerTitle },
+          where: { title: winnerTitle, deletedAt: null },
           select: { id: true, title: true, coverUrl: true },
         }));
 
@@ -390,7 +390,7 @@ export async function crearLectura(data: {
   }
 
   const book = await prisma.book.findFirst({
-    where: { title },
+    where: { title, deletedAt: null },
   });
 
   if (!book) return { ok: false, mensaje: 'Libro no encontrado' };
