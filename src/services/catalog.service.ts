@@ -289,6 +289,7 @@ async function authenticatedUser(userName: string) {
 export async function getGeneralCatalog(userName: string) {
   const user = await authenticatedUser(userName);
   const books = await prisma.book.findMany({
+    where: { deletedAt: null },
     include: bookInclude,
     orderBy: [{ library: { _count: 'desc' } }, { createdAt: 'desc' }],
     take: 30,
@@ -349,6 +350,7 @@ export async function searchGeneralCatalog(userName: string, rawQuery: string) {
 
   const local = await prisma.book.findMany({
     where: {
+      deletedAt: null,
       OR: [
         { title: { contains: query, mode: 'insensitive' } },
         { isbn: { contains: query, mode: 'insensitive' } },
