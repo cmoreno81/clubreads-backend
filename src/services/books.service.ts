@@ -2493,9 +2493,30 @@ if (duplicado) {
     genreId = genre.id;
   }
 
+  // Si este libro es una edición hermana de otra (mismo workId, p. ej. una
+  // traducción), esa hermana manda en la saga: sin esto, editar la saga de
+  // una edición con el nombre que trae el catálogo externo en otro idioma
+  // (p. ej. "Empyrean" en vez de "Empíreo") no encontraba coincidencia por
+  // nombre y creaba una saga nueva, separando ediciones que ya estaban
+  // enlazadas como la misma obra (bug real: "Iron Flame" se desenganchó de
+  // "Empíreo" al reasignarle una saga "Empyrean" recién creada).
+  const sagaHermana = actual.workId
+    ? await prisma.book.findFirst({
+        where: {
+          workId: actual.workId,
+          id: { not: bookId },
+          deletedAt: null,
+          seriesId: { not: null },
+        },
+        select: { seriesId: true },
+      })
+    : null;
+
   const series =
     sagaCampoEnviado && !standalone && seriesName
-      ? await buscarOCrearSaga(seriesName, genreId, actual.seriesId)
+      ? sagaHermana
+        ? await prisma.series.findUnique({ where: { id: sagaHermana.seriesId! } })
+        : await buscarOCrearSaga(seriesName, genreId, actual.seriesId)
       : null;
 
 const suppliedAuthor = suppliedAuthorName
