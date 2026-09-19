@@ -100,6 +100,7 @@ import {
   handleActivateAccount,
   handleCompleteRegistration,
   handleChangePassword,
+  handleDeleteAccount,
   handleLogin,
   handleLogout,
   handleRefresh,
@@ -189,6 +190,7 @@ export const POST_ONLY_ACTIONS = new Set([
   ...PUBLIC_AUTH_ACTIONS,
   'logout',
   'cambiarPassword',
+  'eliminarCuenta',
   'setSeriesOverride',
   'removeSeriesOverride',
   'ocultarSaga',
@@ -342,6 +344,12 @@ export async function handleApi(
           return requireAuthentication(req, res, () => {});
         }
         return handleChangePassword(req, res);
+
+      case 'eliminarCuenta':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleDeleteAccount(req, res);
 
       case 'misClubes':
         if (!req.auth) {

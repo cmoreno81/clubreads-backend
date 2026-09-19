@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { AuthCodePurpose } from '@prisma/client';
+import { AuthCodePurpose, ClubType } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
 import { backgroundError } from '../logging/logger.js';
@@ -635,4 +635,77 @@ export async function changePassword(
   ]);
 
   return issueSession(user.id);
+}
+
+/// Un club que sigues siendo propietaria y que no es tu espacio personal
+/// bloquea la eliminación si tiene alguien más dentro — no hay forma de
+/// transferir la propiedad todavía, así que borrar la cuenta se llevaría
+/// por delante el club de otras personas sin avisarlas.
+type ClubPropio = { id: string; name: string; tipo: ClubType; miembros: number };
+
+export function clubesQueBloqueanEliminacion(clubs: ClubPropio[]) {
+  return clubs.filter((c) => c.tipo !== ClubType.PERSONAL && c.miembros > 1);
+}
+
+export async function eliminarCuenta(userId: string, password: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new AuthError('Cuenta no encontrada', 404, 'USER_NOT_FOUND');
+  }
+  if (
+    user.passwordHash &&
+    (!password || !(await verifyPassword(password, user.passwordHash)))
+  ) {
+    throw new AuthError('La contraseña no es correcta', 401, 'INVALID_PASSWORD');
+  }
+
+  const ownedClubs = await prisma.club.findMany({
+    where: { ownerId: userId },
+    select: { id: true, name: true, tipo: true, _count: { select: { members: true } } },
+  });
+  const bloqueantes = clubesQueBloqueanEliminacion(
+    ownedClubs.map((c) => ({ id: c.id, name: c.name, tipo: c.tipo, miembros: c._count.members })),
+  );
+  if (bloqueantes.length > 0) {
+    throw new AuthError(
+      `Eres propietaria de "${bloqueantes.map((c) => c.name).join('", "')}" y tiene más gente dentro. ` +
+        'Transfiere la propiedad a otra persona del club o elimínalo antes de borrar tu cuenta.',
+      400,
+      'OWNED_CLUBS_BLOCK_DELETION',
+    );
+  }
+
+  const clubIdsToDelete = ownedClubs.map((c) => c.id);
+  const placeholder = `eliminada-${user.id}`;
+
+  await prisma.$transaction([
+    ...(clubIdsToDelete.length
+      ? [prisma.club.deleteMany({ where: { id: { in: clubIdsToDelete } } })]
+      : []),
+    prisma.clubMember.deleteMany({ where: { userId } }),
+    prisma.authSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    }),
+    prisma.authCode.deleteMany({ where: { userId } }),
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: `Cuenta eliminada ${placeholder}`,
+        email: `${placeholder}@clubreads.invalid`,
+        passwordHash: null,
+        avatarUrl: null,
+        bio: null,
+        readerPersonality: null,
+        activeClubId: null,
+        notificationsDisabled: [],
+        profileVisibility: 'PRIVADO',
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        deletedAt: new Date(),
+      },
+    }),
+  ]);
+
+  return { ok: true };
 }

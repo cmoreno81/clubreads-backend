@@ -4,6 +4,7 @@ import {
   activateAccount,
   completeRegistration,
   changePassword,
+  eliminarCuenta,
   login,
   logout,
   refreshSession,
@@ -100,6 +101,15 @@ export async function handleRefresh(req: Request, res: Response) {
 
 export async function handleLogout(req: Request, res: Response) {
   return res.json(await logout(req.auth!.sessionId));
+}
+
+export async function handleDeleteAccount(
+  req: Request,
+  res: Response,
+) {
+  return res.json(
+    await eliminarCuenta(req.auth!.userId, value(req, 'password')),
+  );
 }
 
 export async function handleChangePassword(

@@ -395,6 +395,13 @@ model User {
   /// PRIVADO = nadie más que ella misma.
   profileVisibility ProfileVisibility @default(CLUB)
 
+  /// Fecha en la que la usuaria eliminó su cuenta. A partir de ese momento
+  /// name/email quedan anonimizados (ver eliminarCuenta) y no puede volver
+  /// a iniciar sesión; se conserva la fila (no se borra físicamente) porque
+  /// otras usuarias siguen teniendo comentarios, reseñas y votos que la
+  /// referencian sin cascade.
+  deletedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

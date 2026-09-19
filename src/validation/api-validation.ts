@@ -118,6 +118,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   refreshToken: body({ refreshToken: z.string().min(1).max(4_096) }),
   logout: emptyBody,
   cambiarPassword: body({ passwordActual: z.string().min(1).max(200), passwordNueva: z.string().min(8).max(200) }),
+  eliminarCuenta: body({ password: z.string().max(200).optional() }),
   setSeriesOverride: body({ seriesId: identifierSchema, posicion: positiveIntegerSchema, tipo: z.enum(['LEIDO_EXTERNO', 'OMITIDO']) }),
   removeSeriesOverride: body({ seriesId: identifierSchema, posicion: positiveIntegerSchema }),
   ocultarSaga: idBody('sagaId'), mostrarSaga: idBody('sagaId'), eliminarSaga: idBody('sagaId'),
