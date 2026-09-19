@@ -10,6 +10,7 @@ import {
   leaveClub,
   updateClub,
   deleteClub,
+  transferirPropiedad,
   getClubMembers,
   getPersonalidadesClub,
 } from '../services/clubs.service.js';
@@ -82,6 +83,16 @@ export async function handleUpdateClubWith(
 export async function handleDeleteClub(req: Request, res: Response) {
   return res.json(
     await deleteClub(req.auth!.userId, String(req.body?.clubId ?? '')),
+  );
+}
+
+export async function handleTransferOwnership(req: Request, res: Response) {
+  return res.json(
+    await transferirPropiedad(
+      req.auth!.userId,
+      String(req.body?.clubId ?? ''),
+      String(req.body?.nuevoOwnerId ?? ''),
+    ),
   );
 }
 

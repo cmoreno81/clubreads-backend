@@ -120,6 +120,7 @@ import {
   handleLeaveClub,
   handleMyClubs,
   handleSelectClub,
+  handleTransferOwnership,
   handleUpdateClub,
 } from '../controllers/clubs.controller.js';
 import { handleGeneralDashboard } from '../controllers/general-dashboard.controller.js';
@@ -217,6 +218,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'invitacionClub',
   'salirClub',
   'eliminarClub',
+  'transferirPropiedadClub',
   'editarClub',
   'crearLibro',
   'editarLibro',
@@ -522,6 +524,12 @@ export async function handleApi(
           return requireAuthentication(req, res, () => {});
         }
         return handleDeleteClub(req, res);
+
+      case 'transferirPropiedadClub':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleTransferOwnership(req, res);
 
       case 'editarClub':
         if (!req.auth) {

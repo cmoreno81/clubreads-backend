@@ -452,6 +452,61 @@ export async function getClubMembers(userId: string, clubId: string) {
 }
 
 // ─────────────────────────────────────────────
+// Transferir la propiedad del club a otra persona miembro
+// ─────────────────────────────────────────────
+export async function transferirPropiedad(
+  userId: string,
+  clubId: string,
+  nuevoOwnerId: string,
+) {
+  const membership = await prisma.clubMember.findUnique({
+    where: { clubId_userId: { clubId, userId } },
+    include: { club: true },
+  });
+  if (!membership || membership.role !== ClubRole.OWNER) {
+    throw new ClubContextError(
+      'Solo la propietaria puede transferir el club',
+      403,
+      'INSUFFICIENT_CLUB_ROLE',
+    );
+  }
+  if (membership.club.tipo === ClubType.PERSONAL) {
+    throw new ClubContextError(
+      'El espacio lector personal no se puede transferir',
+      400,
+      'CANNOT_TRANSFER_PERSONAL_SPACE',
+    );
+  }
+  if (nuevoOwnerId === userId) {
+    throw new ClubContextError('Ya eres la propietaria', 400, 'ALREADY_OWNER');
+  }
+  const nuevoOwnerMembership = await prisma.clubMember.findUnique({
+    where: { clubId_userId: { clubId, userId: nuevoOwnerId } },
+  });
+  if (!nuevoOwnerMembership) {
+    throw new ClubContextError(
+      'La persona elegida no es miembro de este club',
+      404,
+      'NOT_CLUB_MEMBER',
+    );
+  }
+
+  await prisma.$transaction([
+    prisma.club.update({ where: { id: clubId }, data: { ownerId: nuevoOwnerId } }),
+    prisma.clubMember.update({
+      where: { clubId_userId: { clubId, userId: nuevoOwnerId } },
+      data: { role: ClubRole.OWNER },
+    }),
+    prisma.clubMember.update({
+      where: { clubId_userId: { clubId, userId } },
+      data: { role: ClubRole.ADMIN },
+    }),
+  ]);
+
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────
 // Eliminar club (solo OWNER, no espacio personal)
 // ─────────────────────────────────────────────
 export async function deleteClub(userId: string, clubId: string) {

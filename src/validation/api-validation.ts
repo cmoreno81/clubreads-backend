@@ -139,6 +139,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   unirseClub: body({ codigo: z.string().trim().min(1).max(100) }),
   seleccionarClub: idBody('clubId'), invitacionClub: idBody('clubId'), salirClub: idBody('clubId'),
   editarClub: body({ clubId: identifierSchema, nombre: shortTextSchema.optional(), descripcion: textSchema.optional(), avatarUrl: avatarUrlSchema.optional() }),
+  transferirPropiedadClub: body({ clubId: identifierSchema, nuevoOwnerId: identifierSchema }),
   crearLibro: body({ libro: shortTextSchema.optional(), titulo: shortTextSchema.optional(), title: shortTextSchema.optional(), author: shortTextSchema.optional(), isbn: z.string().max(32).optional(), totalPages: pageSchema.optional(), confirmarNuevo: z.boolean().optional(), ...bookMutationFields }).refine((v) => Boolean(v.libro || v.titulo || v.title), { path: ['titulo'], message: 'Título obligatorio' }),
   editarLibro: body({ bookId: identifierSchema.optional(), id: identifierSchema.optional(), ...bookMutationFields }).refine((v) => Boolean(v.bookId || v.id), { path: ['bookId'], message: 'Identificador obligatorio' }),
   anadirLibroExistente: body({ libro: identifierSchema, prioridad: prioritySchema, formato: formatSchema.optional(), idioma: bookLanguageSchema.optional() }),
