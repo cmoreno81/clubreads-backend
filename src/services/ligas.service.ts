@@ -786,11 +786,18 @@ export async function getLiga(userId: string, now: Date = new Date()) {
       }
     : null;
 
-  // Top 10 + ventana de ±2 alrededor de mí si estoy fuera del top.
+  // Top 10 + ventana de ±2 alrededor de mí si estoy fuera del top + zona de
+  // descenso entera, para que se pueda ver marcada en rojo igual que el
+  // ascenso se ve en el top 10 (si no, con divisiones grandes y estando a
+  // mitad de tabla, nunca llegabas a ver quién desciende).
   const visibles = new Map<number, FilaTabla>();
   for (const f of tabla.slice(0, 10)) visibles.set(f.puesto, f);
   for (const f of tabla) {
     if (Math.abs(f.puesto - miPuesto) <= 2) visibles.set(f.puesto, f);
+  }
+  const { bajan } = calcularCuotaAscensoDescenso(tabla.length);
+  if (bajan > 0 && division !== 'BRONCE') {
+    for (const f of tabla.slice(-bajan)) visibles.set(f.puesto, f);
   }
   const filasBase = [...visibles.values()]
     .sort((a, b) => a.puesto - b.puesto)
