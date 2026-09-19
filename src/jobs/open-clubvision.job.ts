@@ -4,10 +4,15 @@
  *
  * Sincroniza las ediciones de Clubvisión que toca abrir según su
  * fecha programada, calculando candidatas y preparando la votación.
+ * Aprovecha el mismo ciclo diario para avisar a los clubes a los que les
+ * van a faltar candidatas para la próxima edición (10 días antes).
  */
 
 import { prisma } from '../prisma.js';
-import { openScheduledClubvision } from '../services/clubvision.service.js';
+import {
+  avisarPocosCandidatosClubvision,
+  openScheduledClubvision,
+} from '../services/clubvision.service.js';
 
 async function main() {
   // Verificar conectividad con la BD antes de proceder
@@ -19,17 +24,21 @@ async function main() {
 
   if (clubvisions.length === 0) {
     console.log('Clubvisión: no hay ninguna edición que sincronizar ahora');
-    return;
+  } else {
+    for (const clubvision of clubvisions) {
+      const candidateCount = await prisma.clubvisionCandidate.count({
+        where: { clubvisionId: clubvision.id },
+      });
+
+      console.log(
+        `Clubvisión ${clubvision.edition} sincronizada con ${candidateCount} candidatas`,
+      );
+    }
   }
 
-  for (const clubvision of clubvisions) {
-    const candidateCount = await prisma.clubvisionCandidate.count({
-      where: { clubvisionId: clubvision.id },
-    });
-
-    console.log(
-      `Clubvisión ${clubvision.edition} sincronizada con ${candidateCount} candidatas`,
-    );
+  const avisados = await avisarPocosCandidatosClubvision();
+  if (avisados > 0) {
+    console.log(`Clubvisión: aviso de pocas candidatas enviado a ${avisados} clubes`);
   }
 }
 

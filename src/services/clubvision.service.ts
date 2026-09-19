@@ -2,8 +2,10 @@ import type { Club, Clubvision, Prisma } from '@prisma/client';
 import { ClubRole, Priority, ReadingStatus, ReadingType } from '@prisma/client';
 import {
   notifyClubvisionAbierta,
+  notifyClubvisionPocosCandidatos,
   notifyClubvisionResultados,
   notifyLecturaNueva,
+  yaAvisadoPocosCandidatos,
 } from './notifications.service.js';
 import { prisma } from '../prisma.js';
 import {
@@ -29,6 +31,10 @@ const POINTS_BY_POSITION = [12, 10, 8, 7, 6] as const;
 const WELCOME_VOTING_HOURS = 48;
 const WELCOME_RESULTS_HOURS = 24;
 const WELCOME_MAX_CLUB_AGE_DAYS = 45;
+/** Días de antelación con los que se avisa si a un club le faltan candidatas. */
+const DIAS_AVISO_POCAS_CANDIDATAS = 10;
+/** Con menos candidatas que esto, se considera que a un club le van a faltar. */
+const MIN_CANDIDATOS_SIN_AVISO = 10;
 const WELCOME_MIN_MEMBERS = 3;
 const WELCOME_MIN_CANDIDATES = 5;
 const WELCOME_MIN_INTERESTED = 2;
@@ -195,6 +201,108 @@ function getCurrentEdition() {
   return getClubvisionCalendar().edition;
 }
 
+/**
+ * Candidatas elegibles para la Clubvisión de un club: libros PENDING con al
+ * menos 3 miembros genuinos interesados (sin contar importaciones),
+ * excluyendo ganadoras anteriores y libros que ya han terminado más de 3
+ * miembros. Ordenadas por interés (prioridad alta primero, luego nº de
+ * interesadas). Se usa tanto al abrir la votación real (getOrCreateCurrentClubvision)
+ * como para avisar con antelación si a un club le van a faltar candidatas
+ * (avisarPocosCandidatosClubvision).
+ */
+async function calcularCandidatasElegibles(
+  client: Pick<
+    typeof prisma,
+    'clubvisionResult' | 'library' | 'importRowReceipt'
+  >,
+  clubId: string,
+  edition: string,
+): Promise<string[]> {
+  const previousWinners = await client.clubvisionResult.findMany({
+    where: {
+      clubId,
+      edition: { not: edition },
+      winnerBookId: { not: null },
+    },
+    select: { winnerBookId: true },
+    distinct: ['winnerBookId'],
+  });
+  const excludedBookIds = previousWinners.flatMap((result) =>
+    result.winnerBookId ? [result.winnerBookId] : [],
+  );
+
+  const tooManyFinished = await client.library.groupBy({
+    by: ['bookId'],
+    where: {
+      status: ReadingStatus.FINISHED,
+      user: { clubMemberships: { some: { clubId } } },
+    },
+    _count: { userId: true },
+    having: { userId: { _count: { gt: 3 } } },
+  });
+  const tooManyFinishedBookIds = tooManyFinished.map((r) => r.bookId);
+
+  const allExcluded = [...excludedBookIds, ...tooManyFinishedBookIds];
+  const pendingEntries = await client.library.findMany({
+    where: {
+      status: ReadingStatus.PENDING,
+      user: { clubMemberships: { some: { clubId } } },
+      ...(allExcluded.length > 0 ? { bookId: { notIn: allExcluded } } : {}),
+      book: {
+        OR: [
+          { publicationDate: null },
+          { publicationDate: { lte: getNow() } },
+        ],
+      },
+    },
+    select: { userId: true, bookId: true, priority: true },
+  });
+
+  const importedKeys: Set<string> =
+    pendingEntries.length > 0
+      ? new Set(
+          (
+            await client.importRowReceipt.findMany({
+              where: {
+                OR: pendingEntries.map((e) => ({
+                  userId: e.userId,
+                  bookId: e.bookId,
+                })),
+              },
+              select: { userId: true, bookId: true },
+            })
+          ).map((r) => `${r.userId}:${r.bookId}`),
+        )
+      : new Set();
+
+  const genuinePending = pendingEntries.filter(
+    (e) => !importedKeys.has(`${e.userId}:${e.bookId}`),
+  );
+
+  const countByBook = new Map<string, number>();
+  const highCountByBook = new Map<string, number>();
+  for (const entry of genuinePending) {
+    countByBook.set(entry.bookId, (countByBook.get(entry.bookId) ?? 0) + 1);
+    if (entry.priority === Priority.HIGH) {
+      highCountByBook.set(
+        entry.bookId,
+        (highCountByBook.get(entry.bookId) ?? 0) + 1,
+      );
+    }
+  }
+
+  const eligibleBookIds = [...countByBook.entries()]
+    .filter(([, count]) => count >= 3)
+    .map(([bookId]) => bookId);
+
+  return eligibleBookIds.sort((a, b) => {
+    const highDiff =
+      (highCountByBook.get(b) ?? 0) - (highCountByBook.get(a) ?? 0);
+    if (highDiff !== 0) return highDiff;
+    return (countByBook.get(b) ?? 0) - (countByBook.get(a) ?? 0);
+  });
+}
+
 async function getOrCreateCurrentClubvision(
   usuario = '',
   clubOverride?: Club,
@@ -223,89 +331,13 @@ async function getOrCreateCurrentClubvision(
     // encontraría ese `existing` y ni siquiera reintentaría generar
     // candidatos. Ese club se quedaba sin poder votar hasta la edición
     // siguiente.
-    // Excluir solo los libros que han ganado en ediciones anteriores
-    const previousWinners = await tx.clubvisionResult.findMany({
-      where: {
-        clubId: club.id,
-        edition: { not: edition },
-        winnerBookId: { not: null },
-      },
-      select: { winnerBookId: true },
-      distinct: ['winnerBookId'],
-    });
-
-    const excludedBookIds = previousWinners.flatMap((result) =>
-      result.winnerBookId ? [result.winnerBookId] : [],
-    );
-    // Libros que ya han terminado MÁS de 3 miembros del club → excluir
-    const tooManyFinished = await tx.library.groupBy({
-      by: ['bookId'],
-      where: {
-        status: ReadingStatus.FINISHED,
-        user: { clubMemberships: { some: { clubId: club.id } } },
-      },
-      _count: { userId: true },
-      having: { userId: { _count: { gt: 3 } } },
-    });
-    const tooManyFinishedBookIds = tooManyFinished.map((r) => r.bookId);
-
-    // Candidatas base: PENDING, >= 3 miembros genuinos (sin importaciones),
-    // sin ganadores previos ni muy leídas
-    const allExcluded = [
-      ...excludedBookIds,
-      ...tooManyFinishedBookIds,
-    ];
-    const pendingEntries = await tx.library.findMany({
-      where: {
-        status: ReadingStatus.PENDING,
-        user: { clubMemberships: { some: { clubId: club.id } } },
-        ...(allExcluded.length > 0 ? { bookId: { notIn: allExcluded } } : {}),
-        // Excluir libros aún no publicados (fecha de publicación futura)
-        book: {
-          OR: [
-            { publicationDate: null },
-            { publicationDate: { lte: getNow() } },
-          ],
-        },
-      },
-      select: { userId: true, bookId: true, priority: true },
-    });
-
-    // Excluir entradas importadas de Goodreads/Bookmory
-    const importedKeys: Set<string> = pendingEntries.length > 0
-      ? new Set(
-          (await tx.importRowReceipt.findMany({
-            where: { OR: pendingEntries.map(e => ({ userId: e.userId, bookId: e.bookId })) },
-            select: { userId: true, bookId: true },
-          })).map(r => `${r.userId}:${r.bookId}`)
-        )
-      : new Set();
-
-    const genuinePending = pendingEntries.filter(
-      e => !importedKeys.has(`${e.userId}:${e.bookId}`)
+    const sortedCandidates = await calcularCandidatasElegibles(
+      tx,
+      club.id,
+      edition,
     );
 
-    // Contar interesados genuinos por libro y prioridad alta
-    const countByBook = new Map<string, number>();
-    const highCountByBook = new Map<string, number>();
-    for (const entry of genuinePending) {
-      countByBook.set(entry.bookId, (countByBook.get(entry.bookId) ?? 0) + 1);
-      if (entry.priority === Priority.HIGH) {
-        highCountByBook.set(entry.bookId, (highCountByBook.get(entry.bookId) ?? 0) + 1);
-      }
-    }
-
-    const eligibleBookIds = [...countByBook.entries()]
-      .filter(([, count]) => count >= 3)
-      .map(([bookId]) => bookId);
-
-    if (eligibleBookIds.length === 0) return null;
-
-    const sortedCandidates = [...eligibleBookIds].sort((a, b) => {
-      const highDiff = (highCountByBook.get(b) ?? 0) - (highCountByBook.get(a) ?? 0);
-      if (highDiff !== 0) return highDiff;
-      return (countByBook.get(b) ?? 0) - (countByBook.get(a) ?? 0);
-    });
+    if (sortedCandidates.length === 0) return null;
 
     // Ya sabemos que hay candidatos suficientes: ahora sí creamos (o
     // recuperamos, por si una llamada concurrente se adelantó) el registro
@@ -340,6 +372,64 @@ async function getOrCreateCurrentClubvision(
   }, { maxWait: 5_000, timeout: 15_000 });
   if (created) void notifyClubvisionAbierta(club.id).catch(backgroundError('clubvision_open_notification_failed'));
   return created;
+}
+
+/**
+ * Avisa a los clubes a los que les van a faltar candidatas para su próxima
+ * Clubvisión mensual, con DIAS_AVISO_POCAS_CANDIDATAS días de antelación —
+ * mismo hueco de tiempo que la propia apertura usa para "mañana es día 1"
+ * (getClubvisionNoticeMomentFor), pero contado hacia atrás desde la
+ * apertura en vez de desde hoy. Solo actúa el día exacto en que quedan
+ * esos días (no cada vez que se llama), e idempotente por club+edición vía
+ * yaAvisadoPocosCandidatos. Pensado para llamarse a diario (mismo cron que
+ * abre la Clubvisión).
+ */
+export async function avisarPocosCandidatosClubvision(
+  now: Date = getNow(),
+): Promise<number> {
+  const objetivoDate = new Date(
+    now.getTime() + DIAS_AVISO_POCAS_CANDIDATAS * 24 * 60 * 60 * 1000,
+  );
+  const objetivo = getClubvisionCalendarFor(objetivoDate);
+  // La próxima apertura cae en día 1 (o 2, si el 1 ya pasó de largo) del
+  // mes objetivo; solo avisamos el día exacto en que quedan esos días.
+  if (objetivo.day !== 1) return 0;
+
+  const clubs = await prisma.club.findMany({ select: { id: true, name: true } });
+  let avisados = 0;
+  for (const club of clubs) {
+    try {
+      // Si ya existe esa edición (no debería, a 10 días vista, pero por si
+      // una prueba manual la adelantó) no tiene sentido avisar.
+      const existing = await prisma.clubvision.findUnique({
+        where: { clubId_edition: { clubId: club.id, edition: objetivo.edition } },
+        select: { id: true },
+      });
+      if (existing) continue;
+
+      if (await yaAvisadoPocosCandidatos(club.id, objetivo.edition)) continue;
+
+      const candidatas = await calcularCandidatasElegibles(
+        prisma,
+        club.id,
+        objetivo.edition,
+      );
+      if (candidatas.length >= MIN_CANDIDATOS_SIN_AVISO) continue;
+
+      await notifyClubvisionPocosCandidatos(
+        club.id,
+        objetivo.edition,
+        candidatas.length,
+      );
+      avisados += 1;
+    } catch (error) {
+      logger.error(
+        { error, clubId: club.id },
+        'Clubvisión: no se pudo avisar de pocas candidatas',
+      );
+    }
+  }
+  return avisados;
 }
 
 export async function openScheduledClubvision() {

@@ -125,6 +125,49 @@ export async function notifyClubvisionAbierta(clubId: string) {
   });
 }
 
+/**
+ * Aviso de que a un club le van a faltar candidatas para la próxima
+ * Clubvisión (se manda una sola vez por club y edición, ~10 días antes de
+ * que abra la votación).
+ */
+export async function notifyClubvisionPocosCandidatos(
+  clubId: string,
+  edition: string,
+  candidatas: number,
+) {
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { name: true },
+  });
+  if (!club) return;
+  await notifyClubMembers({
+    clubId,
+    tipo: NotificationType.CLUBVISION_POCOS_CANDIDATOS,
+    titulo: '📚 Faltan candidatas para la próxima Clubvisión',
+    mensaje:
+      candidatas === 0
+        ? `${club.name} todavía no tiene ningún libro candidato para la próxima Clubvisión. Añade libros a "Pendiente" para que puedan entrar a votación.`
+        : `${club.name} solo tiene ${candidatas} ${candidatas === 1 ? 'candidata' : 'candidatas'} para la próxima Clubvisión. Añade libros a "Pendiente" para que puedan entrar a votación.`,
+    extra: { edition },
+  });
+}
+
+/** ¿Ya se avisó a este club de pocas candidatas para esta edición? */
+export async function yaAvisadoPocosCandidatos(
+  clubId: string,
+  edition: string,
+): Promise<boolean> {
+  const n = await prisma.notification.findFirst({
+    where: {
+      clubId,
+      tipo: NotificationType.CLUBVISION_POCOS_CANDIDATOS,
+      extra: { contains: `"edition":"${edition}"` },
+    },
+    select: { id: true },
+  });
+  return n != null;
+}
+
 export async function notifyClubvisionResultados(clubId: string, ganador: string) {
   const club = await prisma.club.findUnique({
     where: { id: clubId },
