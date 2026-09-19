@@ -14,6 +14,8 @@ import {
   daysBetween,
   divisionInferior,
   divisionSuperior,
+  HITOS_CONSTANCIA,
+  medallasParaFila,
   puntosPorLibro,
   puntosPorPaginas,
   seasonEndsAt,
@@ -155,6 +157,67 @@ test('calcularCambiosDivision: en Diamante no hay ascenso; en Bronce no hay desc
   const enBronce = calcularCambiosDivision(tabla, 'BRONCE');
   assert.equal(enBronce.get('u1'), 'PLATA');
   assert.equal(enBronce.has('u5'), false); // no hay división por debajo
+});
+
+// ── Medallas de temporada ────────────────────────────────────────────────────
+
+test('medallasParaFila: podio de oro, plata y bronce según puesto', () => {
+  assert.deepEqual(
+    medallasParaFila(filaDePrueba('u1', 1), 'PLATA', new Map(), 0, false),
+    [{ tier: 'PODIO_ORO', rank: 1 }],
+  );
+  assert.deepEqual(
+    medallasParaFila(filaDePrueba('u2', 2), 'PLATA', new Map(), 0, false),
+    [{ tier: 'PODIO_PLATA', rank: 2 }],
+  );
+  assert.deepEqual(
+    medallasParaFila(filaDePrueba('u3', 3), 'PLATA', new Map(), 0, false),
+    [{ tier: 'PODIO_BRONCE', rank: 3 }],
+  );
+  assert.deepEqual(medallasParaFila(filaDePrueba('u4', 4), 'PLATA', new Map(), 0, false), []);
+});
+
+test('medallasParaFila: medalla de ascenso solo para quien sube de verdad', () => {
+  const cambios = new Map([['u1', 'ORO' as const]]);
+  const conAscenso = medallasParaFila(filaDePrueba('u1', 1), 'PLATA', cambios, 0, false);
+  assert.ok(conAscenso.some((m) => m.tier === 'ASCENSO'));
+
+  const sinAscenso = medallasParaFila(filaDePrueba('u2', 2), 'PLATA', cambios, 0, false);
+  assert.ok(!sinAscenso.some((m) => m.tier === 'ASCENSO'));
+});
+
+test('medallasParaFila: Diamante se otorga solo una vez por usuaria', () => {
+  const primeraVez = medallasParaFila(filaDePrueba('u1', 5), 'DIAMANTE', new Map(), 0, false);
+  assert.ok(primeraVez.some((m) => m.tier === 'DIAMANTE'));
+
+  const yaLaTenia = medallasParaFila(filaDePrueba('u1', 5), 'DIAMANTE', new Map(), 0, true);
+  assert.ok(!yaLaTenia.some((m) => m.tier === 'DIAMANTE'));
+
+  // Fuera de Diamante nunca se otorga, aunque sea la primera vez.
+  const otraDivision = medallasParaFila(filaDePrueba('u1', 5), 'ORO', new Map(), 0, false);
+  assert.ok(!otraDivision.some((m) => m.tier === 'DIAMANTE'));
+});
+
+test('medallasParaFila: constancia solo en los hitos exactos de racha', () => {
+  for (const racha of HITOS_CONSTANCIA) {
+    const medallas = medallasParaFila(filaDePrueba('u1', 8), 'ORO', new Map(), racha, false);
+    assert.deepEqual(
+      medallas.find((m) => m.tier === 'CONSTANCIA'),
+      { tier: 'CONSTANCIA', streak: racha },
+    );
+  }
+  assert.ok(
+    !medallasParaFila(filaDePrueba('u1', 8), 'ORO', new Map(), 4, false).some(
+      (m) => m.tier === 'CONSTANCIA',
+    ),
+  );
+});
+
+test('medallasParaFila: una misma fila puede ganar varias medallas a la vez', () => {
+  const cambios = new Map([['u1', 'DIAMANTE' as const]]);
+  const medallas = medallasParaFila(filaDePrueba('u1', 1), 'PLATINO', cambios, 5, false);
+  const tiers = medallas.map((m) => m.tier).sort();
+  assert.deepEqual(tiers, ['ASCENSO', 'CONSTANCIA', 'PODIO_ORO']);
 });
 
 // ── Semana del reto (lunes a domingo) ───────────────────────────────────────

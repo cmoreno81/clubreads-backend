@@ -153,6 +153,7 @@ import {
 import {
   handleGetLiga,
   handleGetLigaDesglose,
+  handleGetLigaMedallas,
   handleUnirseLiga,
   handleSalirLiga,
 } from '../controllers/ligas.controller.js';
@@ -826,6 +827,10 @@ export async function handleApi(
       case 'ligaDesglose':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetLigaDesglose(req, res);
+
+      case 'ligaMedallas':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetLigaMedallas(req, res);
 
       case 'unirseLiga':
         if (!req.auth) return requireAuthentication(req, res, () => {});

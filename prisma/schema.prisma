@@ -420,6 +420,7 @@ model User {
   rankingPointEvents    RankingPointEvent[]
   rankingSeasonResults  RankingSeasonResult[]
   rankingRankSnapshots  RankingRankSnapshot[]
+  seasonMedals          SeasonMedal[]
 
   @@index([activeClubId])
 }
@@ -1487,6 +1488,44 @@ model RankingSeasonResult {
 
   @@id([userId, seasonNumber])
   @@index([seasonNumber, rank])
+}
+
+/// Medalla ganada al cerrar una temporada — sistema de trofeos acumulables,
+/// tipo videojuego. Se otorgan en cerrarTemporada(), junto al
+/// RankingSeasonResult de esa temporada.
+model SeasonMedal {
+  id           String          @id @default(cuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seasonNumber Int
+  /// División en la que se ganó (para el podio/ascenso) o se alcanzó
+  /// (para DIAMANTE); en CONSTANCIA, la división actual en ese momento.
+  division     RankingDivision
+  tier         MedalTier
+  /// Puesto final en su división esa temporada (PODIO_*), o null si no aplica.
+  rank         Int?
+  /// Temporadas jugadas seguidas que completa esta medalla (solo CONSTANCIA).
+  streak       Int?
+  awardedAt    DateTime        @default(now())
+
+  @@unique([userId, seasonNumber, tier])
+  @@index([seasonNumber])
+  @@index([userId, awardedAt])
+}
+
+enum MedalTier {
+  /// 1º de su división al cerrar la temporada.
+  PODIO_ORO
+  /// 2º de su división al cerrar la temporada.
+  PODIO_PLATA
+  /// 3º de su división al cerrar la temporada.
+  PODIO_BRONCE
+  /// Ha ascendido de división esta temporada.
+  ASCENSO
+  /// Ha alcanzado Diamante por primera vez (se otorga una sola vez).
+  DIAMANTE
+  /// Racha de temporadas jugadas seguidas alcanzando un hito (3, 5, 10...).
+  CONSTANCIA
 }
 
 /// Última posición conocida de cada participante en la temporada en curso,

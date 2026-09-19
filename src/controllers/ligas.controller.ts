@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import {
   desgloseLiga,
   getLiga,
+  medallasUsuario,
   salirDeLaLiga,
   unirseALaLiga,
 } from '../services/ligas.service.js';
@@ -15,6 +16,11 @@ export async function handleGetLiga(req: Request, res: Response) {
 export async function handleGetLigaDesglose(req: Request, res: Response) {
   const targetUserId = String(req.query.userId ?? '').trim();
   return res.json(await desgloseLiga(targetUserId));
+}
+
+export async function handleGetLigaMedallas(req: Request, res: Response) {
+  const targetUserId = String(req.query.userId ?? '').trim();
+  return res.json(await medallasUsuario(targetUserId));
 }
 
 export async function handleUnirseLiga(req: Request, res: Response) {

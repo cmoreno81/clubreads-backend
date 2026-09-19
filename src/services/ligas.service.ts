@@ -17,7 +17,7 @@
  * siguiente recálculo.
  */
 
-import type { RankingDivision, RankingEventType } from '@prisma/client';
+import type { MedalTier, RankingDivision, RankingEventType } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import {
   notifyLigaCierreProximo,
@@ -596,6 +596,65 @@ async function rachasActivasHoy(
   return mapa;
 }
 
+/** La medalla más reciente de cada usuaria (para el icono junto al nombre). */
+async function medallasRecientesPara(
+  userIds: string[],
+): Promise<Map<string, { tier: MedalTier; seasonNumber: number }>> {
+  const mapa = new Map<string, { tier: MedalTier; seasonNumber: number }>();
+  if (userIds.length === 0) return mapa;
+  const medallas = await prisma.seasonMedal.findMany({
+    where: { userId: { in: userIds } },
+    orderBy: { awardedAt: 'desc' },
+    select: { userId: true, tier: true, seasonNumber: true },
+  });
+  for (const m of medallas) {
+    if (!mapa.has(m.userId)) {
+      mapa.set(m.userId, { tier: m.tier, seasonNumber: m.seasonNumber });
+    }
+  }
+  return mapa;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Medallero de una participante
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Historial completo de medallas de una usuaria, más recientes primero. */
+export async function medallasUsuario(targetUserId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: { name: true, avatarUrl: true },
+  });
+  if (!user) return { ok: false as const, mensaje: 'Usuaria no encontrada' };
+
+  const medallas = await prisma.seasonMedal.findMany({
+    where: { userId: targetUserId },
+    orderBy: [{ seasonNumber: 'desc' }, { awardedAt: 'desc' }],
+    select: {
+      tier: true,
+      seasonNumber: true,
+      division: true,
+      rank: true,
+      streak: true,
+      awardedAt: true,
+    },
+  });
+
+  const resumen: Partial<Record<MedalTier, number>> = {};
+  for (const m of medallas) {
+    resumen[m.tier] = (resumen[m.tier] ?? 0) + 1;
+  }
+
+  return {
+    ok: true as const,
+    userId: targetUserId,
+    nombre: user.name,
+    avatarUrl: user.avatarUrl,
+    medallas,
+    resumen,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Desglose de puntos de una participante
 // ─────────────────────────────────────────────────────────────────────────────
@@ -738,14 +797,16 @@ export async function getLiga(userId: string, now: Date = new Date()) {
     .map((f) => ({ ...f, esTu: f.userId === userId }));
   const idsVisibles = filasBase.map((f) => f.userId);
 
-  const [tendencias, rachasHoy] = await Promise.all([
+  const [tendencias, rachasHoy, medallasRecientes] = await Promise.all([
     tendenciasPara(season, idsVisibles),
     rachasActivasHoy(season, idsVisibles, now),
+    medallasRecientesPara(idsVisibles),
   ]);
   const filas = filasBase.map((f) => ({
     ...f,
     ...(tendencias.get(f.userId) ?? { tendencia: null, delta: null }),
     rachaHoy: rachasHoy.get(f.userId) ?? null,
+    medallaReciente: medallasRecientes.get(f.userId) ?? null,
   }));
 
   // Histórico permanente.
@@ -818,6 +879,122 @@ export function calcularCambiosDivision(
   return cambios;
 }
 
+/** Rachas de temporadas seguidas jugadas que dan medalla de constancia. */
+export const HITOS_CONSTANCIA = [3, 5, 10, 20, 30];
+
+export type MedallaAOtorgar = {
+  tier: MedalTier;
+  rank?: number;
+  streak?: number;
+};
+
+/**
+ * Qué medallas gana una fila de la tabla al cerrar su temporada — función
+ * pura, sin acceso a datos, para poder testearla igual que
+ * calcularCambiosDivision. `yaTieneDiamante` y `racha` se calculan aparte
+ * (dependen de datos históricos) y se pasan ya resueltos.
+ */
+export function medallasParaFila(
+  fila: Pick<FilaTabla, 'puesto' | 'userId'>,
+  division: RankingDivision,
+  cambios: Map<string, RankingDivision>,
+  racha: number,
+  yaTieneDiamante: boolean,
+): MedallaAOtorgar[] {
+  const medallas: MedallaAOtorgar[] = [];
+
+  if (fila.puesto === 1) medallas.push({ tier: 'PODIO_ORO', rank: fila.puesto });
+  else if (fila.puesto === 2) medallas.push({ tier: 'PODIO_PLATA', rank: fila.puesto });
+  else if (fila.puesto === 3) medallas.push({ tier: 'PODIO_BRONCE', rank: fila.puesto });
+
+  if (cambios.get(fila.userId) === divisionSuperior(division)) {
+    medallas.push({ tier: 'ASCENSO', rank: fila.puesto });
+  }
+
+  if (division === 'DIAMANTE' && !yaTieneDiamante) {
+    medallas.push({ tier: 'DIAMANTE' });
+  }
+
+  if (HITOS_CONSTANCIA.includes(racha)) {
+    medallas.push({ tier: 'CONSTANCIA', streak: racha });
+  }
+
+  return medallas;
+}
+
+/**
+ * Cuántas temporadas seguidas, terminando en `season` (incluida), tiene
+ * esta usuaria un RankingSeasonResult — asume que el de `season` ya se ha
+ * guardado antes de llamar a esto.
+ */
+async function calcularRachaTemporadas(
+  userId: string,
+  season: number,
+): Promise<number> {
+  const resultados = await prisma.rankingSeasonResult.findMany({
+    where: { userId, seasonNumber: { lte: season } },
+    select: { seasonNumber: true },
+  });
+  const temporadas = new Set(resultados.map((r) => r.seasonNumber));
+  let racha = 0;
+  let actual = season;
+  while (temporadas.has(actual)) {
+    racha += 1;
+    actual -= 1;
+  }
+  return racha;
+}
+
+/**
+ * Otorga las medallas de una división al cerrar su temporada — podio
+ * (oro/plata/bronce por puesto), ascenso, Diamante (una sola vez, la
+ * primera que se juega ahí) y constancia (rachas de temporadas seguidas).
+ * Se llama después de guardar el RankingSeasonResult de esta temporada y
+ * de calcular `cambios` (calcularCambiosDivision). Idempotente: usa upsert
+ * por la clave única (userId, seasonNumber, tier).
+ */
+async function otorgarMedallasTemporada(
+  season: number,
+  division: RankingDivision,
+  tabla: FilaTabla[],
+  cambios: Map<string, RankingDivision>,
+): Promise<void> {
+  for (const fila of tabla) {
+    const yaTieneDiamante =
+      division === 'DIAMANTE'
+        ? Boolean(
+            await prisma.seasonMedal.findFirst({
+              where: { userId: fila.userId, tier: 'DIAMANTE' },
+              select: { id: true },
+            }),
+          )
+        : false;
+    const racha = await calcularRachaTemporadas(fila.userId, season);
+    const medallas = medallasParaFila(fila, division, cambios, racha, yaTieneDiamante);
+
+    for (const medalla of medallas) {
+      await prisma.seasonMedal.upsert({
+        where: {
+          userId_seasonNumber_tier: {
+            userId: fila.userId,
+            seasonNumber: season,
+            tier: medalla.tier,
+          },
+        },
+        create: {
+          userId: fila.userId,
+          seasonNumber: season,
+          division,
+          tier: medalla.tier,
+          rank: medalla.rank ?? null,
+          streak: medalla.streak ?? null,
+        },
+        update: {},
+      });
+    }
+  }
+}
+
 /**
  * Recalcula, ordena y congela el resultado de una temporada — por
  * división, cada una compite solo contra sí misma. Aplica ascensos y
@@ -858,6 +1035,12 @@ export async function cerrarTemporada(season: number): Promise<number> {
       await prisma.rankingParticipation
         .update({ where: { userId }, data: { division: nuevaDivision } })
         .catch(() => undefined);
+    }
+
+    try {
+      await otorgarMedallasTemporada(season, division, tabla, cambios);
+    } catch (error) {
+      console.error('Ligas: no se pudieron otorgar las medallas:', error);
     }
 
     // Notificación de resultado a cada participante (best-effort).
