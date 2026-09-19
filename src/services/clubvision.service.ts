@@ -395,10 +395,23 @@ export async function avisarPocosCandidatosClubvision(
   // mes objetivo; solo avisamos el día exacto en que quedan esos días.
   if (objetivo.day !== 1) return 0;
 
-  const clubs = await prisma.club.findMany({ select: { id: true, name: true } });
+  const clubs = await prisma.club.findMany({
+    select: { id: true, name: true, createdAt: true, _count: { select: { members: true } } },
+  });
   let avisados = 0;
   for (const club of clubs) {
     try {
+      // Un club recién nacido y pequeño no tiene ninguna opción realista de
+      // llegar al mínimo de la Clubvisión mensual todavía — para eso está
+      // la Clubvisión de bienvenida (mismo plazo de 45 días, mismo mínimo
+      // de miembros). Avisarle aquí solo sonaría a "vais mal" cuando es lo
+      // esperable siendo un club nuevo.
+      const ageDays = Math.floor(
+        (now.getTime() - club.createdAt.getTime()) / 86_400_000,
+      );
+      if (ageDays <= WELCOME_MAX_CLUB_AGE_DAYS) continue;
+      if (club._count.members < WELCOME_MIN_MEMBERS) continue;
+
       // Si ya existe esa edición (no debería, a 10 días vista, pero por si
       // una prueba manual la adelantó) no tiene sentido avisar.
       const existing = await prisma.clubvision.findUnique({
