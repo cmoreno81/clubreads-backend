@@ -25,6 +25,7 @@ import { syncAchievementsForUser } from './achievements.service.js';
 import { backgroundError } from '../logging/logger.js';
 import { normalizeReadingType } from '../validation/api-enums.js';
 import { activityTimestamp } from '../utils/activity-timestamp.js';
+import { idsBloqueadosPor } from './moderation.service.js';
 
 /**
  * Filtro de libro para buscar/crear lecturas conjuntas, resuelto por título
@@ -811,6 +812,12 @@ export async function getComentariosLectura(
   usuarioActual: string,
 ) {
   const { club } = await getCurrentClubContext(usuarioActual);
+  const usuario = usuarioActual.trim();
+  const solicitante = usuario
+    ? await prisma.user.findUnique({ where: { name: usuario }, select: { id: true } })
+    : null;
+  const bloqueadas = solicitante ? await idsBloqueadosPor(solicitante.id) : [];
+
   const conversation = await prisma.conversation.findFirst({
     where: {
       title: capitulo,
@@ -825,6 +832,7 @@ export async function getComentariosLectura(
         where: {
           parentId: null,
           deletedAt: null,
+          userId: bloqueadas.length ? { notIn: bloqueadas } : undefined,
         },
         include: {
           user: true,
@@ -832,6 +840,7 @@ export async function getComentariosLectura(
           replies: {
             where: {
               deletedAt: null,
+              userId: bloqueadas.length ? { notIn: bloqueadas } : undefined,
             },
             include: {
               user: true,
@@ -852,21 +861,14 @@ export async function getComentariosLectura(
       comentarios: [],
     };
   }
-  const usuario = usuarioActual.trim();
   let usuarioId = '';
 
-if (usuario) {
-  const user = await prisma.user.findUnique({
-    where: { name: usuario },
-    select: { id: true },
-  });
-
-  if (user) {
-    usuarioId = user.id;
+  if (solicitante) {
+    usuarioId = solicitante.id;
     await prisma.conversationRead.upsert({
       where: {
         userId_conversationId: {
-          userId: user.id,
+          userId: solicitante.id,
           conversationId: conversation.id,
         },
       },
@@ -874,13 +876,12 @@ if (usuario) {
         lastSeenAt: new Date(),
       },
       create: {
-        userId: user.id,
+        userId: solicitante.id,
         conversationId: conversation.id,
         lastSeenAt: new Date(),
       },
     });
   }
-}
 
   return {
     ok: true,
@@ -949,6 +950,7 @@ export async function getComentariosLecturaPage(
     select: { id: true },
   });
   const usuarioId = user?.id ?? '';
+  const bloqueadas = user ? await idsBloqueadosPor(user.id) : [];
 
   // Determinar el corte de novedad.
   // En la primera página (sin cursor) se lee el lastSeenAt actual ANTES de
@@ -977,6 +979,7 @@ export async function getComentariosLecturaPage(
       conversationId: conversation.id,
       parentId: null,
       deletedAt: null,
+      userId: bloqueadas.length ? { notIn: bloqueadas } : undefined,
       ...ascendingCursorFilter('createdAt', pagination.cursor),
     },
     select: {
@@ -989,7 +992,10 @@ export async function getComentariosLecturaPage(
       user: { select: { name: true, avatarUrl: true } },
       likes: { select: { userId: true, reaction: true } },
       replies: {
-        where: { deletedAt: null },
+        where: {
+          deletedAt: null,
+          userId: bloqueadas.length ? { notIn: bloqueadas } : undefined,
+        },
         select: {
           id: true,
           text: true,

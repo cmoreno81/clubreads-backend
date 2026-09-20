@@ -429,7 +429,30 @@ model User {
   rankingRankSnapshots  RankingRankSnapshot[]
   seasonMedals          SeasonMedal[]
 
+  blockedUsers UserBlock[] @relation("BlockedBy")
+  blockedByUsers UserBlock[] @relation("HasBlocked")
+
   @@index([activeClubId])
+}
+
+/// Un bloqueo unidireccional: `blockerId` deja de ver el contenido de
+/// `blockedId` en comentarios/reseñas. Requisito de Apple (guideline 1.2,
+/// contenido generado por usuarias) para poder moderar sin depender de que
+/// la otra persona sea expulsada del club.
+model UserBlock {
+  id String @id @default(cuid())
+
+  blockerId String
+  blocker   User   @relation("BlockedBy", fields: [blockerId], references: [id], onDelete: Cascade)
+
+  blockedId String
+  blocked   User   @relation("HasBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
 }
 
 model HiddenUserSeries {

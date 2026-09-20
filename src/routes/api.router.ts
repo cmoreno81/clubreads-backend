@@ -163,6 +163,12 @@ import { validateActionInput } from '../validation/api-validation.js';
 import { handleChooseAnnualBookOfYear, handleChooseBookOfYearDuel, handleGetClubBooksOfYear, handleGetMyBookOfYear, handleGetPublicBookOfYear, handleSaveMonthlyBookOfYear } from '../controllers/book-of-year.controller.js';
 import { handleReactionDetails } from '../controllers/reaction-details.controller.js';
 import { handleEnviarFeedback } from '../controllers/feedback.controller.js';
+import {
+  handleBloquearUsuario,
+  handleDesbloquearUsuario,
+  handleListarBloqueadas,
+  handleReportarContenido,
+} from '../controllers/moderation.controller.js';
 import { handleCancelClubBookOfYear, handleCloseClubBookOfYearQualifying, handleCloseClubBookOfYearRound, handleGetClubBookOfYear, handleGetClubBookOfYearHistory, handleLinkClubBookOfYearHistoricalCandidate, handleOpenClubBookOfYearRound, handleOpenClubBookOfYearVoting, handlePrepareClubBookOfYear, handleStartClubBookOfYear, handleSyncClubBookOfYear, handleVoteClubBookOfYearDuel, handleVoteClubBookOfYearQualifying } from '../controllers/club-book-of-year.controller.js';
 import {
   handleGetWishlist,
@@ -248,6 +254,9 @@ export const POST_ONLY_ACTIONS = new Set([
   'actualizarAvatarPerfil',
   'actualizarFrasePerfil',
   'enviarFeedback',
+  'bloquearUsuario',
+  'desbloquearUsuario',
+  'reportarContenido',
   'guardarPersonalidadLectora',
   'toggleFavorito',
   'reemplazarFavorito',
@@ -783,6 +792,22 @@ export async function handleApi(
 
       case 'enviarFeedback':
         return handleEnviarFeedback(req, res);
+
+      case 'bloquearUsuario':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleBloquearUsuario(req, res);
+
+      case 'desbloquearUsuario':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleDesbloquearUsuario(req, res);
+
+      case 'usuariosBloqueados':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleListarBloqueadas(req, res);
+
+      case 'reportarContenido':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleReportarContenido(req, res);
 
       case 'getPersonalidadesClub':
         if (!req.auth) return requireAuthentication(req, res, () => {});

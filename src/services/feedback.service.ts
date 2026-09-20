@@ -1,7 +1,7 @@
 import { observeExternalCall } from '../logging/external-call.js';
 import { logger } from '../logging/logger.js';
 
-export type FeedbackCategory = 'bug' | 'sugerencia' | 'pregunta';
+export type FeedbackCategory = 'bug' | 'sugerencia' | 'pregunta' | 'reporte';
 
 export interface FeedbackImage {
   /** Imagen adjunta en base64 */
@@ -44,18 +44,21 @@ const CATEGORY_LABELS: Record<FeedbackCategory, string> = {
   bug: 'Bug',
   sugerencia: 'Sugerencia',
   pregunta: 'Pregunta',
+  reporte: 'Reporte de contenido',
 };
 
 const CATEGORY_EMOJI: Record<FeedbackCategory, string> = {
   bug: '🐛',
   sugerencia: '💡',
   pregunta: '❓',
+  reporte: '🚩',
 };
 
 const JIRA_ISSUE_TYPE: Record<FeedbackCategory, string> = {
   bug: 'Bug',
   sugerencia: 'Task',
   pregunta: 'Task',
+  reporte: 'Task',
 };
 
 async function createJiraIssue(params: FeedbackParams): Promise<string | null> {
