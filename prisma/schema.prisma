@@ -561,6 +561,7 @@ model Club {
   bookOfYearEditions ClubBookOfYearEdition[]
   bookOfYearHistoricalLinks ClubBookOfYearHistoricalLink[]
   readingProposals   ClubReadingProposal[]
+  rankingResults     ClubRankingSeasonResult[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1557,6 +1558,27 @@ enum MedalTier {
   DIAMANTE
   /// Racha de temporadas jugadas seguidas alcanzando un hito (3, 5, 10...).
   CONSTANCIA
+}
+
+/// Instantánea al cerrar una temporada del ranking POR CLUB — dos vistas del
+/// mismo dato: "más activos" (suma total de puntos de sus miembros
+/// participantes) y "más eficientes" (media por miembro participante, para
+/// que un club pequeño y constante pueda ganar a uno grande y disperso).
+/// Solo compite tipo SOCIAL (los clubes PERSONAL no son "equipos").
+model ClubRankingSeasonResult {
+  clubId        String
+  club          Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  seasonNumber  Int
+  totalPoints   Int
+  activeMembers Int
+  avgPoints     Float
+  rankTotal     Int
+  rankAvg       Int
+  createdAt     DateTime @default(now())
+
+  @@id([clubId, seasonNumber])
+  @@index([seasonNumber, rankTotal])
+  @@index([seasonNumber, rankAvg])
 }
 
 /// Última posición conocida de cada participante en la temporada en curso,

@@ -21,6 +21,7 @@ import {
   recalcularTemporada,
   temporadaCerrada,
 } from '../services/ligas.service.js';
+import { cerrarTemporadaClubes } from '../services/ligas-clubes.service.js';
 
 async function main() {
   await prisma.$queryRaw`SELECT 1`;
@@ -72,6 +73,9 @@ async function main() {
   if (anterior >= 0 && !(await temporadaCerrada(anterior))) {
     const n = await cerrarTemporada(anterior);
     console.log(`Ligas: temporada ${anterior} cerrada con ${n} participantes.`);
+
+    const nClubes = await cerrarTemporadaClubes(anterior);
+    console.log(`Ligas de clubes: temporada ${anterior} cerrada con ${nClubes} clubes.`);
   }
 }
 
