@@ -51,6 +51,7 @@ import {
   handleLecturasActivas,
   handleCrearLectura,
   handleEditarLectura,
+  handleRenombrarCapitulo,
   handleVincularEdicionLibro,
   handleConfiguracionLectura,
   handleComentariosLectura,
@@ -253,6 +254,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'iniciarClubvisionBienvenida',
   'crearLectura',
   'editarLectura',
+  'renombrarCapitulo',
   'vincularEdicionLibro',
   'guardarComentarioLectura',
   'responderComentario',
@@ -706,6 +708,9 @@ export async function handleApi(
 
       case 'editarLectura':
         return handleEditarLectura(req, res);
+
+      case 'renombrarCapitulo':
+        return handleRenombrarCapitulo(req, res);
 
       case 'vincularEdicionLibro':
         return handleVincularEdicionLibro(req, res);

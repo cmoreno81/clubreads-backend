@@ -16,6 +16,7 @@ import {
   getConversacionesLibro,
   getConversacionesLibroPage,
   marcarConversacionVista,
+  renombrarCapitulo,
 } from '../services/readings.service.js';
 import { linkBookEditions } from '../services/book-identity.service.js';
 import { requireClubMember } from '../services/club-context.service.js';
@@ -89,6 +90,18 @@ export async function handleEditarLectura(req: Request, res: Response) {
     capitulos: Number(body.capitulos || 0),
     prologo: String(body.prologo || '') === '1' || body.prologo === true,
     epilogo: String(body.epilogo || '') === '1' || body.epilogo === true,
+  });
+
+  return res.json(data);
+}
+
+export async function handleRenombrarCapitulo(req: Request, res: Response) {
+  const body = req.body ?? {};
+  const data = await renombrarCapitulo({
+    usuario: requestUserName(req),
+    libro: String(body.libro || ''),
+    tituloActual: String(body.tituloActual || ''),
+    tituloNuevo: String(body.tituloNuevo || ''),
   });
 
   return res.json(data);

@@ -670,6 +670,76 @@ export async function editarLectura(data: {
   });
 }
 
+/**
+ * Renombra un capítulo (por ejemplo, cuando el libro no numera sus
+ * capítulos y la lectora prefiere poner el título real en vez de
+ * "Capítulo 3"). Los comentarios se quedan intactos porque van ligados
+ * al id de la conversación, no a su título — solo cambia el texto.
+ *
+ * Identificamos el capítulo por su título actual porque así es como el
+ * resto de la app ya lo hace (comentarios, marcar como visto...); si
+ * más adelante se edita el número de capítulos con `editarLectura`, esa
+ * función reconstruye títulos "Capítulo N" y no reconocerá el nuevo
+ * nombre, así que lo tratará como un capítulo a quitar — y lo bloqueará
+ * si ya tiene comentarios, protegiendo los datos aunque el mensaje de
+ * error no diga el título original.
+ */
+export async function renombrarCapitulo(data: {
+  usuario?: string;
+  libro: string;
+  tituloActual: string;
+  tituloNuevo: string;
+}) {
+  const { club } = await requireClubMember(data.usuario);
+  const libro = String(data.libro || '').trim();
+  const tituloActual = String(data.tituloActual || '').trim();
+  const tituloNuevo = String(data.tituloNuevo || '').trim();
+
+  if (!libro || !tituloActual) return { ok: false, mensaje: 'Faltan datos' };
+  if (!tituloNuevo) {
+    return { ok: false, mensaje: 'El título no puede estar vacío' };
+  }
+  if (tituloNuevo.length > 60) {
+    return { ok: false, mensaje: 'El título es demasiado largo (máx. 60)' };
+  }
+  if (tituloActual === '💭 Reflexión final') {
+    return { ok: false, mensaje: 'Ese espacio no se puede renombrar' };
+  }
+
+  const bookFilter = await bookFilterForLectura(libro);
+
+  return prisma.$transaction(async (tx) => {
+    const reading = await tx.reading.findFirst({
+      where: {
+        book: bookFilter,
+        clubId: club.id,
+        status: ReadingSessionStatus.ACTIVE,
+      },
+      include: { conversations: { select: { id: true, title: true } } },
+    });
+    if (!reading) {
+      return { ok: false, mensaje: 'No hay una lectura activa para este libro' };
+    }
+
+    const actual = reading.conversations.find((c) => c.title === tituloActual);
+    if (!actual) return { ok: false, mensaje: 'Capítulo no encontrado' };
+
+    if (tituloNuevo === tituloActual) return { ok: true };
+
+    const colision = reading.conversations.some((c) => c.title === tituloNuevo);
+    if (colision) {
+      return { ok: false, mensaje: 'Ya hay otro capítulo con ese título' };
+    }
+
+    await tx.conversation.update({
+      where: { id: actual.id },
+      data: { title: tituloNuevo },
+    });
+
+    return { ok: true };
+  });
+}
+
 export async function getConfiguracionLectura(
   libro: string,
   usuarioActual: string,

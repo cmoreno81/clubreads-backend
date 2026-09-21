@@ -156,6 +156,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   iniciarClubvisionBienvenida: emptyBody,
   crearLectura: body({ libro: identifierSchema, capitulos: integerSchema.refine((v) => Number(v) >= 0, 'Debe ser mayor o igual a cero'), prologo: legacyBooleanSchema.optional(), epilogo: legacyBooleanSchema.optional(), paginas: pageSchema.optional(), tipo: readingTypeSchema.optional() }),
   editarLectura: body({ libro: identifierSchema, capitulos: integerSchema.refine((v) => Number(v) >= 0, 'Debe ser mayor o igual a cero'), prologo: legacyBooleanSchema.optional(), epilogo: legacyBooleanSchema.optional() }),
+  renombrarCapitulo: body({ libro: identifierSchema, tituloActual: identifierSchema, tituloNuevo: z.string().trim().min(1).max(60) }),
   vincularEdicionLibro: body({ libro: identifierSchema, otroBookId: identifierSchema }),
   guardarComentarioLectura: body({ libro: identifierSchema, capitulo: z.union([identifierSchema, integerSchema]), comentario: textSchema.optional(), texto: textSchema.optional(), tipo: commentTypeSchema.optional(), color: z.string().max(32).optional() }).refine((v) => Boolean(v.comentario || v.texto), { path: ['comentario'], message: 'Comentario obligatorio' }),
   responderComentario: body({ comentarioId: identifierSchema, respuesta: textSchema }),
