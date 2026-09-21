@@ -7,6 +7,7 @@ import { ClubContextError } from './club-context.service.js';
 import { subirAvatarDesdeBase64, subirAvatarDesdeUrl } from './cloudinary.service.js';
 import { backgroundError } from '../logging/logger.js';
 import { invalidatePrefix } from '../utils/simple-cache.js';
+import { getClubStreaks } from './club-streak.service.js';
 
 function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, ' ');
@@ -43,6 +44,7 @@ export async function listMyClubs(userId: string) {
               avatarUrl: true,
               tipo: true,
               visibility: true,
+              _count: { select: { members: true } },
             },
           },
         },
@@ -52,6 +54,12 @@ export async function listMyClubs(userId: string) {
   if (!user) {
     throw new ClubContextError('Cuenta no encontrada', 404, 'USER_NOT_FOUND');
   }
+
+  const clubesSociales = user.clubMemberships
+    .filter((m) => m.club.tipo === ClubType.SOCIAL)
+    .map((m) => m.club.id);
+  const rachas = await getClubStreaks(clubesSociales);
+
   return {
     ok: true,
     activeClubId: user.activeClubId,
@@ -65,6 +73,8 @@ export async function listMyClubs(userId: string) {
       tipo: club.tipo,
       visibility: club.visibility,
       activo: club.id === user.activeClubId,
+      miembros: club._count.members,
+      racha: rachas.get(club.id)?.racha ?? 0,
     })),
   };
 }

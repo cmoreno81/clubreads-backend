@@ -159,6 +159,7 @@ import {
   handleGetHeatmap,
   handleGetWrapped,
 } from '../controllers/checkin.controller.js';
+import { handleGetClubWrapped } from '../controllers/club-wrapped.controller.js';
 import {
   handleGetLiga,
   handleGetLigaDesglose,
@@ -891,6 +892,10 @@ export async function handleApi(
       case 'wrappedAnual':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetWrapped(req, res);
+
+      case 'clubWrapped':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetClubWrapped(req, res);
 
       case 'liga':
         if (!req.auth) return requireAuthentication(req, res, () => {});

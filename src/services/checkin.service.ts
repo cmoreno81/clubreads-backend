@@ -8,15 +8,15 @@ import { prisma } from '../prisma.js';
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function todayString(): string {
+export function todayString(): string {
   return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
 }
 
-function yearStart(year: number): Date {
+export function yearStart(year: number): Date {
   return new Date(`${year}-01-01T00:00:00.000Z`);
 }
 
-function yearEnd(year: number): Date {
+export function yearEnd(year: number): Date {
   return new Date(`${year + 1}-01-01T00:00:00.000Z`);
 }
 
@@ -248,6 +248,69 @@ export async function getActiveDates(
 
   const completionDays = await prisma.readingCompletion.findMany({
     where: { userId, finishedAt: { gte: since, lt: untilExclusive } },
+    select: { finishedAt: true },
+  });
+  for (const c of completionDays) dates.add(c.finishedAt.toISOString().slice(0, 10));
+
+  return dates;
+}
+
+/**
+ * Igual que `getActiveDates`, pero para VARIAS personas a la vez, con las
+ * mismas 4 consultas hechas una sola vez cada una (`userId IN (...)`) en
+ * lugar de una tanda por persona — pensado para la racha de un club
+ * (¿hubo actividad de ALGUIEN del club ese día?), no para sumar de una en
+ * una sobre N miembros.
+ */
+export async function getActiveDatesForUsers(
+  userIds: string[],
+  sinceStr: string,
+  untilStr: string,
+): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+
+  const since = new Date(`${sinceStr}T00:00:00.000Z`);
+  const untilExclusive = new Date(
+    new Date(`${untilStr}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000,
+  );
+
+  const dates = new Set<string>();
+
+  const checkins = await prisma.dailyCheckin.findMany({
+    where: { userId: { in: userIds }, date: { gte: sinceStr, lte: untilStr } },
+    select: { date: true },
+  });
+  for (const c of checkins) dates.add(c.date);
+
+  try {
+    const sessions = await prisma.readingSession.findMany({
+      where: {
+        userId: { in: userIds },
+        date: { gte: sinceStr, lte: untilStr },
+      },
+      select: { date: true },
+    });
+    for (const s of sessions) dates.add(s.date);
+  } catch {
+    // Tabla ReadingSession aún no migrada en este entorno.
+  }
+
+  const progressDays = await prisma.library.findMany({
+    where: {
+      userId: { in: userIds },
+      progressUpdatedAt: { gte: since, lt: untilExclusive },
+    },
+    select: { progressUpdatedAt: true },
+  });
+  for (const p of progressDays) {
+    if (p.progressUpdatedAt) dates.add(p.progressUpdatedAt.toISOString().slice(0, 10));
+  }
+
+  const completionDays = await prisma.readingCompletion.findMany({
+    where: {
+      userId: { in: userIds },
+      finishedAt: { gte: since, lt: untilExclusive },
+    },
     select: { finishedAt: true },
   });
   for (const c of completionDays) dates.add(c.finishedAt.toISOString().slice(0, 10));
