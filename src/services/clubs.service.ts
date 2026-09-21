@@ -42,6 +42,7 @@ export async function listMyClubs(userId: string) {
               description: true,
               avatarUrl: true,
               tipo: true,
+              visibility: true,
             },
           },
         },
@@ -62,6 +63,7 @@ export async function listMyClubs(userId: string) {
       avatarUrl: club.avatarUrl ?? '',
       rol: role,
       tipo: club.tipo,
+      visibility: club.visibility,
       activo: club.id === user.activeClubId,
     })),
   };

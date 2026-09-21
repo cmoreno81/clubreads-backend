@@ -377,6 +377,7 @@ model User {
 
   ownedClubs         Club[]               @relation("OwnedClubs")
   clubMemberships    ClubMember[]
+  clubJoinRequests   ClubJoinRequest[]
   notifications      Notification[]
   seriesOverrides    SeriesBookOverride[]
   hiddenSeries       HiddenUserSeries[]
@@ -562,6 +563,7 @@ model Club {
   bookOfYearHistoricalLinks ClubBookOfYearHistoricalLink[]
   readingProposals   ClubReadingProposal[]
   rankingResults     ClubRankingSeasonResult[]
+  joinRequests       ClubJoinRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -588,6 +590,43 @@ model ClubMember {
   @@id([clubId, userId])
   @@index([userId])
   @@index([clubId, role])
+}
+
+//
+// SOLICITUDES DE INGRESO A CLUB PÚBLICO
+//
+
+/// Solicitud para unirse a un club de visibilidad PUBLIC — a diferencia del
+/// código de invitación (entrada instantánea), esta pasa por aprobación de
+/// quien administra el club. Una fila por (clubId, userId): al rechazar se
+/// puede volver a pedir (se reabre la misma fila a PENDING) en vez de
+/// acumular solicitudes duplicadas.
+model ClubJoinRequest {
+  id String @id @default(cuid())
+
+  clubId String
+  club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status ClubJoinRequestStatus @default(PENDING)
+
+  /// Quién resolvió la solicitud (owner/admin) — null mientras está PENDING.
+  respondedById String?
+
+  createdAt   DateTime  @default(now())
+  respondedAt DateTime?
+
+  @@unique([clubId, userId])
+  @@index([clubId, status])
+  @@index([userId])
+}
+
+enum ClubJoinRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
 }
 
 model ClubMoodVote {
@@ -1248,6 +1287,8 @@ enum NotificationType {
   LIGA_RESULTADO
   LIGA_CIERRE_PROXIMO
   LIGA_RACHA_EN_RIESGO
+  CLUB_SOLICITUD_INGRESO
+  CLUB_SOLICITUD_RESUELTA
 }
 
 enum ProfileVisibility {

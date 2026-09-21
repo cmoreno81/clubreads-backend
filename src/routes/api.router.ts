@@ -123,6 +123,13 @@ import {
   handleTransferOwnership,
   handleUpdateClub,
 } from '../controllers/clubs.controller.js';
+import {
+  handleCambiarVisibilidadClub,
+  handleClubesPublicos,
+  handleResponderSolicitudClub,
+  handleSolicitarUnirseClub,
+  handleSolicitudesClub,
+} from '../controllers/club-directory.controller.js';
 import { handleGeneralDashboard } from '../controllers/general-dashboard.controller.js';
 import { handleLibrosPorAutor } from '../controllers/general-dashboard.controller.js';
 import {
@@ -227,6 +234,9 @@ export const POST_ONLY_ACTIONS = new Set([
   'eliminarClub',
   'transferirPropiedadClub',
   'editarClub',
+  'cambiarVisibilidadClub',
+  'solicitarUnirseClub',
+  'responderSolicitudClub',
   'crearLibro',
   'editarLibro',
   'anadirLibroExistente',
@@ -504,6 +514,26 @@ export async function handleApi(
           return requireAuthentication(req, res, () => {});
         }
         return handleJoinClub(req, res);
+
+      case 'clubesPublicos':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleClubesPublicos(req, res);
+
+      case 'cambiarVisibilidadClub':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleCambiarVisibilidadClub(req, res);
+
+      case 'solicitarUnirseClub':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleSolicitarUnirseClub(req, res);
+
+      case 'solicitudesClub':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleSolicitudesClub(req, res);
+
+      case 'responderSolicitudClub':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleResponderSolicitudClub(req, res);
 
       case 'seleccionarClub':
         if (!req.auth) {

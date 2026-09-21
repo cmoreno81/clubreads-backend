@@ -1,4 +1,4 @@
-import { NotificationType } from '@prisma/client';
+import { ClubRole, NotificationType } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import {
   descendingCursorFilter,
@@ -398,6 +398,75 @@ export async function notifyNuevaMiembro({
     titulo: '👋 Nueva lectora',
     mensaje: `${nuevaMiembroNombre} se ha unido a ${club.name}`,
     extra: { userId: nuevaMiembroUserId },
+  });
+}
+
+/** Avisa a quien administra el club (OWNER/ADMIN) de una nueva solicitud de ingreso. */
+export async function notifySolicitudIngreso({
+  clubId,
+  solicitanteNombre,
+  solicitanteUserId,
+}: {
+  clubId: string;
+  solicitanteNombre: string;
+  solicitanteUserId: string;
+}) {
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { name: true },
+  });
+  if (!club) return;
+  const admins = await prisma.clubMember.findMany({
+    where: { clubId, role: { in: [ClubRole.OWNER, ClubRole.ADMIN] } },
+    select: { userId: true },
+  });
+  const destinatarios = await filterEnabledRecipients(
+    admins.map((m) => m.userId),
+    NotificationType.CLUB_SOLICITUD_INGRESO,
+  );
+  if (destinatarios.length === 0) return;
+  await prisma.notification.createMany({
+    data: destinatarios.map((userId) => ({
+      userId,
+      tipo: NotificationType.CLUB_SOLICITUD_INGRESO,
+      titulo: '🚪 Solicitud de ingreso',
+      mensaje: `${solicitanteNombre} quiere unirse a ${club.name}`,
+      clubId,
+      extra: JSON.stringify({ userId: solicitanteUserId }),
+    })),
+  });
+}
+
+/** Avisa a quien solicitó unirse de que su solicitud se ha aceptado o rechazado. */
+export async function notifySolicitudResuelta({
+  clubId,
+  userId,
+  aceptada,
+}: {
+  clubId: string;
+  userId: string;
+  aceptada: boolean;
+}) {
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { name: true },
+  });
+  if (!club) return;
+  const [destinatario] = await filterEnabledRecipients(
+    [userId],
+    NotificationType.CLUB_SOLICITUD_RESUELTA,
+  );
+  if (!destinatario) return;
+  await prisma.notification.create({
+    data: {
+      userId,
+      tipo: NotificationType.CLUB_SOLICITUD_RESUELTA,
+      titulo: aceptada ? '🎉 Solicitud aceptada' : 'Solicitud no aceptada',
+      mensaje: aceptada
+        ? `Ya formas parte de ${club.name}`
+        : `Tu solicitud para unirte a ${club.name} no se ha aceptado esta vez`,
+      clubId,
+    },
   });
 }
 
