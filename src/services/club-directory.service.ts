@@ -35,13 +35,15 @@ async function requireOwnerOrAdmin(clubId: string, userId: string) {
   return membership;
 }
 
-/** Lista de clubes PUBLIC, opcionalmente filtrada por nombre. */
-export async function listarClubesPublicos(search?: string) {
+/** Lista de clubes PUBLIC, opcionalmente filtrada por nombre. Excluye los
+ * clubes de los que `userId` ya es miembro. */
+export async function listarClubesPublicos(userId: string, search?: string) {
   const texto = search?.trim();
   const clubes = await prisma.club.findMany({
     where: {
       visibility: ClubVisibility.PUBLIC,
       tipo: 'SOCIAL',
+      members: { none: { userId } },
       ...(texto ? { name: { contains: texto, mode: 'insensitive' } } : {}),
     },
     select: {

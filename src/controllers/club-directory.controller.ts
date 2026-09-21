@@ -10,8 +10,12 @@ import {
 } from '../services/club-directory.service.js';
 
 export async function handleClubesPublicos(req: Request, res: Response) {
+  const userId = req.auth!.userId;
   const search = typeof req.query.q === 'string' ? req.query.q : undefined;
-  return res.json({ ok: true, clubes: await listarClubesPublicos(search) });
+  return res.json({
+    ok: true,
+    clubes: await listarClubesPublicos(userId, search),
+  });
 }
 
 export async function handleCambiarVisibilidadClub(req: Request, res: Response) {
