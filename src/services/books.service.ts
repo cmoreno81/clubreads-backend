@@ -1246,6 +1246,22 @@ export async function actualizarProgresoLectura(
     porcentaje = Math.round((pagina / totalPaginas) * 100);
     // Páginas avanzadas respecto a la última actualización (mínimo 0)
     paginasLeidas = Math.max(0, pagina - (lectura.currentPage ?? 0));
+  } else {
+    // Solo se envió porcentaje: si conocemos el total de páginas, derivamos
+    // una página equivalente para no perder el número de página guardado y
+    // para poder seguir contando páginas leídas (puntos de Liga y check-in
+    // automático), igual que cuando se actualiza por página.
+    const totalPaginas = totalFueEnviado
+      ? totalEnviado
+      : (lectura.personalTotalPages ?? lectura.book.totalPages);
+    if (totalPaginas) {
+      pagina = Math.round((porcentaje / 100) * totalPaginas);
+      paginasLeidas = Math.max(0, pagina - (lectura.currentPage ?? 0));
+    } else {
+      // Sin total de páginas conocido no podemos derivar una página; no
+      // sobrescribimos currentPage para no perder el dato existente.
+      pagina = lectura.currentPage ?? null;
+    }
   }
 
   const today = now.toISOString().slice(0, 10);
