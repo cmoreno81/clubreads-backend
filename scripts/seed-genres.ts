@@ -52,6 +52,7 @@ const GENRES: { name: string; icon: string }[] = [
   { name: 'Cómic',                 icon: '💬' },
   { name: 'No ficción',            icon: '🧠' },
   { name: 'Infantil',              icon: '🎈' },
+  { name: 'Juvenil',               icon: '🎒' },
   { name: 'Mafia Romance',         icon: '🌹🔫' },
 ];
 

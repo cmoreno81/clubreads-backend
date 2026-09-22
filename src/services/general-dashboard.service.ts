@@ -782,7 +782,14 @@ export async function getGeneralDashboard(userId: string) {
       lecturasActivas: club.readings.length,
     })),
     leyendoAhora: user.library.map(
-      ({ book, lastProgress, currentPage, personalTotalPages }) => ({
+      ({
+        book,
+        lastProgress,
+        currentPage,
+        personalTotalPages,
+        progressNote,
+        progressUpdatedAt,
+      }) => ({
         id: book.id,
         titulo: book.title,
         genero: book.genre.name,
@@ -790,6 +797,8 @@ export async function getGeneralDashboard(userId: string) {
         progreso: lastProgress ?? 0,
         paginaActual: currentPage,
         paginas: personalTotalPages ?? book.totalPages,
+        comentario: progressNote ?? '',
+        actualizadoEn: progressUpdatedAt?.toISOString() ?? '',
       }),
     ),
     miBiblioteca: personalLibrary
