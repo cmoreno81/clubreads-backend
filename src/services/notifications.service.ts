@@ -66,6 +66,7 @@ async function createNotification({
 async function notifyClubMembers({
   clubId,
   excludeUserId,
+  roles,
   tipo,
   titulo,
   mensaje,
@@ -74,6 +75,8 @@ async function notifyClubMembers({
 }: {
   clubId: string;
   excludeUserId?: string;
+  /** Si se indica, solo avisa a quien tenga uno de estos roles (p.ej. solo admins). */
+  roles?: ClubRole[];
   tipo: NotificationType;
   titulo: string;
   mensaje: string;
@@ -84,6 +87,7 @@ async function notifyClubMembers({
     where: {
       clubId,
       ...(excludeUserId ? { userId: { not: excludeUserId } } : {}),
+      ...(roles ? { role: { in: roles } } : {}),
     },
     select: { userId: true },
   });
@@ -246,6 +250,67 @@ export async function yaAvisadoEdicionSaltada(
     select: { id: true },
   });
   return n != null;
+}
+
+/**
+ * Aviso solo para admins/owner de que la edición se ha abierto con menos de
+ * 5 candidatas — para que sepan que pueden forzar alguna más a mano y que
+ * la papeleta no se quede corta. Una sola vez por club y edición.
+ */
+export async function notifyClubvisionForzarDisponible(
+  clubId: string,
+  edition: string,
+  candidatas: number,
+) {
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { name: true },
+  });
+  if (!club) return;
+  await notifyClubMembers({
+    clubId,
+    roles: [ClubRole.OWNER, ClubRole.ADMIN],
+    tipo: NotificationType.CLUBVISION_FORZAR_DISPONIBLE,
+    titulo: '🗳️ La votación se ha abierto un poco corta',
+    mensaje: `${club.name} ha abierto su Clubvisión con solo ${candidatas} ${candidatas === 1 ? 'candidata' : 'candidatas'}. Como admin, puedes forzar alguna más a mano desde el menú de Clubvisión.`,
+    extra: { edition },
+  });
+}
+
+/** ¿Ya se avisó a los admins de este club de que podían forzar candidatas en esta edición? */
+export async function yaAvisadoForzarDisponible(
+  clubId: string,
+  edition: string,
+): Promise<boolean> {
+  const n = await prisma.notification.findFirst({
+    where: {
+      clubId,
+      tipo: NotificationType.CLUBVISION_FORZAR_DISPONIBLE,
+      extra: { contains: `"edition":"${edition}"` },
+    },
+    select: { id: true },
+  });
+  return n != null;
+}
+
+/**
+ * Aviso único, al crear un club, con las herramientas de admin relacionadas
+ * con Clubvisión — para que a quien lo crea no se le escape que existen
+ * (bienvenida los primeros 45 días, forzar candidatas a mano si algún mes
+ * van escasas).
+ */
+export async function notifyClubInfoAdminClubvision(
+  clubId: string,
+  ownerId: string,
+) {
+  await createNotification({
+    userId: ownerId,
+    tipo: NotificationType.CLUB_INFO_ADMIN_CLUBVISION,
+    titulo: '🎤 Herramientas de Clubvisión para admins',
+    mensaje:
+      'Como admin, tienes dos ayudas para Clubvisión: en los primeros 45 días puedes iniciar una Clubvisión de bienvenida en cuanto tengáis candidatas, sin esperar al ciclo mensual; y si algún mes vais escasos de candidatas, puedes forzar alguna a mano desde el menú de Clubvisión.',
+    clubId,
+  });
 }
 
 export async function notifyClubvisionResultados(clubId: string, ganador: string) {

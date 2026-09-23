@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { ClubRole, ClubType } from '@prisma/client';
-import { notifyNuevaMiembro } from './notifications.service.js';
+import {
+  notifyClubInfoAdminClubvision,
+  notifyNuevaMiembro,
+} from './notifications.service.js';
 
 import { prisma } from '../prisma.js';
 import { ClubContextError } from './club-context.service.js';
@@ -127,6 +130,9 @@ export async function createClub(
         });
         return created;
       });
+      notifyClubInfoAdminClubvision(club.id, userId).catch(
+        backgroundError('club_info_admin_clubvision_notification_failed'),
+      );
       return {
         ok: true,
         club: {

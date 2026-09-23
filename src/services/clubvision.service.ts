@@ -3,11 +3,13 @@ import { ClubRole, Priority, ReadingStatus, ReadingType } from '@prisma/client';
 import {
   notifyClubvisionAbierta,
   notifyClubvisionEdicionSaltada,
+  notifyClubvisionForzarDisponible,
   notifyClubvisionPocosCandidatos,
   notifyClubvisionRecordatorioVoto,
   notifyClubvisionResultados,
   notifyLecturaNueva,
   yaAvisadoEdicionSaltada,
+  yaAvisadoForzarDisponible,
   yaAvisadoPocosCandidatos,
   yaAvisadoRecordatorioVoto,
 } from './notifications.service.js';
@@ -458,8 +460,31 @@ async function getOrCreateCurrentClubvision(
 
     return clubvision;
   }, { maxWait: 5_000, timeout: 15_000 });
-  if (created) void notifyClubvisionAbierta(club.id).catch(backgroundError('clubvision_open_notification_failed'));
+  if (created) {
+    void notifyClubvisionAbierta(club.id).catch(backgroundError('clubvision_open_notification_failed'));
+    void avisarForzarDisponibleSiCorto(club.id, created.id, edition).catch(
+      backgroundError('clubvision_forzar_disponible_notification_failed'),
+    );
+  }
   return created;
+}
+
+/**
+ * Si una edición recién abierta se ha quedado corta de candidatas (menos de
+ * 5 — el tamaño habitual de la papeleta), avisa a las admins de que pueden
+ * forzar alguna más a mano. Una sola vez por club y edición.
+ */
+async function avisarForzarDisponibleSiCorto(
+  clubId: string,
+  clubvisionId: string,
+  edition: string,
+) {
+  const total = await prisma.clubvisionCandidate.count({
+    where: { clubvisionId },
+  });
+  if (total >= 5) return;
+  if (await yaAvisadoForzarDisponible(clubId, edition)) return;
+  await notifyClubvisionForzarDisponible(clubId, edition, total);
 }
 
 /**
