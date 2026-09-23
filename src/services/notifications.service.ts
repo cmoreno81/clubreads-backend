@@ -168,6 +168,47 @@ export async function yaAvisadoPocosCandidatos(
   return n != null;
 }
 
+/**
+ * Recordatorio individual a quien aún no ha votado en una Clubvisión abierta,
+ * cuando queda poco para que cierre la votación (se manda una sola vez por
+ * persona y edición).
+ */
+export async function notifyClubvisionRecordatorioVoto(
+  clubId: string,
+  clubvisionId: string,
+  userId: string,
+) {
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { name: true },
+  });
+  if (!club) return;
+  await createNotification({
+    userId,
+    tipo: NotificationType.CLUBVISION_RECORDATORIO_VOTO,
+    titulo: '⏳ La votación está a punto de cerrar',
+    mensaje: `Todavía no has votado en la Clubvisión de ${club.name}. ¡No te quedes sin elegir la próxima lectura!`,
+    clubId,
+    extra: { clubvisionId },
+  });
+}
+
+/** ¿Ya se avisó a esta persona de que le falta votar en esta Clubvisión? */
+export async function yaAvisadoRecordatorioVoto(
+  clubvisionId: string,
+  userId: string,
+): Promise<boolean> {
+  const n = await prisma.notification.findFirst({
+    where: {
+      userId,
+      tipo: NotificationType.CLUBVISION_RECORDATORIO_VOTO,
+      extra: { contains: `"clubvisionId":"${clubvisionId}"` },
+    },
+    select: { id: true },
+  });
+  return n != null;
+}
+
 export async function notifyClubvisionResultados(clubId: string, ganador: string) {
   const club = await prisma.club.findUnique({
     where: { id: clubId },

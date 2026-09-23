@@ -3,9 +3,11 @@ import { ClubRole, Priority, ReadingStatus, ReadingType } from '@prisma/client';
 import {
   notifyClubvisionAbierta,
   notifyClubvisionPocosCandidatos,
+  notifyClubvisionRecordatorioVoto,
   notifyClubvisionResultados,
   notifyLecturaNueva,
   yaAvisadoPocosCandidatos,
+  yaAvisadoRecordatorioVoto,
 } from './notifications.service.js';
 import { prisma } from '../prisma.js';
 import {
@@ -109,7 +111,7 @@ async function getWelcomeCandidateIds(clubId: string) {
 export async function getWelcomeClubvisionEligibility(usuario: string) {
   const { club, membership } = await requireClubMember(usuario);
   const esAdmin = membership.role === ClubRole.OWNER || membership.role === ClubRole.ADMIN;
-  const [members, previousWelcome, activeMonthly, candidateIds] = await Promise.all([
+  const [members, previousWelcome, activeMonthly, candidateIds, monthlyCandidateIds] = await Promise.all([
     prisma.clubMember.count({ where: { clubId: club.id } }),
     prisma.clubvision.findFirst({ where: { clubId: club.id, kind: 'WELCOME' }, select: { id: true } }),
     prisma.clubvision.findFirst({
@@ -122,11 +124,21 @@ export async function getWelcomeClubvisionEligibility(usuario: string) {
       select: { id: true },
     }),
     getWelcomeCandidateIds(club.id),
+    calcularCandidatasElegibles(prisma, club.id, getCurrentEdition()),
   ]);
   const ageDays = Math.floor((getNow().getTime() - club.createdAt.getTime()) / 86_400_000);
+  const yaCumpleMensual = monthlyCandidateIds.length >= MIN_CANDIDATOS_SIN_AVISO;
   const reasons: string[] = [];
   if (!esAdmin) reasons.push('Solo una administradora puede iniciarla');
-  if (ageDays > WELCOME_MAX_CLUB_AGE_DAYS) reasons.push('La bienvenida solo está disponible durante los primeros 45 días');
+  // La bienvenida es para clubes nuevos que aún están reuniendo candidatas.
+  // Si ya tienen suficientes para una edición mensual normal, no tiene
+  // sentido meterlos en el circuito de bienvenida (más corto y separado
+  // del calendario mensual) — esperan a que el cron abra su edición mensual.
+  if (yaCumpleMensual) {
+    reasons.push('Vuestro club ya tiene candidatas suficientes para la Clubvisión mensual — se abrirá en el ciclo normal');
+  } else if (ageDays > WELCOME_MAX_CLUB_AGE_DAYS) {
+    reasons.push('La bienvenida solo está disponible durante los primeros 45 días');
+  }
   if (previousWelcome) reasons.push('Este club ya tuvo su Clubvisión de bienvenida');
   if (activeMonthly) reasons.push('Ya hay otra Clubvisión activa');
   if (getClubvisionCalendar().day <= 3) {
@@ -439,6 +451,78 @@ export async function avisarPocosCandidatosClubvision(
       logger.error(
         { error, clubId: club.id },
         'Clubvisión: no se pudo avisar de pocas candidatas',
+      );
+    }
+  }
+  return avisados;
+}
+
+/**
+ * Recuerda a quien todavía no ha votado en una Clubvisión abierta, cuando
+ * queda poco para que cierre: en la mensual, el día 2 (última jornada antes
+ * de pasar a resultados el día 3); en la de bienvenida, con 24h o menos de
+ * las 48h de votación. Idempotente por persona+edición vía
+ * yaAvisadoRecordatorioVoto. Pensado para llamarse a diario (mismo cron que
+ * abre la Clubvisión).
+ */
+export async function avisarVotoPendienteClubvision(
+  now: Date = getNow(),
+): Promise<number> {
+  const activos = await prisma.clubvision.findMany({
+    where: { status: 'VOTACION' },
+    select: {
+      id: true,
+      clubId: true,
+      kind: true,
+      openedAt: true,
+      votingEndsAt: true,
+    },
+  });
+
+  let avisados = 0;
+  for (const clubvision of activos) {
+    try {
+      let ultimaJornada: boolean;
+      if (clubvision.kind === 'WELCOME') {
+        const votingEndsAt =
+          clubvision.votingEndsAt ??
+          addHours(clubvision.openedAt ?? now, WELCOME_VOTING_HOURS);
+        const horasRestantes =
+          (votingEndsAt.getTime() - now.getTime()) / (60 * 60 * 1000);
+        ultimaJornada = horasRestantes > 0 && horasRestantes <= 24;
+      } else {
+        ultimaJornada = getClubvisionCalendarFor(now).day === 2;
+      }
+      if (!ultimaJornada) continue;
+
+      const [members, voters] = await Promise.all([
+        prisma.clubMember.findMany({
+          where: { clubId: clubvision.clubId },
+          select: { userId: true },
+        }),
+        prisma.clubvisionVote.groupBy({
+          by: ['userId'],
+          where: { clubvisionId: clubvision.id },
+        }),
+      ]);
+      const votedIds = new Set(voters.map((v) => v.userId));
+      const pendientes = members
+        .map((m) => m.userId)
+        .filter((userId) => !votedIds.has(userId));
+
+      for (const userId of pendientes) {
+        if (await yaAvisadoRecordatorioVoto(clubvision.id, userId)) continue;
+        await notifyClubvisionRecordatorioVoto(
+          clubvision.clubId,
+          clubvision.id,
+          userId,
+        );
+        avisados += 1;
+      }
+    } catch (error) {
+      logger.error(
+        { error, clubvisionId: clubvision.id },
+        'Clubvisión: no se pudo avisar del voto pendiente',
       );
     }
   }
