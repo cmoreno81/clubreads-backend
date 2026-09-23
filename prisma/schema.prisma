@@ -278,22 +278,23 @@ model Book {
 
   updatedAt DateTime @updatedAt
 
-  deletedAt                   DateTime?
-  readings                    Reading[]
-  reviews                     Review[]
-  wonClubvisions              Clubvision[]
-  clubvisionCandidates        ClubvisionCandidate[]
-  clubvisionResults           ClubvisionResult[]           @relation("ClubvisionWinner")
-  redirectsFrom               BookRedirect[]               @relation("CanonicalBookRedirect")
-  userSeriesOrders            UserSeriesOrder[]
-  bookOfYearMonthlySelections BookOfYearMonthlySelection[]
-  bookOfYearDuelWinners       BookOfYearDuelWinner[]
-  bookOfYearFinalists         BookOfYearFinalist[]
-  bookOfYearWinners           BookOfYearWinner[]
-  clubBookOfYearCandidates    ClubBookOfYearCandidate[]
+  deletedAt                     DateTime?
+  readings                      Reading[]
+  reviews                       Review[]
+  wonClubvisions                Clubvision[]
+  clubvisionCandidates          ClubvisionCandidate[]
+  clubvisionForcedCandidates    ClubvisionForcedCandidate[]
+  clubvisionResults             ClubvisionResult[]             @relation("ClubvisionWinner")
+  redirectsFrom                 BookRedirect[]                 @relation("CanonicalBookRedirect")
+  userSeriesOrders              UserSeriesOrder[]
+  bookOfYearMonthlySelections   BookOfYearMonthlySelection[]
+  bookOfYearDuelWinners         BookOfYearDuelWinner[]
+  bookOfYearFinalists           BookOfYearFinalist[]
+  bookOfYearWinners             BookOfYearWinner[]
+  clubBookOfYearCandidates      ClubBookOfYearCandidate[]
   clubBookOfYearHistoricalLinks ClubBookOfYearHistoricalLink[]
-  wishlistItems               WishlistItem[]
-  sources                     BookSource[]
+  wishlistItems                 WishlistItem[]
+  sources                       BookSource[]
 
   @@index([title])
   @@index([authorId])
@@ -406,31 +407,32 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  clubvisionVotes               ClubvisionVote[]
-  moodVotes                     ClubMoodVote[]
-  authCodes                     AuthCode[]
-  authSessions                  AuthSession[]
-  seriesOrders                  UserSeriesOrder[]
-  readingChallenges             ReadingChallenge[]
-  dailyCheckins                 DailyCheckin[]
-  readingSessions               ReadingSession[]
-  wishlistItems                 WishlistItem[]
-  bookOfYearMonthlySelections   BookOfYearMonthlySelection[]
-  bookOfYearDuelWinners         BookOfYearDuelWinner[]
-  bookOfYearFinalists           BookOfYearFinalist[]
-  bookOfYearWinners             BookOfYearWinner[]
-  clubBookOfYearQualifyingVotes ClubBookOfYearQualifyingVote[]
-  clubBookOfYearDuelVotes       ClubBookOfYearDuelVote[]
-  proposedReadings              ClubReadingProposal[]           @relation("ProposedReadings")
-  proposalApprovals             ClubReadingProposalApproval[]   @relation("ProposalApprovals")
+  clubvisionVotes                 ClubvisionVote[]
+  clubvisionForcedCandidatesAdded ClubvisionForcedCandidate[]
+  moodVotes                       ClubMoodVote[]
+  authCodes                       AuthCode[]
+  authSessions                    AuthSession[]
+  seriesOrders                    UserSeriesOrder[]
+  readingChallenges               ReadingChallenge[]
+  dailyCheckins                   DailyCheckin[]
+  readingSessions                 ReadingSession[]
+  wishlistItems                   WishlistItem[]
+  bookOfYearMonthlySelections     BookOfYearMonthlySelection[]
+  bookOfYearDuelWinners           BookOfYearDuelWinner[]
+  bookOfYearFinalists             BookOfYearFinalist[]
+  bookOfYearWinners               BookOfYearWinner[]
+  clubBookOfYearQualifyingVotes   ClubBookOfYearQualifyingVote[]
+  clubBookOfYearDuelVotes         ClubBookOfYearDuelVote[]
+  proposedReadings                ClubReadingProposal[]          @relation("ProposedReadings")
+  proposalApprovals               ClubReadingProposalApproval[]  @relation("ProposalApprovals")
 
-  rankingParticipation  RankingParticipation?
-  rankingPointEvents    RankingPointEvent[]
-  rankingSeasonResults  RankingSeasonResult[]
-  rankingRankSnapshots  RankingRankSnapshot[]
-  seasonMedals          SeasonMedal[]
+  rankingParticipation RankingParticipation?
+  rankingPointEvents   RankingPointEvent[]
+  rankingSeasonResults RankingSeasonResult[]
+  rankingRankSnapshots RankingRankSnapshot[]
+  seasonMedals         SeasonMedal[]
 
-  blockedUsers UserBlock[] @relation("BlockedBy")
+  blockedUsers   UserBlock[] @relation("BlockedBy")
   blockedByUsers UserBlock[] @relation("HasBlocked")
 
   @@index([activeClubId])
@@ -555,15 +557,16 @@ model Club {
 
   activeUsers User[] @relation("ActiveClub")
 
-  readings           Reading[]
-  clubvisions        Clubvision[]
-  clubvisionResults  ClubvisionResult[]
-  moodVotes          ClubMoodVote[]
-  bookOfYearEditions ClubBookOfYearEdition[]
-  bookOfYearHistoricalLinks ClubBookOfYearHistoricalLink[]
-  readingProposals   ClubReadingProposal[]
-  rankingResults     ClubRankingSeasonResult[]
-  joinRequests       ClubJoinRequest[]
+  readings                   Reading[]
+  clubvisions                Clubvision[]
+  clubvisionForcedCandidates ClubvisionForcedCandidate[]
+  clubvisionResults          ClubvisionResult[]
+  moodVotes                  ClubMoodVote[]
+  bookOfYearEditions         ClubBookOfYearEdition[]
+  bookOfYearHistoricalLinks  ClubBookOfYearHistoricalLink[]
+  readingProposals           ClubReadingProposal[]
+  rankingResults             ClubRankingSeasonResult[]
+  joinRequests               ClubJoinRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -831,22 +834,22 @@ model BookOfYearWinner {
 }
 
 model ClubBookOfYearEdition {
-  id                String                         @id @default(cuid())
-  clubId            String
-  club              Club                           @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  year              Int
-  status            ClubBookOfYearStatus           @default(PREPARING)
-  bracketSize       Int?
-  winnerCandidateId String?
-  winnerCandidate   ClubBookOfYearCandidate?       @relation("ClubBookOfYearWinner", fields: [winnerCandidateId], references: [id], onDelete: SetNull)
-  startedAt         DateTime?
-  finishedAt        DateTime?
+  id                 String                         @id @default(cuid())
+  clubId             String
+  club               Club                           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  year               Int
+  status             ClubBookOfYearStatus           @default(PREPARING)
+  bracketSize        Int?
+  winnerCandidateId  String?
+  winnerCandidate    ClubBookOfYearCandidate?       @relation("ClubBookOfYearWinner", fields: [winnerCandidateId], references: [id], onDelete: SetNull)
+  startedAt          DateTime?
+  finishedAt         DateTime?
   candidatesSyncedAt DateTime?
-  createdAt         DateTime                       @default(now())
-  updatedAt         DateTime                       @updatedAt
-  candidates        ClubBookOfYearCandidate[]      @relation("ClubBookOfYearCandidates")
-  rounds            ClubBookOfYearRound[]
-  qualifyingVotes   ClubBookOfYearQualifyingVote[]
+  createdAt          DateTime                       @default(now())
+  updatedAt          DateTime                       @updatedAt
+  candidates         ClubBookOfYearCandidate[]      @relation("ClubBookOfYearCandidates")
+  rounds             ClubBookOfYearRound[]
+  qualifyingVotes    ClubBookOfYearQualifyingVote[]
 
   @@unique([clubId, year])
   @@index([clubId, status])
@@ -883,16 +886,16 @@ model ClubBookOfYearCandidate {
 }
 
 model ClubBookOfYearHistoricalLink {
-  id       String @id @default(cuid())
-  clubId   String
-  club     Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  year     Int
-  resultId String @unique
-  result   ClubvisionResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
-  bookId   String
-  book     Book @relation(fields: [bookId], references: [id], onDelete: Restrict)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String           @id @default(cuid())
+  clubId    String
+  club      Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  year      Int
+  resultId  String           @unique
+  result    ClubvisionResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  bookId    String
+  book      Book             @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 
   @@index([clubId, year])
   @@index([bookId])
@@ -1129,16 +1132,16 @@ enum ClubReadingProposalStatus {
 }
 
 model ClubReadingProposal {
-  id        String                      @id @default(cuid())
-  clubId    String
-  club      Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  bookTitle String
+  id         String                        @id @default(cuid())
+  clubId     String
+  club       Club                          @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  bookTitle  String
   proposedBy String
-  proposer  User                        @relation("ProposedReadings", fields: [proposedBy], references: [id], onDelete: Cascade)
-  status    ClubReadingProposalStatus   @default(PENDING)
-  approvals ClubReadingProposalApproval[]
-  createdAt DateTime                    @default(now())
-  updatedAt DateTime                    @updatedAt
+  proposer   User                          @relation("ProposedReadings", fields: [proposedBy], references: [id], onDelete: Cascade)
+  status     ClubReadingProposalStatus     @default(PENDING)
+  approvals  ClubReadingProposalApproval[]
+  createdAt  DateTime                      @default(now())
+  updatedAt  DateTime                      @updatedAt
 
   @@index([clubId, status])
 }
@@ -1169,11 +1172,11 @@ model Clubvision {
   title   String?
   message String?
 
-  openedAt   DateTime?
+  openedAt      DateTime?
   votingEndsAt DateTime?
   resultsEndsAt DateTime?
-  closedAt   DateTime?
-  finishedAt DateTime?
+  closedAt      DateTime?
+  finishedAt    DateTime?
 
   winnerBookId String?
   winnerBook   Book?   @relation(fields: [winnerBookId], references: [id])
@@ -1206,6 +1209,34 @@ model ClubvisionCandidate {
   @@unique([id, clubvisionId])
   @@index([clubvisionId])
   @@index([bookId])
+}
+
+/**
+ * Candidata añadida a mano por una admin para una edición concreta, saltando
+ * el requisito habitual de 3+ miembros interesados — pensado para cuando a un
+ * club le va a faltar de poco y alguien quiere forzar un título que sabe que
+ * el club quiere leer. Se fusiona con las candidatas "orgánicas" al abrir la
+ * edición (getOrCreateCurrentClubvision); si la edición ya se abrió, no tiene
+ * efecto retroactivo.
+ */
+model ClubvisionForcedCandidate {
+  id String @id @default(cuid())
+
+  clubId String
+  club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  edition String // yyyy-MM, la edición para la que se fuerza
+
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id])
+
+  addedById String
+  addedBy   User   @relation(fields: [addedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([clubId, edition, bookId])
+  @@index([clubId, edition])
 }
 
 model ClubvisionVote {
@@ -1248,7 +1279,7 @@ model ClubvisionResult {
   secondTitle String?
   thirdTitle  String?
 
-  createdAt DateTime @default(now())
+  createdAt                DateTime                      @default(now())
   bookOfYearHistoricalLink ClubBookOfYearHistoricalLink?
 
   @@unique([clubId, edition])
@@ -1290,6 +1321,7 @@ enum NotificationType {
   CLUB_SOLICITUD_INGRESO
   CLUB_SOLICITUD_RESUELTA
   CLUBVISION_RECORDATORIO_VOTO
+  CLUBVISION_EDICION_SALTADA
 }
 
 enum ProfileVisibility {
@@ -1539,8 +1571,8 @@ model RankingPointEvent {
   type         RankingEventType
   points       Int
   /// p. ej. "checkin:2026-09-15", "book:<completionId>", "saga:<seriesId>"
-  dedupeKey String
-  createdAt DateTime @default(now())
+  dedupeKey    String
+  createdAt    DateTime         @default(now())
 
   @@unique([userId, seasonNumber, dedupeKey])
   @@index([seasonNumber, userId])

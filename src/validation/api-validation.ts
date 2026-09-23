@@ -152,8 +152,12 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   toggleProgressReaction: body({ libraryId: identifierSchema, reaccion: reactionSchema.optional() }),
   actualizarValoracion: body({ libro: identifierSchema, valoracion: ratingSchema }),
   actualizarPaginaLibrary: body({ bookId: identifierSchema, paginaActual: pageSchema }),
-  enviarVotacion: body({ v1: identifierSchema, v2: identifierSchema, v3: identifierSchema, v4: identifierSchema, v5: identifierSchema }),
+  // La papeleta se adapta al número real de candidatas de la edición (mínimo
+  // 2, máximo 5) — solo v1 y v2 son obligatorios, el resto depende de
+  // cuántas candidatas haya (comprobado en el servicio, que conoce el total).
+  enviarVotacion: body({ v1: identifierSchema, v2: identifierSchema, v3: identifierSchema.optional(), v4: identifierSchema.optional(), v5: identifierSchema.optional() }),
   iniciarClubvisionBienvenida: emptyBody,
+  forzarCandidataClubvision: body({ bookId: identifierSchema, edition: z.string().regex(/^\d{4}-\d{2}$/, 'Formato yyyy-MM').optional() }),
   crearLectura: body({ libro: identifierSchema, capitulos: integerSchema.refine((v) => Number(v) >= 0, 'Debe ser mayor o igual a cero'), prologo: legacyBooleanSchema.optional(), epilogo: legacyBooleanSchema.optional(), paginas: pageSchema.optional(), tipo: readingTypeSchema.optional() }),
   editarLectura: body({ libro: identifierSchema, capitulos: integerSchema.refine((v) => Number(v) >= 0, 'Debe ser mayor o igual a cero'), prologo: legacyBooleanSchema.optional(), epilogo: legacyBooleanSchema.optional() }),
   renombrarCapitulo: body({ libro: identifierSchema, tituloActual: identifierSchema, tituloNuevo: z.string().trim().min(1).max(60) }),

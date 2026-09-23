@@ -5,12 +5,14 @@
  * Sincroniza las ediciones de Clubvisión que toca abrir según su
  * fecha programada, calculando candidatas y preparando la votación.
  * Aprovecha el mismo ciclo diario para avisar a los clubes a los que les
- * van a faltar candidatas para la próxima edición (10 días antes), y para
+ * van a faltar candidatas para la próxima edición (10 días antes), a los que
+ * se les ha saltado la edición de este mes por falta de candidatas, y para
  * recordar a quien no ha votado que la votación está a punto de cerrar.
  */
 
 import { prisma } from '../prisma.js';
 import {
+  avisarClubvisionSaltada,
   avisarPocosCandidatosClubvision,
   avisarVotoPendienteClubvision,
   openScheduledClubvision,
@@ -46,6 +48,11 @@ async function main() {
   const recordados = await avisarVotoPendienteClubvision();
   if (recordados > 0) {
     console.log(`Clubvisión: recordatorio de voto pendiente enviado a ${recordados} personas`);
+  }
+
+  const saltadas = await avisarClubvisionSaltada();
+  if (saltadas > 0) {
+    console.log(`Clubvisión: aviso de edición saltada enviado a ${saltadas} clubes`);
   }
 }
 

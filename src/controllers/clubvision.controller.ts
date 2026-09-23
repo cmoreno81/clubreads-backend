@@ -8,6 +8,7 @@ import {
   getHistorialClubvisionPage,
   getClubvisionEstadisticas,
   startWelcomeClubvision,
+  forzarCandidataClubvision,
 } from '../services/clubvision.service.js';
 import { requestUserName } from '../middleware/auth.middleware.js';
 import {
@@ -40,6 +41,14 @@ export async function handleEnviarVotacion(req: Request, res: Response) {
 
 export async function handleStartWelcomeClubvision(req: Request, res: Response) {
   return res.json(await startWelcomeClubvision(requestUserName(req)));
+}
+
+export async function handleForzarCandidataClubvision(req: Request, res: Response) {
+  const data = await forzarCandidataClubvision(requestUserName(req), {
+    bookId: String(req.body?.bookId || ''),
+    edition: req.body?.edition ? String(req.body.edition) : undefined,
+  });
+  return res.json(data);
 }
 
 export async function handleMiVoto(req: Request, res: Response) {

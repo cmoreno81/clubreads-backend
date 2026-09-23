@@ -209,6 +209,45 @@ export async function yaAvisadoRecordatorioVoto(
   return n != null;
 }
 
+/**
+ * Aviso de que este mes no se ha podido abrir Clubvisión para el club por
+ * falta de candidatas (se manda una sola vez por club y edición, el mismo
+ * día en que tocaba abrir).
+ */
+export async function notifyClubvisionEdicionSaltada(
+  clubId: string,
+  edition: string,
+) {
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { name: true },
+  });
+  if (!club) return;
+  await notifyClubMembers({
+    clubId,
+    tipo: NotificationType.CLUBVISION_EDICION_SALTADA,
+    titulo: '😔 Este mes no hay Clubvisión',
+    mensaje: `${club.name} se ha quedado sin candidatas y no ha podido abrir su Clubvisión de este mes. Añadid libros a "Pendiente" para no perderos la del mes que viene.`,
+    extra: { edition },
+  });
+}
+
+/** ¿Ya se avisó a este club de que se le saltó la edición? */
+export async function yaAvisadoEdicionSaltada(
+  clubId: string,
+  edition: string,
+): Promise<boolean> {
+  const n = await prisma.notification.findFirst({
+    where: {
+      clubId,
+      tipo: NotificationType.CLUBVISION_EDICION_SALTADA,
+      extra: { contains: `"edition":"${edition}"` },
+    },
+    select: { id: true },
+  });
+  return n != null;
+}
+
 export async function notifyClubvisionResultados(clubId: string, ganador: string) {
   const club = await prisma.club.findUnique({
     where: { id: clubId },

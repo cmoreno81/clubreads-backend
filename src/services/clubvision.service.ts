@@ -2,10 +2,12 @@ import type { Club, Clubvision, Prisma } from '@prisma/client';
 import { ClubRole, Priority, ReadingStatus, ReadingType } from '@prisma/client';
 import {
   notifyClubvisionAbierta,
+  notifyClubvisionEdicionSaltada,
   notifyClubvisionPocosCandidatos,
   notifyClubvisionRecordatorioVoto,
   notifyClubvisionResultados,
   notifyLecturaNueva,
+  yaAvisadoEdicionSaltada,
   yaAvisadoPocosCandidatos,
   yaAvisadoRecordatorioVoto,
 } from './notifications.service.js';
@@ -186,6 +188,62 @@ export async function startWelcomeClubvision(usuario: string) {
   return { ok: true, idVotacion: created.edition };
 }
 
+/**
+ * Fuerza a mano una candidata para una edición de Clubvisión que todavía no
+ * se ha abierto, saltándose el requisito habitual de 3+ miembros interesados
+ * — pensado para cuando a un club le va a faltar de poco y una admin sabe
+ * que el club quiere leer un título concreto. Si no se indica `edition`, por
+ * defecto apunta a la edición que abre mañana (el caso de uso típico: "el
+ * día antes de que abra, todavía no tiene candidatas"). No tiene efecto si
+ * esa edición ya se abrió — la fusión con las candidatas orgánicas ocurre en
+ * getOrCreateCurrentClubvision, solo al crear el registro.
+ */
+export async function forzarCandidataClubvision(
+  usuario: string,
+  { bookId, edition }: { bookId: string; edition?: string },
+) {
+  const { club, user } = await requireClubRole(usuario, [ClubRole.OWNER, ClubRole.ADMIN]);
+  const targetEdition =
+    edition ?? getClubvisionCalendarFor(addHours(getNow(), 24)).edition;
+
+  const book = await prisma.book.findUnique({
+    where: { id: bookId },
+    select: { id: true, deletedAt: true, publicationDate: true },
+  });
+  if (!book || book.deletedAt) {
+    return { ok: false, mensaje: 'Libro no encontrado en el catálogo' };
+  }
+  if (book.publicationDate && book.publicationDate > getNow()) {
+    return { ok: false, mensaje: 'Ese libro todavía no se ha publicado' };
+  }
+
+  const existing = await prisma.clubvision.findUnique({
+    where: { clubId_edition: { clubId: club.id, edition: targetEdition } },
+    select: { id: true },
+  });
+  if (existing) {
+    return {
+      ok: false,
+      mensaje: `La Clubvisión de ${targetEdition} ya está abierta; forzar una candidata solo funciona antes de que se abra`,
+    };
+  }
+
+  await prisma.clubvisionForcedCandidate.upsert({
+    where: {
+      clubId_edition_bookId: { clubId: club.id, edition: targetEdition, bookId: book.id },
+    },
+    update: {},
+    create: {
+      clubId: club.id,
+      edition: targetEdition,
+      bookId: book.id,
+      addedById: user.id,
+    },
+  });
+
+  return { ok: true, edition: targetEdition };
+}
+
 function getNow() {
   const isProduction = process.env.NODE_ENV === 'production';
   const simulatedDate = process.env.SIMULATED_DATE?.trim();
@@ -343,13 +401,31 @@ async function getOrCreateCurrentClubvision(
     // encontraría ese `existing` y ni siquiera reintentaría generar
     // candidatos. Ese club se quedaba sin poder votar hasta la edición
     // siguiente.
-    const sortedCandidates = await calcularCandidatasElegibles(
+    const organicCandidates = await calcularCandidatasElegibles(
       tx,
       club.id,
       edition,
     );
+    // Candidatas forzadas a mano por una admin (forzarCandidataClubvision),
+    // para cuando al club le faltan de poco y alguien sabe que quiere leer
+    // un título concreto. Se fusionan sin duplicar; van al final, detrás de
+    // las orgánicas ordenadas por interés.
+    const forced = await tx.clubvisionForcedCandidate.findMany({
+      where: { clubId: club.id, edition },
+      select: { bookId: true },
+    });
+    const sortedCandidates = [
+      ...organicCandidates,
+      ...forced
+        .map((f) => f.bookId)
+        .filter((bookId) => !organicCandidates.includes(bookId)),
+    ];
 
-    if (sortedCandidates.length === 0) return null;
+    // Con menos de 2 candidatas no hay elección real posible — la papeleta
+    // (enviarVotacion) exige ordenar como mínimo 2 libros diferentes, así
+    // que abrir con solo 1 dejaría al club con una votación que nadie puede
+    // completar.
+    if (sortedCandidates.length < 2) return null;
 
     // Ya sabemos que hay candidatos suficientes: ahora sí creamos (o
     // recuperamos, por si una llamada concurrente se adelantó) el registro
@@ -451,6 +527,62 @@ export async function avisarPocosCandidatosClubvision(
       logger.error(
         { error, clubId: club.id },
         'Clubvisión: no se pudo avisar de pocas candidatas',
+      );
+    }
+  }
+  return avisados;
+}
+
+/**
+ * Avisa a los clubes a los que se les ha saltado la edición de este mes por
+ * falta de candidatas — se comprueba el mismo día en que tocaba abrir (día
+ * 1), reutilizando exactamente la misma cuenta de candidatas (orgánicas +
+ * forzadas a mano) que usa la apertura real, así que nunca avisa si el cron
+ * de ese mismo ciclo acaba de abrir la edición. Solo a clubes ya fuera de la
+ * ventana de bienvenida (para esos, quedarse sin candidatas es lo esperable
+ * y ya tienen su propio camino). Idempotente por club+edición. Pensado para
+ * llamarse a diario (mismo cron que abre la Clubvisión).
+ */
+export async function avisarClubvisionSaltada(
+  now: Date = getNow(),
+): Promise<number> {
+  const { day, edition } = getClubvisionCalendarFor(now);
+  if (day !== 1) return 0;
+
+  const clubs = await prisma.club.findMany({
+    select: { id: true, name: true, createdAt: true, _count: { select: { members: true } } },
+  });
+  let avisados = 0;
+  for (const club of clubs) {
+    try {
+      const ageDays = Math.floor(
+        (now.getTime() - club.createdAt.getTime()) / 86_400_000,
+      );
+      if (ageDays <= WELCOME_MAX_CLUB_AGE_DAYS) continue;
+      if (club._count.members < WELCOME_MIN_MEMBERS) continue;
+
+      const existing = await prisma.clubvision.findUnique({
+        where: { clubId_edition: { clubId: club.id, edition } },
+        select: { id: true },
+      });
+      if (existing) continue;
+
+      const [organic, forced] = await Promise.all([
+        calcularCandidatasElegibles(prisma, club.id, edition),
+        prisma.clubvisionForcedCandidate.count({
+          where: { clubId: club.id, edition },
+        }),
+      ]);
+      if (organic.length + forced >= 2) continue;
+
+      if (await yaAvisadoEdicionSaltada(club.id, edition)) continue;
+
+      await notifyClubvisionEdicionSaltada(club.id, edition);
+      avisados += 1;
+    } catch (error) {
+      logger.error(
+        { error, clubId: club.id },
+        'Clubvisión: no se pudo avisar de edición saltada',
       );
     }
   }
@@ -1090,13 +1222,6 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
   const normalizedVotes = votos.map((vote) => vote.trim()).filter(Boolean);
   const uniqueVotes = new Set(normalizedVotes);
 
-  if (normalizedVotes.length !== 5 || uniqueVotes.size !== 5) {
-    return {
-      ok: false,
-      mensaje: 'Debes ordenar exactamente cinco libros diferentes',
-    };
-  }
-
   // Las papeletas llegan como títulos, no como ids de libro (limitación del
   // cliente actual). Para no emparejar un voto con el candidato equivocado
   // si dos candidatos de esta misma edición comparten título exacto (dos
@@ -1106,6 +1231,25 @@ export async function enviarVotacion(usuario: string, votos: string[]) {
     where: { clubvisionId: clubvision.id },
     include: { book: true },
   });
+
+  // La papeleta se adapta al número real de candidatas: se ordenan todas si
+  // hay 5 o menos, o las 5 mejores si hay más. Con menos de 2 candidatas no
+  // hay elección real posible — no debería llegar a pasar (el mínimo para
+  // abrir la edición es 2), pero por si acaso queda cubierto igualmente.
+  const votosEsperados = Math.min(5, allCandidates.length);
+  if (
+    votosEsperados < 2 ||
+    normalizedVotes.length !== votosEsperados ||
+    uniqueVotes.size !== votosEsperados
+  ) {
+    return {
+      ok: false,
+      mensaje:
+        votosEsperados < 2
+          ? 'Todavía no hay suficientes candidatas para votar'
+          : `Debes ordenar exactamente ${votosEsperados} ${votosEsperados === 1 ? 'libro diferente' : 'libros diferentes'}`,
+    };
+  }
 
   const titleCounts = new Map<string, number>();
   for (const candidate of allCandidates) {
