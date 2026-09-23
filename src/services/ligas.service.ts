@@ -786,19 +786,21 @@ export async function getLiga(userId: string, now: Date = new Date()) {
       }
     : null;
 
-  // Top 10 + ventana de ±2 alrededor de mí si estoy fuera del top + zona de
-  // descenso entera, para que se pueda ver marcada en rojo igual que el
+  // Top 10 + ventana de ±2 alrededor de mí si estoy fuera del top + cola de
+  // la tabla entera, para que se pueda ver marcada en rojo igual que el
   // ascenso se ve en el top 10 (si no, con divisiones grandes y estando a
-  // mitad de tabla, nunca llegabas a ver quién desciende).
+  // mitad de tabla, nunca llegabas a ver quién desciende). En Bronce no hay
+  // descenso real, pero mostramos igualmente la cola para que la tabla
+  // visible siempre llegue hasta el último puesto (si no, con divisiones
+  // grandes, la parte final de la tabla quedaba inalcanzable).
   const visibles = new Map<number, FilaTabla>();
   for (const f of tabla.slice(0, 10)) visibles.set(f.puesto, f);
   for (const f of tabla) {
     if (Math.abs(f.puesto - miPuesto) <= 2) visibles.set(f.puesto, f);
   }
   const { bajan } = calcularCuotaAscensoDescenso(tabla.length);
-  if (bajan > 0 && division !== 'BRONCE') {
-    for (const f of tabla.slice(-bajan)) visibles.set(f.puesto, f);
-  }
+  const colaTabla = bajan > 0 ? bajan : Math.min(3, tabla.length);
+  for (const f of tabla.slice(-colaTabla)) visibles.set(f.puesto, f);
   const filasBase = [...visibles.values()]
     .sort((a, b) => a.puesto - b.puesto)
     .map((f) => ({ ...f, esTu: f.userId === userId }));
