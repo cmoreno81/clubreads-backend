@@ -36,7 +36,7 @@ const WELCOME_MAX_CLUB_AGE_DAYS = 45;
 /** Días de antelación con los que se avisa si a un club le faltan candidatas. */
 const DIAS_AVISO_POCAS_CANDIDATAS = 10;
 /** Con menos candidatas que esto, se considera que a un club le van a faltar. */
-const MIN_CANDIDATOS_SIN_AVISO = 10;
+const MIN_CANDIDATOS_SIN_AVISO = 7;
 const WELCOME_MIN_MEMBERS = 3;
 const WELCOME_MIN_CANDIDATES = 5;
 const WELCOME_MIN_INTERESTED = 2;
