@@ -7,7 +7,10 @@ import {
 
 import { prisma } from '../prisma.js';
 import { notifyLibroNuevoBiblioteca } from './notifications.service.js';
-import { validateReadingTransitionInput } from '../utils/reading-transition.utils.js';
+import {
+  estabaEnLecturaActiva,
+  validateReadingTransitionInput,
+} from '../utils/reading-transition.utils.js';
 import {
   findBookByIdentity,
   lockBookIdentity,
@@ -705,6 +708,7 @@ export async function addSeriesCatalogVolume(
           startedAt: statusDates.startedAt,
           finishedAt: statusDates.finishedAt as Date,
           isReread: false,
+          trackedInApp: estabaEnLecturaActiva(existingLibrary?.status),
           rating: transition.rating as number,
           readingFormat: requestedFormat ?? existingLibrary?.readingFormat,
         },

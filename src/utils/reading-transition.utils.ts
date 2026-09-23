@@ -55,3 +55,16 @@ export function validateReadingTransitionInput(input: {
     endDate: end.date,
   };
 }
+
+/**
+ * true si el libro estaba en "Leyendo ahora" (leyendo, releyendo o en pausa)
+ * antes de marcarlo como terminado. Distingue una lectura seguida en la app
+ * de un libro pasado que se marca como leído de golpe.
+ */
+export function estabaEnLecturaActiva(status: ReadingStatus | null | undefined): boolean {
+  return (
+    status === ReadingStatus.READING ||
+    status === ReadingStatus.REREADING ||
+    status === ReadingStatus.PAUSED
+  );
+}

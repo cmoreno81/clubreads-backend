@@ -27,6 +27,7 @@ import {
   yaAvisadoRachaHoy,
 } from './notifications.service.js';
 import { getActiveDates } from './checkin.service.js';
+import { madridMonthBounds } from './book-of-year.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Temporadas
@@ -175,6 +176,27 @@ export function puntosPorLibro(opts: {
   return PUNTOS.BOOK_FINISHED;
 }
 
+/**
+ * La elección del Libro del año de un mes puntúa solo si se hizo durante ese
+ * mes o el siguiente. Así nadie suma de golpe los meses atrasados al entrar
+ * en la app, y quien los rellenó antes de que existieran las Ligas no queda
+ * en desventaja: todo el mundo puede ganar como mucho 10 puntos al mes.
+ */
+export function eleccionBotyEnPlazo(
+  year: number,
+  month: number,
+  createdAt: Date,
+): boolean {
+  const { start } = madridMonthBounds(year, month);
+  // El plazo acaba al empezar el mes M+2.
+  const finIndice = year * 12 + (month - 1) + 2;
+  const { start: fin } = madridMonthBounds(Math.floor(finIndice / 12), (finIndice % 12) + 1);
+  return createdAt >= start && createdAt < fin;
+}
+
+/** Margen tras terminar un libro para que su reseña siga puntuando. */
+export const RESENA_PLAZO_DIAS = 30;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Recálculo de una temporada
 // ─────────────────────────────────────────────────────────────────────────────
@@ -265,8 +287,15 @@ export async function calcularEventosTemporada(
   }
 
   // ── Libros terminados ─────────────────────────────────────────────────
+  // Solo puntúan los libros leídos en la app (pasaron por "Leyendo ahora").
+  // Los libros pasados marcados de golpe o importados no dan puntos: si no,
+  // quien entra nueva y vuelca su historial arrasa en su primera quincena.
   const completions = await prisma.readingCompletion.findMany({
-    where: { userId, finishedAt: { gte: startInstant, lt: endInstant } },
+    where: {
+      userId,
+      trackedInApp: true,
+      finishedAt: { gte: startInstant, lt: endInstant },
+    },
     select: {
       id: true,
       isReread: true,
@@ -288,7 +317,7 @@ export async function calcularEventosTemporada(
   // ── Primer libro terminado del mes ────────────────────────────────────
   if (completions.length > 0) {
     const todas = await prisma.readingCompletion.findMany({
-      where: { userId },
+      where: { userId, trackedInApp: true },
       select: { finishedAt: true },
       orderBy: { finishedAt: 'asc' },
     });
@@ -332,7 +361,10 @@ export async function calcularEventosTemporada(
     const sagaCompleta = [...idsSaga].every((id) => librosTerminados.has(id));
     if (!sagaCompleta) continue;
 
-    // El tomo que "cierra" la saga es el de finishedAt más reciente.
+    // El tomo que "cierra" la saga es el de finishedAt más reciente. Los
+    // tomos anteriores pueden ser lecturas pasadas, pero el bonus solo se da
+    // si se cierra en esta temporada y al menos un tomo de la saga se ha
+    // leído en la app en ella (`completions` ya viene filtrado así).
     const cierre = misCompletionsSaga.reduce((max, c) =>
       c.finishedAt > max.finishedAt ? c : max,
     );
@@ -346,6 +378,10 @@ export async function calcularEventosTemporada(
   }
 
   // ── Reseñas con texto ────────────────────────────────────────────────
+  // Solo puntúa la reseña de un libro leído en la app y escrita en los
+  // RESENA_PLAZO_DIAS siguientes a terminarlo: reseñar libros antiguos o
+  // retocar una reseña vieja no suma. Una reseña que ya puntuó en la
+  // temporada anterior no vuelve a puntuar si se edita.
   const resenas = await prisma.review.findMany({
     where: {
       userId,
@@ -353,12 +389,53 @@ export async function calcularEventosTemporada(
       review: { not: null },
       updatedAt: { gte: startInstant, lt: endInstant },
     },
-    select: { bookId: true, review: true },
+    select: { bookId: true, review: true, updatedAt: true },
   });
+  const resenasLargas = resenas.filter(
+    (r) => (r.review ?? '').trim().length >= RESENA_MIN_CARACTERES,
+  );
+  const terminadosParaResena =
+    resenasLargas.length === 0
+      ? []
+      : await prisma.readingCompletion.findMany({
+          where: {
+            userId,
+            trackedInApp: true,
+            bookId: { in: resenasLargas.map((r) => r.bookId) },
+            finishedAt: {
+              gte: new Date(startInstant.getTime() - RESENA_PLAZO_DIAS * MS_DAY),
+              lt: endInstant,
+            },
+          },
+          select: { bookId: true, finishedAt: true },
+        });
+  const yaPuntuadasAntes =
+    resenasLargas.length === 0 || season === 0
+      ? new Set<string>()
+      : new Set(
+          (
+            await prisma.rankingPointEvent.findMany({
+              where: {
+                userId,
+                seasonNumber: season - 1,
+                type: 'REVIEW',
+                dedupeKey: { in: resenasLargas.map((r) => `review:${r.bookId}`) },
+              },
+              select: { dedupeKey: true },
+            })
+          ).map((e) => e.dedupeKey),
+        );
   const librosResenados = new Set<string>();
-  for (const r of resenas) {
+  for (const r of resenasLargas) {
+    const leidoHacePoco = terminadosParaResena.some(
+      (c) =>
+        c.bookId === r.bookId &&
+        c.finishedAt <= r.updatedAt &&
+        r.updatedAt.getTime() - c.finishedAt.getTime() <= RESENA_PLAZO_DIAS * MS_DAY,
+    );
     if (
-      (r.review ?? '').trim().length >= RESENA_MIN_CARACTERES &&
+      leidoHacePoco &&
+      !yaPuntuadasAntes.has(`review:${r.bookId}`) &&
       !librosResenados.has(r.bookId)
     ) {
       librosResenados.add(r.bookId);
@@ -371,11 +448,15 @@ export async function calcularEventosTemporada(
   }
 
   // ── Elección de Libro del año (mes) ─────────────────────────────────
+  // Cuenta la fecha de la PRIMERA elección (createdAt): cambiar de libro
+  // después no vuelve a puntuar. Y solo si se hizo en plazo (ese mes o el
+  // siguiente), para que rellenar meses atrasados no dé puntos.
   const eleccionesBoty = await prisma.bookOfYearMonthlySelection.findMany({
-    where: { userId, updatedAt: { gte: startInstant, lt: endInstant } },
-    select: { year: true, month: true },
+    where: { userId, createdAt: { gte: startInstant, lt: endInstant } },
+    select: { year: true, month: true, createdAt: true },
   });
   for (const e of eleccionesBoty) {
+    if (!eleccionBotyEnPlazo(e.year, e.month, e.createdAt)) continue;
     eventos.push({
       type: 'BOOK_OF_YEAR_PICK',
       points: PUNTOS.BOOK_OF_YEAR_PICK,

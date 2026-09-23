@@ -27,7 +27,10 @@ import {
   lockBookIdentity,
   resolveCanonicalBookId,
 } from './book-identity.service.js';
-import { validateReadingTransitionInput } from '../utils/reading-transition.utils.js';
+import {
+  estabaEnLecturaActiva,
+  validateReadingTransitionInput,
+} from '../utils/reading-transition.utils.js';
 import {
   descendingCursorFilter,
   pageFromRows,
@@ -1625,6 +1628,7 @@ await client.$transaction(async (tx) => {
           startedAt: statusDates.startedAt,
           finishedAt: statusDates.finishedAt as Date,
           isReread: currentLibrary?.status === ReadingStatus.REREADING,
+          trackedInApp: estabaEnLecturaActiva(currentLibrary?.status),
           rating: finalRating,
           spicyRating: spicy,
           review: reflexion?.trim() || null,

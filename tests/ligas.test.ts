@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { ReadingStatus } from '@prisma/client';
+
 import {
   RETO_SEMANAL_DIAS_OBJETIVO,
   RETO_SEMANAL_PUNTOS,
@@ -14,6 +16,7 @@ import {
   daysBetween,
   divisionInferior,
   divisionSuperior,
+  eleccionBotyEnPlazo,
   HITOS_CONSTANCIA,
   medallasParaFila,
   puntosPorLibro,
@@ -25,6 +28,7 @@ import {
   type FilaTabla,
   tzMidnightUtc,
 } from '../src/services/ligas.service.js';
+import { estabaEnLecturaActiva } from '../src/utils/reading-transition.utils.js';
 
 // ── Temporadas ──────────────────────────────────────────────────────────────
 
@@ -234,4 +238,32 @@ test('semanaDe: cualquier día de la semana da el mismo lunes de inicio', () => 
 test('el reto semanal tiene un objetivo y una recompensa fijados', () => {
   assert.equal(RETO_SEMANAL_DIAS_OBJETIVO, 5);
   assert.equal(RETO_SEMANAL_PUNTOS, 30);
+});
+
+// ── Juego limpio: puntos que no dependen de cuándo entras en la app ─────────
+
+test('eleccionBotyEnPlazo: puntúa si se elige durante el mes o el siguiente', () => {
+  assert.equal(eleccionBotyEnPlazo(2026, 9, new Date('2026-09-15T10:00:00Z')), true);
+  assert.equal(eleccionBotyEnPlazo(2026, 8, new Date('2026-09-20T10:00:00Z')), true);
+});
+
+test('eleccionBotyEnPlazo: rellenar meses atrasados no puntúa', () => {
+  assert.equal(eleccionBotyEnPlazo(2026, 1, new Date('2026-09-20T10:00:00Z')), false);
+  assert.equal(eleccionBotyEnPlazo(2026, 7, new Date('2026-09-01T10:00:00Z')), false);
+});
+
+test('eleccionBotyEnPlazo: el plazo de noviembre y diciembre cruza de año', () => {
+  assert.equal(eleccionBotyEnPlazo(2026, 11, new Date('2026-12-31T12:00:00Z')), true);
+  assert.equal(eleccionBotyEnPlazo(2026, 11, new Date('2027-01-02T12:00:00Z')), false);
+  assert.equal(eleccionBotyEnPlazo(2026, 12, new Date('2027-01-31T12:00:00Z')), true);
+  assert.equal(eleccionBotyEnPlazo(2026, 12, new Date('2027-02-01T12:00:00Z')), false);
+});
+
+test('estabaEnLecturaActiva: solo cuenta lo que pasó por "Leyendo ahora"', () => {
+  assert.equal(estabaEnLecturaActiva(ReadingStatus.READING), true);
+  assert.equal(estabaEnLecturaActiva(ReadingStatus.REREADING), true);
+  assert.equal(estabaEnLecturaActiva(ReadingStatus.PAUSED), true);
+  assert.equal(estabaEnLecturaActiva(ReadingStatus.PENDING), false);
+  assert.equal(estabaEnLecturaActiva(null), false);
+  assert.equal(estabaEnLecturaActiva(undefined), false);
 });

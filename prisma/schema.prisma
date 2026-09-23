@@ -759,6 +759,10 @@ model ReadingCompletion {
   spicyRating   Int?
   review        String?        @db.Text
   readingFormat ReadingFormat?
+  /// true si el libro estaba en "Leyendo ahora" (leyendo, releyendo o en
+  /// pausa) dentro de la app antes de terminarlo. Las lecturas pasadas
+  /// marcadas de golpe o importadas quedan en false y no puntúan en Ligas.
+  trackedInApp  Boolean        @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
