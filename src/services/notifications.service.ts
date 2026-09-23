@@ -227,10 +227,22 @@ export async function notifyClubvisionEdicionSaltada(
     select: { name: true },
   });
   if (!club) return;
+  const titulo = '😔 Este mes no hay Clubvisión';
+  // A las admins se les recuerda que pueden forzar una candidata a mano;
+  // al resto, solo que añadan libros a "Pendiente" — no tienen esa opción.
   await notifyClubMembers({
     clubId,
+    roles: [ClubRole.OWNER, ClubRole.ADMIN],
     tipo: NotificationType.CLUBVISION_EDICION_SALTADA,
-    titulo: '😔 Este mes no hay Clubvisión',
+    titulo,
+    mensaje: `${club.name} se ha quedado sin candidatas y no ha podido abrir su Clubvisión de este mes. Como admin, puedes forzar una candidata a mano desde el menú de Clubvisión, o esperad a que se sumen más libros a "Pendiente" para el mes que viene.`,
+    extra: { edition },
+  });
+  await notifyClubMembers({
+    clubId,
+    roles: [ClubRole.MEMBER],
+    tipo: NotificationType.CLUBVISION_EDICION_SALTADA,
+    titulo,
     mensaje: `${club.name} se ha quedado sin candidatas y no ha podido abrir su Clubvisión de este mes. Añadid libros a "Pendiente" para no perderos la del mes que viene.`,
     extra: { edition },
   });
@@ -294,21 +306,38 @@ export async function yaAvisadoForzarDisponible(
 }
 
 /**
- * Aviso único, al crear un club, con las herramientas de admin relacionadas
- * con Clubvisión — para que a quien lo crea no se le escape que existen
- * (bienvenida los primeros 45 días, forzar candidatas a mano si algún mes
- * van escasas).
+ * Aviso con las herramientas de admin relacionadas con Clubvisión — para que
+ * a quien administra un club no se le escape que existen (bienvenida los
+ * primeros 45 días, forzar candidatas a mano si algún mes van escasas). Se
+ * manda al crear un club (solo a quien lo crea) y también, con un script de
+ * relleno único, al resto de admins de clubes ya existentes — de ahí que sea
+ * idempotente por club+persona en vez de asumir que solo se llama una vez.
  */
 export async function notifyClubInfoAdminClubvision(
   clubId: string,
-  ownerId: string,
+  userId: string,
 ) {
+  const already = await prisma.notification.findFirst({
+    where: { clubId, userId, tipo: NotificationType.CLUB_INFO_ADMIN_CLUBVISION },
+    select: { id: true },
+  });
+  if (already) return;
+
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { createdAt: true },
+  });
+  if (!club) return;
+  const ageDays = Math.floor((Date.now() - club.createdAt.getTime()) / 86_400_000);
+  const dentroDeBienvenida = ageDays <= 45;
+
   await createNotification({
-    userId: ownerId,
+    userId,
     tipo: NotificationType.CLUB_INFO_ADMIN_CLUBVISION,
     titulo: '🎤 Herramientas de Clubvisión para admins',
-    mensaje:
-      'Como admin, tienes dos ayudas para Clubvisión: en los primeros 45 días puedes iniciar una Clubvisión de bienvenida en cuanto tengáis candidatas, sin esperar al ciclo mensual; y si algún mes vais escasos de candidatas, puedes forzar alguna a mano desde el menú de Clubvisión.',
+    mensaje: dentroDeBienvenida
+      ? 'Como admin, tienes dos ayudas para Clubvisión: en los primeros 45 días puedes iniciar una Clubvisión de bienvenida en cuanto tengáis candidatas, sin esperar al ciclo mensual; y si algún mes vais escasos de candidatas, puedes forzar alguna a mano desde el menú de Clubvisión.'
+      : 'Como admin, si algún mes vuestro club va escaso de candidatas para Clubvisión, puedes forzar alguna a mano desde el menú de Clubvisión para que no se quede sin edición.',
     clubId,
   });
 }
