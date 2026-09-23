@@ -194,6 +194,55 @@ export function eleccionBotyEnPlazo(
   return createdAt >= start && createdAt < fin;
 }
 
+/**
+ * De las lecturas marcadas como terminadas SIN haber pasado por "Leyendo
+ * ahora", devuelve los ids de la primera que se registró cada día (Madrid).
+ * Quien no usa "Leyendo ahora" y marca cada libro al acabarlo puntúa igual;
+ * quien vuelca su historial de golpe solo suma un libro ese día.
+ */
+export function primeraPorDia(lista: { id: string; createdAt: Date }[]): Set<string> {
+  const porDia = new Map<string, { id: string; createdAt: Date }>();
+  for (const c of lista) {
+    const dia = todayInTz(c.createdAt);
+    const actual = porDia.get(dia);
+    if (
+      !actual ||
+      c.createdAt < actual.createdAt ||
+      (c.createdAt.getTime() === actual.createdAt.getTime() && c.id < actual.id)
+    ) {
+      porDia.set(dia, c);
+    }
+  }
+  return new Set([...porDia.values()].map((c) => c.id));
+}
+
+/**
+ * Filtra las lecturas que puntúan: todas las seguidas en la app y, de las
+ * demás, solo la primera registrada cada día (ver `primeraPorDia`).
+ */
+async function completionsQuePuntuan<
+  T extends { id: string; trackedInApp: boolean; createdAt: Date },
+>(userId: string, candidatas: T[]): Promise<T[]> {
+  const sueltas = candidatas.filter((c) => !c.trackedInApp);
+  if (sueltas.length === 0) return candidatas;
+  const dias = sueltas.map((c) => todayInTz(c.createdAt)).sort();
+  // Se mira el día completo, no solo las candidatas, para que el libro que
+  // puntúa cada día sea siempre el mismo sea cual sea la consulta de origen.
+  const delDia = await prisma.readingCompletion.findMany({
+    where: {
+      userId,
+      trackedInApp: false,
+      createdAt: {
+        gte: tzMidnightUtc(dias[0]),
+        lt: tzMidnightUtc(addDaysStr(dias[dias.length - 1], 1)),
+      },
+    },
+    select: { id: true, createdAt: true },
+  });
+  const ganadoras = primeraPorDia(delDia);
+  return candidatas.filter((c) => c.trackedInApp || ganadoras.has(c.id));
+}
+
 /** Margen tras terminar un libro para que su reseña siga puntuando. */
 export const RESENA_PLAZO_DIAS = 30;
 
@@ -287,22 +336,23 @@ export async function calcularEventosTemporada(
   }
 
   // ── Libros terminados ─────────────────────────────────────────────────
-  // Solo puntúan los libros leídos en la app (pasaron por "Leyendo ahora").
-  // Los libros pasados marcados de golpe o importados no dan puntos: si no,
-  // quien entra nueva y vuelca su historial arrasa en su primera quincena.
-  const completions = await prisma.readingCompletion.findMany({
-    where: {
-      userId,
-      trackedInApp: true,
-      finishedAt: { gte: startInstant, lt: endInstant },
-    },
-    select: {
-      id: true,
-      isReread: true,
-      finishedAt: true,
-      book: { select: { id: true, totalPages: true, seriesId: true } },
-    },
-  });
+  // Puntúan todos los libros leídos en la app (pasaron por "Leyendo ahora")
+  // y, de los marcados directamente como terminados, uno al día. Así quien
+  // entra nueva y vuelca su historial no arrasa en su primera quincena.
+  const completions = await completionsQuePuntuan(
+    userId,
+    await prisma.readingCompletion.findMany({
+      where: { userId, finishedAt: { gte: startInstant, lt: endInstant } },
+      select: {
+        id: true,
+        isReread: true,
+        finishedAt: true,
+        trackedInApp: true,
+        createdAt: true,
+        book: { select: { id: true, totalPages: true, seriesId: true } },
+      },
+    }),
+  );
   for (const c of completions) {
     eventos.push({
       type: 'BOOK_FINISHED',
@@ -316,11 +366,14 @@ export async function calcularEventosTemporada(
 
   // ── Primer libro terminado del mes ────────────────────────────────────
   if (completions.length > 0) {
-    const todas = await prisma.readingCompletion.findMany({
-      where: { userId, trackedInApp: true },
-      select: { finishedAt: true },
-      orderBy: { finishedAt: 'asc' },
-    });
+    const todas = await completionsQuePuntuan(
+      userId,
+      await prisma.readingCompletion.findMany({
+        where: { userId },
+        select: { id: true, finishedAt: true, trackedInApp: true, createdAt: true },
+        orderBy: { finishedAt: 'asc' },
+      }),
+    );
     const primeraPorMes = new Map<string, Date>();
     for (const { finishedAt } of todas) {
       const ym = yearMonthInTz(finishedAt);
@@ -363,8 +416,8 @@ export async function calcularEventosTemporada(
 
     // El tomo que "cierra" la saga es el de finishedAt más reciente. Los
     // tomos anteriores pueden ser lecturas pasadas, pero el bonus solo se da
-    // si se cierra en esta temporada y al menos un tomo de la saga se ha
-    // leído en la app en ella (`completions` ya viene filtrado así).
+    // si se cierra en esta temporada y al menos un tomo de la saga
+    // puntúa en ella (`completions` ya viene filtrado así).
     const cierre = misCompletionsSaga.reduce((max, c) =>
       c.finishedAt > max.finishedAt ? c : max,
     );
@@ -378,7 +431,7 @@ export async function calcularEventosTemporada(
   }
 
   // ── Reseñas con texto ────────────────────────────────────────────────
-  // Solo puntúa la reseña de un libro leído en la app y escrita en los
+  // Solo puntúa la reseña de un libro que puntúa y escrita en los
   // RESENA_PLAZO_DIAS siguientes a terminarlo: reseñar libros antiguos o
   // retocar una reseña vieja no suma. Una reseña que ya puntuó en la
   // temporada anterior no vuelve a puntuar si se edita.
@@ -397,18 +450,20 @@ export async function calcularEventosTemporada(
   const terminadosParaResena =
     resenasLargas.length === 0
       ? []
-      : await prisma.readingCompletion.findMany({
-          where: {
-            userId,
-            trackedInApp: true,
-            bookId: { in: resenasLargas.map((r) => r.bookId) },
-            finishedAt: {
-              gte: new Date(startInstant.getTime() - RESENA_PLAZO_DIAS * MS_DAY),
-              lt: endInstant,
+      : await completionsQuePuntuan(
+          userId,
+          await prisma.readingCompletion.findMany({
+            where: {
+              userId,
+              bookId: { in: resenasLargas.map((r) => r.bookId) },
+              finishedAt: {
+                gte: new Date(startInstant.getTime() - RESENA_PLAZO_DIAS * MS_DAY),
+                lt: endInstant,
+              },
             },
-          },
-          select: { bookId: true, finishedAt: true },
-        });
+            select: { id: true, bookId: true, finishedAt: true, trackedInApp: true, createdAt: true },
+          }),
+        );
   const yaPuntuadasAntes =
     resenasLargas.length === 0 || season === 0
       ? new Set<string>()

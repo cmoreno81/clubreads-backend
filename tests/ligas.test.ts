@@ -19,6 +19,7 @@ import {
   eleccionBotyEnPlazo,
   HITOS_CONSTANCIA,
   medallasParaFila,
+  primeraPorDia,
   puntosPorLibro,
   puntosPorPaginas,
   seasonEndsAt,
@@ -266,4 +267,30 @@ test('estabaEnLecturaActiva: solo cuenta lo que pasó por "Leyendo ahora"', () =
   assert.equal(estabaEnLecturaActiva(ReadingStatus.PENDING), false);
   assert.equal(estabaEnLecturaActiva(null), false);
   assert.equal(estabaEnLecturaActiva(undefined), false);
+});
+
+test('primeraPorDia: de los libros marcados directamente, uno por día', () => {
+  const ids = primeraPorDia([
+    { id: 'a', createdAt: new Date('2026-09-16T12:44:38Z') },
+    { id: 'b', createdAt: new Date('2026-09-16T14:30:52Z') },
+    { id: 'c', createdAt: new Date('2026-09-17T14:33:58Z') },
+  ]);
+  assert.deepEqual([...ids].sort(), ['a', 'c']);
+});
+
+test('primeraPorDia: volcar el historial de golpe solo suma un libro', () => {
+  const volcado = Array.from({ length: 30 }, (_, i) => ({
+    id: `libro-${String(i).padStart(2, '0')}`,
+    createdAt: new Date(Date.UTC(2026, 8, 20, 18, 0, i)),
+  }));
+  assert.deepEqual([...primeraPorDia(volcado)], ['libro-00']);
+});
+
+test('primeraPorDia: el día se cuenta en hora de Madrid', () => {
+  // 23:30 UTC del 16 ya es día 17 en Madrid.
+  const ids = primeraPorDia([
+    { id: 'a', createdAt: new Date('2026-09-16T20:00:00Z') },
+    { id: 'b', createdAt: new Date('2026-09-16T23:30:00Z') },
+  ]);
+  assert.deepEqual([...ids].sort(), ['a', 'b']);
 });
