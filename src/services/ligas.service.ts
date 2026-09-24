@@ -911,6 +911,40 @@ async function tablaTemporada(
   }));
 }
 
+/**
+ * Tabla en vivo de la temporada actual para CUALQUIER división, no solo la
+ * del usuario — para poder curiosear cómo va Oro o Diamante aunque juegues
+ * en Bronce, marcando eso sí cuál es tu propia división para que quede
+ * claro que no compites ahí. No recalcula nada (a diferencia de `getLiga`):
+ * esta tabla la refresca el job `ligas:recompute` cada pocas horas, y ver la
+ * división de otra persona no debería disparar un recálculo caro.
+ */
+export async function getLigaDivision(
+  userId: string,
+  division: RankingDivision,
+  now: Date = new Date(),
+) {
+  const season = currentSeasonNumber(now);
+  const terminaEn = seasonEndsAt(season).toISOString();
+  const [participacion, tablaBase] = await Promise.all([
+    prisma.rankingParticipation.findUnique({
+      where: { userId },
+      select: { division: true },
+    }),
+    tablaTemporada(season, division),
+  ]);
+  const tabla = tablaBase.map((f) => ({ ...f, esTu: f.userId === userId }));
+
+  return {
+    ok: true as const,
+    temporada: { numero: season, terminaEn },
+    division,
+    tuDivision: participacion?.division ?? null,
+    totalParticipantes: tabla.length,
+    tabla,
+  };
+}
+
 export async function getLiga(userId: string, now: Date = new Date()) {
   const season = currentSeasonNumber(now);
   const terminaEn = seasonEndsAt(season).toISOString();

@@ -1,8 +1,10 @@
+import type { RankingDivision } from '@prisma/client';
 import type { Request, Response } from 'express';
 
 import {
   desgloseLiga,
   getLiga,
+  getLigaDivision,
   getLigaHistorial,
   getLigaPodiosTemporada,
   getLigaTemporadaCerrada,
@@ -10,6 +12,8 @@ import {
   salirDeLaLiga,
   unirseALaLiga,
 } from '../services/ligas.service.js';
+
+const DIVISIONES_VALIDAS = new Set(['BRONCE', 'PLATA', 'ORO', 'PLATINO', 'DIAMANTE']);
 import { tablaLigaClubes } from '../services/ligas-clubes.service.js';
 
 export async function handleGetLiga(req: Request, res: Response) {
@@ -59,6 +63,15 @@ export async function handleGetLigaPodiosTemporada(req: Request, res: Response) 
     return res.json({ ok: false, mensaje: 'Falta el número de temporada' });
   }
   return res.json(await getLigaPodiosTemporada(season));
+}
+
+export async function handleGetLigaDivision(req: Request, res: Response) {
+  const userId = req.auth!.userId;
+  const division = String(req.query.division ?? '').trim().toUpperCase();
+  if (!DIVISIONES_VALIDAS.has(division)) {
+    return res.json({ ok: false, mensaje: 'División desconocida' });
+  }
+  return res.json(await getLigaDivision(userId, division as RankingDivision));
 }
 
 export async function handleGetLigaClubes(req: Request, res: Response) {

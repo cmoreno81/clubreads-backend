@@ -220,6 +220,12 @@ export const actionQuerySchemas: Record<string, z.ZodType> = {
       temporada: z.string().regex(/^\d+$/, 'Debe ser un número'),
     })
     .passthrough(),
+  ligaDivision: z
+    .object({
+      action: z.literal('ligaDivision'),
+      division: z.enum(['BRONCE', 'PLATA', 'ORO', 'PLATINO', 'DIAMANTE']),
+    })
+    .passthrough(),
 };
 
 function invalidFields(error: z.ZodError) {
