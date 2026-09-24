@@ -26,7 +26,7 @@ import {
   yaAvisadoCierreLiga,
   yaAvisadoRachaHoy,
 } from './notifications.service.js';
-import { getActiveDates } from './checkin.service.js';
+import { getActiveDates, levelForPagesRead } from './checkin.service.js';
 import { madridMonthBounds } from './book-of-year.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -146,18 +146,23 @@ export const PUNTOS = {
   BOOK_OF_YEAR_PICK: 10,
   QUIZ: 20,
   BOOK_FINISHED: 40,
-  BOOK_FINISHED_REDUCIDO: 20, // relectura o libro de <50 páginas
+  BOOK_FINISHED_REDUCIDO: 20, // libro corto (< LIBRO_CORTO_PAGINAS páginas)
 } as const;
 
 export const STREAK_BONUS_TOPE = 15;
-export const PAGES_POR_PUNTO = 20;
-export const PAGES_PUNTOS_TOPE = 10;
-export const LIBRO_CORTO_PAGINAS = 50;
+/** Igual que LIBRO_CORTO_PAGINAS más abajo: 100 páginas es el listón para puntuar entero. */
+export const LIBRO_CORTO_PAGINAS = 100;
 export const RESENA_MIN_CARACTERES = 200;
 
+/**
+ * Puntos por páginas leídas en un día: mismos tramos que el mapa de calor
+ * (`levelForPagesRead` en checkin.service.ts) en vez de un tope arbitrario —
+ * así la intensidad que ve la usuaria en su calendario es exactamente la que
+ * puntúa. 1-4 puntos según el tramo (1-50 / 51-75 / 76-100 / +100 páginas).
+ */
 export function puntosPorPaginas(paginas: number): number {
   if (!Number.isFinite(paginas) || paginas <= 0) return 0;
-  return Math.min(Math.floor(paginas / PAGES_POR_PUNTO), PAGES_PUNTOS_TOPE);
+  return levelForPagesRead(paginas);
 }
 
 export function bonusPorRacha(longitudRacha: number): number {
@@ -165,11 +170,16 @@ export function bonusPorRacha(longitudRacha: number): number {
   return Math.min(Math.trunc(longitudRacha), STREAK_BONUS_TOPE);
 }
 
+/**
+ * Puntos por terminar un libro: los cortos (< LIBRO_CORTO_PAGINAS) puntúan
+ * menos porque sesgan el ranking hacia el volumen en vez del hábito — pero
+ * las relecturas puntúan igual que una primera lectura: quien de verdad
+ * vuelve a leer un libro en la app (con el mismo filtro `trackedInApp` que
+ * protege del resto de lecturas) está leyendo de verdad esta temporada.
+ */
 export function puntosPorLibro(opts: {
-  isReread: boolean;
   totalPages: number | null;
 }): number {
-  if (opts.isReread) return PUNTOS.BOOK_FINISHED_REDUCIDO;
   if (opts.totalPages != null && opts.totalPages < LIBRO_CORTO_PAGINAS) {
     return PUNTOS.BOOK_FINISHED_REDUCIDO;
   }
@@ -345,7 +355,6 @@ export async function calcularEventosTemporada(
       where: { userId, finishedAt: { gte: startInstant, lt: endInstant } },
       select: {
         id: true,
-        isReread: true,
         finishedAt: true,
         trackedInApp: true,
         createdAt: true,
@@ -357,7 +366,6 @@ export async function calcularEventosTemporada(
     eventos.push({
       type: 'BOOK_FINISHED',
       points: puntosPorLibro({
-        isReread: c.isReread,
         totalPages: c.book.totalPages,
       }),
       dedupeKey: `book:${c.id}`,

@@ -72,13 +72,16 @@ test('seasonEndsAt coincide con la medianoche de Madrid del fin de ventana', () 
 
 // ── Puntos ─────────────────────────────────────────────────────────────────
 
-test('puntosPorPaginas: 1 punto por cada 20 páginas, tope 10', () => {
+test('puntosPorPaginas: mismos tramos que el mapa de calor', () => {
   assert.equal(puntosPorPaginas(0), 0);
-  assert.equal(puntosPorPaginas(19), 0);
-  assert.equal(puntosPorPaginas(20), 1);
-  assert.equal(puntosPorPaginas(59), 2);
-  assert.equal(puntosPorPaginas(200), 10);
-  assert.equal(puntosPorPaginas(5_000), 10);
+  assert.equal(puntosPorPaginas(1), 1);
+  assert.equal(puntosPorPaginas(50), 1);
+  assert.equal(puntosPorPaginas(51), 2);
+  assert.equal(puntosPorPaginas(75), 2);
+  assert.equal(puntosPorPaginas(76), 3);
+  assert.equal(puntosPorPaginas(100), 3);
+  assert.equal(puntosPorPaginas(101), 4);
+  assert.equal(puntosPorPaginas(5_000), 4);
 });
 
 test('bonusPorRacha: longitud de la racha, tope 15', () => {
@@ -88,13 +91,12 @@ test('bonusPorRacha: longitud de la racha, tope 15', () => {
   assert.equal(bonusPorRacha(40), 15);
 });
 
-test('puntosPorLibro: 40 normal, 20 relectura o libro corto', () => {
-  assert.equal(puntosPorLibro({ isReread: false, totalPages: 320 }), 40);
-  assert.equal(puntosPorLibro({ isReread: false, totalPages: null }), 40);
-  assert.equal(puntosPorLibro({ isReread: true, totalPages: 320 }), 20);
-  assert.equal(puntosPorLibro({ isReread: false, totalPages: 30 }), 20);
-  assert.equal(puntosPorLibro({ isReread: false, totalPages: 49 }), 20);
-  assert.equal(puntosPorLibro({ isReread: false, totalPages: 50 }), 40);
+test('puntosPorLibro: 40 normal, 20 libro corto (<100 páginas), relecturas puntúan igual', () => {
+  assert.equal(puntosPorLibro({ totalPages: 320 }), 40);
+  assert.equal(puntosPorLibro({ totalPages: null }), 40);
+  assert.equal(puntosPorLibro({ totalPages: 30 }), 20);
+  assert.equal(puntosPorLibro({ totalPages: 99 }), 20);
+  assert.equal(puntosPorLibro({ totalPages: 100 }), 40);
 });
 
 // ── Tendencia (sube/baja puestos) ───────────────────────────────────────────
