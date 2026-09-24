@@ -207,6 +207,13 @@ export const actionQuerySchemas: Record<string, z.ZodType> = {
   historialLibroDelAnioClub: z.object({ action: z.literal('historialLibroDelAnioClub') }).passthrough(),
   liga: z.object({ action: z.literal('liga') }).passthrough(),
   ligaDesglose: z.object({ action: z.literal('ligaDesglose'), userId: identifierSchema }).passthrough(),
+  ligaHistorial: z.object({ action: z.literal('ligaHistorial') }).passthrough(),
+  ligaTemporadaCerrada: z
+    .object({
+      action: z.literal('ligaTemporadaCerrada'),
+      temporada: z.string().regex(/^\d+$/, 'Debe ser un número'),
+    })
+    .passthrough(),
 };
 
 function invalidFields(error: z.ZodError) {

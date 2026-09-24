@@ -169,6 +169,8 @@ import {
   handleUnirseLiga,
   handleSalirLiga,
   handleGetLigaClubes,
+  handleGetLigaHistorial,
+  handleGetLigaTemporadaCerrada,
 } from '../controllers/ligas.controller.js';
 import { validateActionInput } from '../validation/api-validation.js';
 import { handleChooseAnnualBookOfYear, handleChooseBookOfYearDuel, handleGetClubBooksOfYear, handleGetMyBookOfYear, handleGetPublicBookOfYear, handleSaveMonthlyBookOfYear } from '../controllers/book-of-year.controller.js';
@@ -918,6 +920,14 @@ export async function handleApi(
       case 'ligaMedallas':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetLigaMedallas(req, res);
+
+      case 'ligaHistorial':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetLigaHistorial(req, res);
+
+      case 'ligaTemporadaCerrada':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetLigaTemporadaCerrada(req, res);
 
       case 'unirseLiga':
         if (!req.auth) return requireAuthentication(req, res, () => {});

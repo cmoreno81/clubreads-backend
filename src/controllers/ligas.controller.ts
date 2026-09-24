@@ -3,6 +3,8 @@ import type { Request, Response } from 'express';
 import {
   desgloseLiga,
   getLiga,
+  getLigaHistorial,
+  getLigaTemporadaCerrada,
   medallasUsuario,
   salirDeLaLiga,
   unirseALaLiga,
@@ -34,6 +36,20 @@ export async function handleSalirLiga(req: Request, res: Response) {
   const userId = req.auth!.userId;
   await salirDeLaLiga(userId);
   return res.json({ ok: true, participando: false });
+}
+
+export async function handleGetLigaHistorial(req: Request, res: Response) {
+  const userId = req.auth!.userId;
+  return res.json(await getLigaHistorial(userId));
+}
+
+export async function handleGetLigaTemporadaCerrada(req: Request, res: Response) {
+  const userId = req.auth!.userId;
+  const season = Number(req.query.temporada ?? req.query.season);
+  if (!Number.isInteger(season)) {
+    return res.json({ ok: false, mensaje: 'Falta el número de temporada' });
+  }
+  return res.json(await getLigaTemporadaCerrada(userId, season));
 }
 
 export async function handleGetLigaClubes(req: Request, res: Response) {

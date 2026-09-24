@@ -998,6 +998,151 @@ export async function getLiga(userId: string, now: Date = new Date()) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Histórico de temporadas cerradas
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Tabla final de una temporada YA CERRADA, tal y como quedó — a diferencia
+ * de `tablaTemporada` (que reconstruye la tabla en vivo a partir de la
+ * división ACTUAL de cada participante, así que ya no sirve para temporadas
+ * pasadas una vez alguien ha ascendido o descendido), esta lee directamente
+ * el snapshot congelado en RankingSeasonResult.
+ */
+async function tablaTemporadaCerrada(
+  season: number,
+  division: RankingDivision,
+  userId?: string,
+): Promise<FilaTabla[]> {
+  const resultados = await prisma.rankingSeasonResult.findMany({
+    where: { seasonNumber: season, division },
+    orderBy: { rank: 'asc' },
+    select: { userId: true, totalPoints: true, rank: true },
+  });
+  if (resultados.length === 0) return [];
+
+  const usuarios = await prisma.user.findMany({
+    where: { id: { in: resultados.map((r) => r.userId) } },
+    select: { id: true, name: true, avatarUrl: true },
+  });
+  const porId = new Map(usuarios.map((u) => [u.id, u]));
+
+  return resultados.map((r) => {
+    const u = porId.get(r.userId);
+    return {
+      puesto: r.rank,
+      userId: r.userId,
+      nombre: u?.name ?? 'Cuenta eliminada',
+      avatarUrl: u?.avatarUrl ?? null,
+      puntos: r.totalPoints,
+      esTu: userId != null && r.userId === userId,
+    };
+  });
+}
+
+/**
+ * Lista de temporadas ya cerradas en las que ha participado, más reciente
+ * primero — para la pantalla de histórico. Ligero: una sola consulta a
+ * RankingSeasonResult y otra a SeasonMedal, sin reconstruir tablas.
+ */
+export async function getLigaHistorial(userId: string) {
+  const [resultados, medallas] = await Promise.all([
+    prisma.rankingSeasonResult.findMany({
+      where: { userId },
+      orderBy: { seasonNumber: 'desc' },
+      select: { seasonNumber: true, division: true, rank: true, totalPoints: true },
+    }),
+    prisma.seasonMedal.findMany({
+      where: { userId },
+      select: { seasonNumber: true, tier: true, division: true },
+    }),
+  ]);
+  if (resultados.length === 0) return { ok: true as const, temporadas: [] };
+
+  // Total de participantes de cada división esa temporada, para poder
+  // mostrar "3º de 14" en vez de solo "3º".
+  const seasons = [...new Set(resultados.map((r) => r.seasonNumber))];
+  const recuentos = await prisma.rankingSeasonResult.groupBy({
+    by: ['seasonNumber', 'division'],
+    where: { seasonNumber: { in: seasons } },
+    _count: { userId: true },
+  });
+  const totalPorSeasonDivision = new Map(
+    recuentos.map((r) => [`${r.seasonNumber}:${r.division}`, r._count.userId]),
+  );
+
+  const medallasPorSeason = new Map<number, { tier: MedalTier; division: RankingDivision }[]>();
+  for (const m of medallas) {
+    const lista = medallasPorSeason.get(m.seasonNumber) ?? [];
+    lista.push({ tier: m.tier, division: m.division });
+    medallasPorSeason.set(m.seasonNumber, lista);
+  }
+
+  return {
+    ok: true as const,
+    temporadas: resultados.map((r) => {
+      const key = `${r.seasonNumber}:${r.division}`;
+      const { startDate, endDate } = seasonWindow(r.seasonNumber);
+      return {
+        temporada: r.seasonNumber,
+        division: r.division,
+        puesto: r.rank,
+        puntos: r.totalPoints,
+        totalParticipantes: totalPorSeasonDivision.get(key) ?? r.rank,
+        inicio: startDate,
+        fin: endDate,
+        medallas: medallasPorSeason.get(r.seasonNumber) ?? [],
+      };
+    }),
+  };
+}
+
+/**
+ * Detalle de una temporada ya cerrada: su tabla final completa (en la
+ * división en la que jugó la usuaria), para poder revisarla como si fuera
+ * la tabla en vivo. Sirve tanto para "temporada anterior" (pasando
+ * `currentSeasonNumber(now) - 1`) como para cualquier temporada del
+ * histórico que se quiera abrir.
+ */
+export async function getLigaTemporadaCerrada(userId: string, season: number) {
+  if (season < 0 || season >= currentSeasonNumber()) {
+    return { ok: false as const, mensaje: 'Esa temporada no existe o todavía no ha cerrado' };
+  }
+
+  const miResultado = await prisma.rankingSeasonResult.findUnique({
+    where: { userId_seasonNumber: { userId, seasonNumber: season } },
+    select: { division: true },
+  });
+  if (!miResultado) {
+    return { ok: false as const, mensaje: 'No jugaste esa temporada' };
+  }
+
+  const [tabla, medallas] = await Promise.all([
+    tablaTemporadaCerrada(season, miResultado.division, userId),
+    prisma.seasonMedal.findMany({
+      where: { userId, seasonNumber: season },
+      select: { tier: true, division: true, rank: true, streak: true },
+    }),
+  ]);
+  const miFila = tabla.find((f) => f.userId === userId) ?? null;
+  const { startDate, endDate } = seasonWindow(season);
+
+  return {
+    ok: true as const,
+    temporada: {
+      numero: season,
+      division: miResultado.division,
+      inicio: startDate,
+      fin: endDate,
+      totalParticipantes: tabla.length,
+    },
+    miPuesto: miFila?.puesto ?? null,
+    misPuntos: miFila?.puntos ?? null,
+    tabla,
+    medallas,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Cierre de temporada (job)
 // ─────────────────────────────────────────────────────────────────────────────
 
