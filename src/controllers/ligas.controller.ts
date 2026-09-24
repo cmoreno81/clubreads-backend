@@ -4,6 +4,7 @@ import {
   desgloseLiga,
   getLiga,
   getLigaHistorial,
+  getLigaPodiosTemporada,
   getLigaTemporadaCerrada,
   medallasUsuario,
   salirDeLaLiga,
@@ -50,6 +51,14 @@ export async function handleGetLigaTemporadaCerrada(req: Request, res: Response)
     return res.json({ ok: false, mensaje: 'Falta el número de temporada' });
   }
   return res.json(await getLigaTemporadaCerrada(userId, season));
+}
+
+export async function handleGetLigaPodiosTemporada(req: Request, res: Response) {
+  const season = Number(req.query.temporada ?? req.query.season);
+  if (!Number.isInteger(season)) {
+    return res.json({ ok: false, mensaje: 'Falta el número de temporada' });
+  }
+  return res.json(await getLigaPodiosTemporada(season));
 }
 
 export async function handleGetLigaClubes(req: Request, res: Response) {

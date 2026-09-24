@@ -147,6 +147,7 @@ export const PUNTOS = {
   QUIZ: 20,
   BOOK_FINISHED: 40,
   BOOK_FINISHED_REDUCIDO: 20, // libro corto (< LIBRO_CORTO_PAGINAS páginas)
+  CONSTANCIA_TEMPORADA: 15, // seguir jugando temporada tras temporada
 } as const;
 
 export const STREAK_BONUS_TOPE = 15;
@@ -330,6 +331,24 @@ export async function calcularEventosTemporada(
           dedupeKey: `streak:${date}`,
         });
       }
+    }
+  }
+
+  // ── Bonus de constancia entre temporadas ────────────────────────────────
+  // Premia seguir jugando temporada tras temporada: si en la anterior sumó
+  // puntos de verdad (no solo estuvo apuntada), esta temporada empieza con
+  // un pequeño extra. Un solo evento por temporada, no depende de nada más.
+  if (season > 0) {
+    const anterior = await prisma.rankingSeasonResult.findUnique({
+      where: { userId_seasonNumber: { userId, seasonNumber: season - 1 } },
+      select: { totalPoints: true },
+    });
+    if (anterior != null && anterior.totalPoints > 0) {
+      eventos.push({
+        type: 'CONSTANCIA_TEMPORADA',
+        points: PUNTOS.CONSTANCIA_TEMPORADA,
+        dedupeKey: `constancia:${season}`,
+      });
     }
   }
 
@@ -1111,6 +1130,69 @@ export async function getLigaHistorial(userId: string) {
  * `currentSeasonNumber(now) - 1`) como para cualquier temporada del
  * histórico que se quiera abrir.
  */
+/**
+ * Podio (top 3) de CADA división en una temporada ya cerrada — a diferencia
+ * de `getLigaTemporadaCerrada` (que solo devuelve la división del usuario),
+ * esto es para ver de un vistazo quién ganó en Bronce, Plata, Oro... como
+ * los campeones de cada categoría de una liga de fútbol.
+ */
+export async function getLigaPodiosTemporada(season: number) {
+  if (season < 0 || season >= currentSeasonNumber()) {
+    return { ok: false as const, mensaje: 'Esa temporada no existe o todavía no ha cerrado' };
+  }
+
+  const resultados = await prisma.rankingSeasonResult.findMany({
+    where: { seasonNumber: season, rank: { lte: 3 } },
+    orderBy: [{ division: 'asc' }, { rank: 'asc' }],
+    select: { userId: true, division: true, totalPoints: true, rank: true },
+  });
+  if (resultados.length === 0) {
+    return { ok: false as const, mensaje: 'No hay datos de esa temporada' };
+  }
+
+  const recuentos = await prisma.rankingSeasonResult.groupBy({
+    by: ['division'],
+    where: { seasonNumber: season },
+    _count: { userId: true },
+  });
+  const totalPorDivision = new Map(
+    recuentos.map((r) => [r.division, r._count.userId]),
+  );
+
+  const usuarios = await prisma.user.findMany({
+    where: { id: { in: resultados.map((r) => r.userId) } },
+    select: { id: true, name: true, avatarUrl: true },
+  });
+  const porId = new Map(usuarios.map((u) => [u.id, u]));
+
+  const porDivision = new Map<RankingDivision, FilaTabla[]>();
+  for (const r of resultados) {
+    const u = porId.get(r.userId);
+    const fila: FilaTabla = {
+      puesto: r.rank,
+      userId: r.userId,
+      nombre: u?.name ?? 'Cuenta eliminada',
+      avatarUrl: u?.avatarUrl ?? null,
+      puntos: r.totalPoints,
+      esTu: false,
+    };
+    const lista = porDivision.get(r.division) ?? [];
+    lista.push(fila);
+    porDivision.set(r.division, lista);
+  }
+
+  const { startDate, endDate } = seasonWindow(season);
+  return {
+    ok: true as const,
+    temporada: { numero: season, inicio: startDate, fin: endDate },
+    divisiones: ORDEN_DIVISIONES.map((division) => ({
+      division,
+      totalParticipantes: totalPorDivision.get(division) ?? 0,
+      podio: porDivision.get(division) ?? [],
+    })).filter((d) => d.podio.length > 0),
+  };
+}
+
 export async function getLigaTemporadaCerrada(userId: string, season: number) {
   if (season < 0 || season >= currentSeasonNumber()) {
     return { ok: false as const, mensaje: 'Esa temporada no existe o todavía no ha cerrado' };

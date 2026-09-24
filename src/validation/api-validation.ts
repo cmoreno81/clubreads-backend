@@ -214,6 +214,12 @@ export const actionQuerySchemas: Record<string, z.ZodType> = {
       temporada: z.string().regex(/^\d+$/, 'Debe ser un número'),
     })
     .passthrough(),
+  ligaPodiosTemporada: z
+    .object({
+      action: z.literal('ligaPodiosTemporada'),
+      temporada: z.string().regex(/^\d+$/, 'Debe ser un número'),
+    })
+    .passthrough(),
 };
 
 function invalidFields(error: z.ZodError) {

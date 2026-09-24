@@ -170,6 +170,7 @@ import {
   handleSalirLiga,
   handleGetLigaClubes,
   handleGetLigaHistorial,
+  handleGetLigaPodiosTemporada,
   handleGetLigaTemporadaCerrada,
 } from '../controllers/ligas.controller.js';
 import { validateActionInput } from '../validation/api-validation.js';
@@ -928,6 +929,10 @@ export async function handleApi(
       case 'ligaTemporadaCerrada':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetLigaTemporadaCerrada(req, res);
+
+      case 'ligaPodiosTemporada':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetLigaPodiosTemporada(req, res);
 
       case 'unirseLiga':
         if (!req.auth) return requireAuthentication(req, res, () => {});

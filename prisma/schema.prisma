@@ -1563,6 +1563,7 @@ enum RankingEventType {
   BOOK_OF_YEAR_PICK
   QUIZ
   WEEKLY_CHALLENGE
+  CONSTANCIA_TEMPORADA
 }
 
 /// Libro mayor de puntos. Cada acción puntuable de una temporada se
