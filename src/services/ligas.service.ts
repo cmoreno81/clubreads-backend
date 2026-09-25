@@ -1164,31 +1164,53 @@ export async function getLigaHistorial(userId: string) {
 
 /**
  * Ranking histórico acumulado: suma los puntos de todas las temporadas ya
- * cerradas de cada usuaria (sin importar en qué división jugara cada una),
- * para ver quién ha sido más constante a lo largo del tiempo y no solo en
- * la temporada actual. Es la pestaña "Acumulado" del histórico de ligas.
+ * cerradas de cada usuaria más los que lleva en la temporada EN CURSO (en
+ * vivo, según se van anotando sus `RankingPointEvent`), sin importar en qué
+ * división jugara o juegue cada una. Es la pestaña "Acumulado" del
+ * histórico de ligas — a tiempo real, no solo con temporadas cerradas.
  */
-export async function getLigaAcumulado(userId: string) {
-  const agregados = await prisma.rankingSeasonResult.groupBy({
-    by: ['userId'],
-    _sum: { totalPoints: true },
-    _count: { seasonNumber: true },
-  });
-  if (agregados.length === 0) return { ok: true as const, tabla: [] };
+export async function getLigaAcumulado(userId: string, now: Date = new Date()) {
+  const season = currentSeasonNumber(now);
+
+  const [cerradas, enCurso, participantesActuales] = await Promise.all([
+    prisma.rankingSeasonResult.groupBy({
+      by: ['userId'],
+      _sum: { totalPoints: true },
+      _count: { seasonNumber: true },
+    }),
+    prisma.rankingPointEvent.groupBy({
+      by: ['userId'],
+      where: { seasonNumber: season },
+      _sum: { points: true },
+    }),
+    prisma.rankingParticipation.findMany({ select: { userId: true } }),
+  ]);
+
+  const puntosCerradas = new Map(cerradas.map((c) => [c.userId, c._sum.totalPoints ?? 0]));
+  const temporadasCerradas = new Map(cerradas.map((c) => [c.userId, c._count.seasonNumber]));
+  const puntosEnCurso = new Map(enCurso.map((e) => [e.userId, e._sum.points ?? 0]));
+  const enJuegoAhora = new Set(participantesActuales.map((p) => p.userId));
+
+  const ids = new Set([
+    ...puntosCerradas.keys(),
+    ...puntosEnCurso.keys(),
+    ...enJuegoAhora,
+  ]);
+  if (ids.size === 0) return { ok: true as const, tabla: [] };
 
   const usuarias = await prisma.user.findMany({
-    where: { id: { in: agregados.map((a) => a.userId) } },
+    where: { id: { in: [...ids] } },
     select: { id: true, name: true, avatarUrl: true },
   });
   const usuariaPorId = new Map(usuarias.map((u) => [u.id, u]));
 
-  const tabla = agregados
-    .map((a) => ({
-      userId: a.userId,
-      nombre: usuariaPorId.get(a.userId)?.name ?? '—',
-      avatarUrl: usuariaPorId.get(a.userId)?.avatarUrl ?? null,
-      puntos: a._sum.totalPoints ?? 0,
-      temporadasJugadas: a._count.seasonNumber,
+  const tabla = [...ids]
+    .map((id) => ({
+      userId: id,
+      nombre: usuariaPorId.get(id)?.name ?? '—',
+      avatarUrl: usuariaPorId.get(id)?.avatarUrl ?? null,
+      puntos: (puntosCerradas.get(id) ?? 0) + (puntosEnCurso.get(id) ?? 0),
+      temporadasJugadas: (temporadasCerradas.get(id) ?? 0) + (enJuegoAhora.has(id) ? 1 : 0),
     }))
     .sort((a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre))
     .map((f, i) => ({
