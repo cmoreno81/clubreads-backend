@@ -1,5 +1,6 @@
 import { ReadingStatus } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { getBingoLector, contarLineasBingo } from './bingo.service.js';
 
 export interface AchievementDefinition {
   id: string;
@@ -29,6 +30,8 @@ interface AchievementData {
   booksThisMonth?: number;
   booksThisYear?: number;
   abandonedBooks?: number;
+  bingoLineas?: number;
+  bingoMarcadas?: number;
 }
 
 export function buildAchievementDefinitions(): AchievementDefinition[] {
@@ -80,6 +83,10 @@ export function buildAchievementDefinitions(): AchievementDefinition[] {
    { id: 'cinco-en-mes', key: 'cinco-en-mes', title: 'Maratoniana', description: '10 libros en un mes.', icon: '⚡', rarity: 'epic', target: 10, category: 'constancia' },
    { id: 'diez-en-anio', key: 'diez-en-anio', title: 'Gran año lector', description: '50 libros en un año.', icon: '🗓️', rarity: 'rare', target: 50, category: 'constancia' },
    { id: 'veinte-en-anio', key: 'veinte-en-anio', title: 'Año legendario', description: '100 libros en un solo año.', icon: '🏅', rarity: 'legendary', target: 100, category: 'constancia' },
+
+    // ── 🎯 BINGO LECTOR ──
+    { id: 'bingo-linea', key: 'bingo-linea', title: 'Línea de bingo', description: 'Completa una línea del bingo lector.', icon: '🎯', rarity: 'rare', target: 1, category: 'bingo' },
+    { id: 'bingo-completo', key: 'bingo-completo', title: 'Bingo completo', description: 'Completa las 25 casillas del bingo lector.', icon: '🏆', rarity: 'legendary', target: 25, category: 'bingo' },
   ];
 }
 
@@ -266,6 +273,16 @@ export function buildAchievementState(
             )
           : null;
         break;
+
+      case 'bingo-linea':
+        progress = (data.bingoLineas ?? 0) > 0 ? 1 : 0;
+        unlockedAt = progress >= def.target ? new Date() : null;
+        break;
+
+      case 'bingo-completo':
+        progress = data.bingoMarcadas ?? 0;
+        unlockedAt = progress >= def.target ? new Date() : null;
+        break;
     }
 
     const unlocked = progress >= def.target;
@@ -398,18 +415,23 @@ const completedSeries = await getCompletedSeriesForUser(user.id, completedBooks)
   ).length;
   const booksThisYear = completedBooks.length;
 
+  const bingo = await getBingoLector(user.id, now.getFullYear());
+  const bingoMarcadas = bingo.marcadas.length;
+  const bingoLineas = contarLineasBingo(bingo.marcadas.map((m) => m.squareKey));
+
   const definitions = buildAchievementDefinitions();
   const achievements = buildAchievementState(definitions, {
     completedBooks, completedSeries, reviews,
     comments, clubvisionVotes, totalPages,
     genreCounts, booksThisMonth, booksThisYear,
     abandonedBooks: 0,
+    bingoLineas, bingoMarcadas,
   });
 
   return { ok: true, user: user.name, achievements };
 }
 
-export async function syncAchievementsForUser(userId: string, userName: string, clubId: string) {
+export async function syncAchievementsForUser(userId: string, userName: string, clubId?: string | null) {
   const data = await getAchievementsForUser(userName, userId);
   if (!data.ok || !Array.isArray(data.achievements)) return;
 
@@ -452,8 +474,10 @@ export async function syncAchievementsForUser(userId: string, userName: string, 
     });
   }
 
-  // Disparar notificaciones para los nuevos desbloqueos
-  if (newUnlocks.length > 0) {
+  // Disparar notificaciones para los nuevos desbloqueos — solo tiene
+  // sentido si hay un club cuyos miembros avisar (cuentas sin club, como
+  // el bingo lector para quien no tiene club, no notifican a nadie).
+  if (newUnlocks.length > 0 && clubId) {
     const { notifyLogroDesbloqueado } = await import('./notifications.service.js');
     for (const ach of newUnlocks) {
       void notifyLogroDesbloqueado({ clubId, userId, achievementTitle: ach.title, achievementIcon: ach.icon })

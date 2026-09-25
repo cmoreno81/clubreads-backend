@@ -47,6 +47,24 @@ export function esCasillaBingoValida(key: string): key is BingoSquareKey {
   return VALID_KEYS.has(key);
 }
 
+/**
+ * Cuenta líneas completas del cartón 5x5 (filas, columnas y las dos
+ * diagonales, como en un bingo de verdad) a partir de las claves marcadas.
+ */
+export function contarLineasBingo(marcadas: string[]): number {
+  const marcadasSet = new Set(marcadas);
+  const grid = BINGO_SQUARE_KEYS.map((key) => marcadasSet.has(key));
+  const filaCompleta = (r: number) => [0, 1, 2, 3, 4].every((c) => grid[r * 5 + c]);
+  const columnaCompleta = (c: number) => [0, 1, 2, 3, 4].every((r) => grid[r * 5 + c]);
+
+  let lineas = 0;
+  for (let r = 0; r < 5; r++) if (filaCompleta(r)) lineas++;
+  for (let c = 0; c < 5; c++) if (columnaCompleta(c)) lineas++;
+  if ([0, 1, 2, 3, 4].every((i) => grid[i * 5 + i])) lineas++;
+  if ([0, 1, 2, 3, 4].every((i) => grid[i * 5 + (4 - i)])) lineas++;
+  return lineas;
+}
+
 export async function getBingoLector(userId: string, year: number) {
   const marcas = await prisma.readingBingoMark.findMany({
     where: { userId, year },
