@@ -145,7 +145,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
       'autor_traducido', 'termina_saga', 'relectura', 'audiolibro',
       'mas_500_paginas', 'menos_150_paginas', 'clasico', 'premio_literario',
       'adaptado_pantalla', 'recomendado', 'tbr_mas_de_un_anio',
-      'narrador_poco_fiable', 'coescrito', 'elegido_al_azar',
+      'te_hizo_llorar', 'coescrito', 'elegido_al_azar',
     ]),
     marcar: z.boolean().optional(),
     nota: shortTextSchema.optional().nullable(),

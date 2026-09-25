@@ -34,7 +34,7 @@ export const BINGO_SQUARE_KEYS = [
   'adaptado_pantalla',
   'recomendado',
   'tbr_mas_de_un_anio',
-  'narrador_poco_fiable',
+  'te_hizo_llorar',
   'coescrito',
   'elegido_al_azar',
 ] as const;
