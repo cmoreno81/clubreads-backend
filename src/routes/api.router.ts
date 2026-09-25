@@ -171,6 +171,7 @@ import {
   handleSalirLiga,
   handleGetLigaClubes,
   handleGetLigaDivision,
+  handleGetLigaAcumulado,
   handleGetLigaHistorial,
   handleGetLigaPodiosTemporada,
   handleGetLigaTemporadaCerrada,
@@ -928,6 +929,10 @@ export async function handleApi(
       case 'ligaHistorial':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetLigaHistorial(req, res);
+
+      case 'ligaAcumulado':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetLigaAcumulado(req, res);
 
       case 'ligaTemporadaCerrada':
         if (!req.auth) return requireAuthentication(req, res, () => {});

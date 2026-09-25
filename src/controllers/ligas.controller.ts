@@ -4,6 +4,7 @@ import type { Request, Response } from 'express';
 import {
   desgloseLiga,
   getLiga,
+  getLigaAcumulado,
   getLigaDivision,
   getLigaHistorial,
   getLigaPodiosTemporada,
@@ -46,6 +47,11 @@ export async function handleSalirLiga(req: Request, res: Response) {
 export async function handleGetLigaHistorial(req: Request, res: Response) {
   const userId = req.auth!.userId;
   return res.json(await getLigaHistorial(userId));
+}
+
+export async function handleGetLigaAcumulado(req: Request, res: Response) {
+  const userId = req.auth!.userId;
+  return res.json(await getLigaAcumulado(userId));
 }
 
 export async function handleGetLigaTemporadaCerrada(req: Request, res: Response) {

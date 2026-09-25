@@ -222,6 +222,7 @@ export const actionQuerySchemas: Record<string, z.ZodType> = {
   liga: z.object({ action: z.literal('liga') }).passthrough(),
   ligaDesglose: z.object({ action: z.literal('ligaDesglose'), userId: identifierSchema }).passthrough(),
   ligaHistorial: z.object({ action: z.literal('ligaHistorial') }).passthrough(),
+  ligaAcumulado: z.object({ action: z.literal('ligaAcumulado') }).passthrough(),
   ligaTemporadaCerrada: z
     .object({
       action: z.literal('ligaTemporadaCerrada'),

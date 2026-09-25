@@ -933,7 +933,12 @@ export async function getLigaDivision(
     }),
     tablaTemporada(season, division),
   ]);
-  const tabla = tablaBase.map((f) => ({ ...f, esTu: f.userId === userId }));
+  const tendencias = await tendenciasPara(season, tablaBase.map((f) => f.userId));
+  const tabla = tablaBase.map((f) => ({
+    ...f,
+    ...(tendencias.get(f.userId) ?? { tendencia: null, delta: null }),
+    esTu: f.userId === userId,
+  }));
 
   return {
     ok: true as const,
@@ -1155,6 +1160,48 @@ export async function getLigaHistorial(userId: string) {
       };
     }),
   };
+}
+
+/**
+ * Ranking histórico acumulado: suma los puntos de todas las temporadas ya
+ * cerradas de cada usuaria (sin importar en qué división jugara cada una),
+ * para ver quién ha sido más constante a lo largo del tiempo y no solo en
+ * la temporada actual. Es la pestaña "Acumulado" del histórico de ligas.
+ */
+export async function getLigaAcumulado(userId: string) {
+  const agregados = await prisma.rankingSeasonResult.groupBy({
+    by: ['userId'],
+    _sum: { totalPoints: true },
+    _count: { seasonNumber: true },
+  });
+  if (agregados.length === 0) return { ok: true as const, tabla: [] };
+
+  const usuarias = await prisma.user.findMany({
+    where: { id: { in: agregados.map((a) => a.userId) } },
+    select: { id: true, name: true, avatarUrl: true },
+  });
+  const usuariaPorId = new Map(usuarias.map((u) => [u.id, u]));
+
+  const tabla = agregados
+    .map((a) => ({
+      userId: a.userId,
+      nombre: usuariaPorId.get(a.userId)?.name ?? '—',
+      avatarUrl: usuariaPorId.get(a.userId)?.avatarUrl ?? null,
+      puntos: a._sum.totalPoints ?? 0,
+      temporadasJugadas: a._count.seasonNumber,
+    }))
+    .sort((a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre))
+    .map((f, i) => ({
+      puesto: i + 1,
+      userId: f.userId,
+      nombre: f.nombre,
+      avatarUrl: f.avatarUrl,
+      puntos: f.puntos,
+      temporadasJugadas: f.temporadasJugadas,
+      esTu: f.userId === userId,
+    }));
+
+  return { ok: true as const, tabla };
 }
 
 /**
