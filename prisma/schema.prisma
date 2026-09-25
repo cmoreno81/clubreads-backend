@@ -431,6 +431,7 @@ model User {
   rankingSeasonResults RankingSeasonResult[]
   rankingRankSnapshots RankingRankSnapshot[]
   seasonMedals         SeasonMedal[]
+  readingBingoMarks    ReadingBingoMark[]
 
   blockedUsers   UserBlock[] @relation("BlockedBy")
   blockedByUsers UserBlock[] @relation("HasBlocked")
@@ -1677,4 +1678,22 @@ model RankingRankSnapshot {
 
   @@id([userId, seasonNumber])
   @@index([seasonNumber])
+}
+
+/// Casilla marcada por la usuaria en su bingo lector del año — a diferencia
+/// de los logros (que se calculan solos a partir de lo que ya trackea la
+/// app), aquí es la propia lectora quien decide qué libro cumple cada
+/// casilla y la marca a mano, como en un bingo de book journal en papel.
+/// Las casillas en sí (25 retos fijos) viven en el código, no en la BD.
+model ReadingBingoMark {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year      Int
+  squareKey String
+  /// Libro que cumplió la casilla, si la usuaria quiso anotarlo (opcional).
+  nota      String?
+  markedAt  DateTime @default(now())
+
+  @@id([userId, year, squareKey])
+  @@index([userId, year])
 }

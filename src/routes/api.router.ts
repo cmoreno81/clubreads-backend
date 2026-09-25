@@ -162,6 +162,7 @@ import {
   handleGetWrapped,
 } from '../controllers/checkin.controller.js';
 import { handleGetClubWrapped } from '../controllers/club-wrapped.controller.js';
+import { handleGetBingoLector, handleMarcarCasillaBingo } from '../controllers/bingo.controller.js';
 import {
   handleGetLiga,
   handleGetLigaDesglose,
@@ -234,6 +235,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'crearEspacioPersonal',
   'doCheckin',
   'undoCheckin',
+  'bingoLectorMarcar',
   'unirseClub',
   'seleccionarClub',
   'invitacionClub',
@@ -938,6 +940,14 @@ export async function handleApi(
       case 'ligaDivision':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetLigaDivision(req, res);
+
+      case 'bingoLector':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetBingoLector(req, res);
+
+      case 'bingoLectorMarcar':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleMarcarCasillaBingo(req, res);
 
       case 'unirseLiga':
         if (!req.auth) return requireAuthentication(req, res, () => {});

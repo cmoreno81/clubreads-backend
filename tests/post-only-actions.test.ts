@@ -37,6 +37,7 @@ const mutationHandlers: Record<string, string> = {
   crearClub: 'handleCreateClub',
   crearEspacioPersonal: 'handleCrearEspacioPersonal',
   doCheckin: 'handleDoCheckin',
+  bingoLectorMarcar: 'handleMarcarCasillaBingo',
   undoCheckin: 'handleUndoCheckin',
   unirseClub: 'handleJoinClub',
   seleccionarClub: 'handleSelectClub',

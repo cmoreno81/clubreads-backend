@@ -136,6 +136,20 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
     rango: z.enum(['HASTA_50', 'DE_50_A_75', 'DE_75_A_100', 'MAS_DE_100']).optional(),
   }),
   undoCheckin: body({ fecha: dateSchema }),
+  bingoLectorMarcar: body({
+    anio: positiveIntegerSchema.optional(),
+    squareKey: z.enum([
+      'portada_roja_rosa', 'portada_amarilla', 'portada_blanco_negro',
+      'ambientado_otro_pais', 'fantasia', 'thriller_misterio', 'romance',
+      'romantasy', 'contemporanea', 'terror', 'autor_debut',
+      'autor_traducido', 'termina_saga', 'relectura', 'audiolibro',
+      'mas_500_paginas', 'menos_150_paginas', 'clasico', 'premio_literario',
+      'adaptado_pantalla', 'recomendado', 'tbr_mas_de_un_anio',
+      'narrador_poco_fiable', 'coescrito', 'elegido_al_azar',
+    ]),
+    marcar: z.boolean().optional(),
+    nota: shortTextSchema.optional().nullable(),
+  }),
   unirseClub: body({ codigo: z.string().trim().min(1).max(100) }),
   seleccionarClub: idBody('clubId'), invitacionClub: idBody('clubId'), salirClub: idBody('clubId'),
   editarClub: body({ clubId: identifierSchema, nombre: shortTextSchema.optional(), descripcion: textSchema.optional(), avatarUrl: avatarUrlSchema.optional() }),
@@ -226,6 +240,7 @@ export const actionQuerySchemas: Record<string, z.ZodType> = {
       division: z.enum(['BRONCE', 'PLATA', 'ORO', 'PLATINO', 'DIAMANTE']),
     })
     .passthrough(),
+  bingoLector: z.object({ action: z.literal('bingoLector') }).passthrough(),
 };
 
 function invalidFields(error: z.ZodError) {
