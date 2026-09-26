@@ -147,7 +147,7 @@ function identityKeys(book: {
 }) {
   return [
     book.isbn ? `isbn:${book.isbn.replace(/[^0-9Xx]/g, '')}` : '',
-    `work:${canonicalBookTitle(book.titulo)}:${normalize(book.autores[0] ?? '')}`,
+    `work:${canonicalBookTitle(book.titulo)}:${normalize(book.autores[0] ?? '').replace(/\./g, '')}`,
   ].filter(Boolean);
 }
 
