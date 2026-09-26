@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import {
   doCheckIn,
   getCheckinHistory,
+  getEstadisticasPersonales,
   getHeatmap,
   getWrapped,
   undoCheckIn,
@@ -51,5 +52,11 @@ export async function handleGetWrapped(req: Request, res: Response) {
   const year = Number(req.query.anio ?? new Date().getFullYear());
 
   const result = await getWrapped(userId, isNaN(year) ? new Date().getFullYear() : year);
+  return res.json(result);
+}
+
+export async function handleGetEstadisticasPersonales(req: Request, res: Response) {
+  const userId = req.auth!.userId;
+  const result = await getEstadisticasPersonales(userId);
   return res.json(result);
 }

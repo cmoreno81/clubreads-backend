@@ -159,6 +159,7 @@ import {
   handleUndoCheckin,
   handleGetCheckinHistory,
   handleGetHeatmap,
+  handleGetEstadisticasPersonales,
   handleGetWrapped,
 } from '../controllers/checkin.controller.js';
 import { handleGetClubWrapped } from '../controllers/club-wrapped.controller.js';
@@ -909,6 +910,10 @@ export async function handleApi(
       case 'wrappedAnual':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetWrapped(req, res);
+
+      case 'estadisticasPersonales':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetEstadisticasPersonales(req, res);
 
       case 'clubWrapped':
         if (!req.auth) return requireAuthentication(req, res, () => {});

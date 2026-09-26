@@ -242,6 +242,7 @@ export const actionQuerySchemas: Record<string, z.ZodType> = {
     })
     .passthrough(),
   bingoLector: z.object({ action: z.literal('bingoLector') }).passthrough(),
+  estadisticasPersonales: z.object({ action: z.literal('estadisticasPersonales') }).passthrough(),
 };
 
 function invalidFields(error: z.ZodError) {

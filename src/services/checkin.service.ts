@@ -643,3 +643,127 @@ export async function getWrapped(userId: string, year: number) {
     },
   };
 }
+
+function dateKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Estadísticas personales para la pantalla "Mis estadísticas": ritmo de
+ * lectura (páginas/día este mes vs. el anterior, con una serie semanal para
+ * el sparkline), géneros del año en curso con porcentaje, y los dos
+ * superlativos del año — libro más largo y lectura más rápida (días entre
+ * empezarlo y terminarlo).
+ */
+export async function getEstadisticasPersonales(userId: string, now: Date = new Date()) {
+  const year = now.getUTCFullYear();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const nextMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const daysElapsedThisMonth = Math.max(
+    1,
+    Math.floor((now.getTime() - monthStart.getTime()) / 86_400_000) + 1,
+  );
+  const daysInPrevMonth = Math.max(
+    1,
+    Math.round((monthStart.getTime() - prevMonthStart.getTime()) / 86_400_000),
+  );
+
+  // ── Ritmo de lectura: páginas/día este mes vs. el mes anterior ─────────
+  const twelveWeeksAgo = new Date(nextMonthStart.getTime() - 84 * 86_400_000);
+  const [sesionesEsteMes, sesionesMesAnterior, sesionesSparkline] = await Promise.all([
+    prisma.readingSession.findMany({
+      where: { userId, date: { gte: dateKey(monthStart), lt: dateKey(nextMonthStart) } },
+      select: { pagesRead: true },
+    }),
+    prisma.readingSession.findMany({
+      where: { userId, date: { gte: dateKey(prevMonthStart), lt: dateKey(monthStart) } },
+      select: { pagesRead: true },
+    }),
+    prisma.readingSession.findMany({
+      where: { userId, date: { gte: dateKey(twelveWeeksAgo), lt: dateKey(nextMonthStart) } },
+      select: { date: true, pagesRead: true },
+    }),
+  ]);
+  const paginasEsteMes = sesionesEsteMes.reduce((sum, s) => sum + s.pagesRead, 0);
+  const paginasMesAnterior = sesionesMesAnterior.reduce((sum, s) => sum + s.pagesRead, 0);
+  const ritmoActual = paginasEsteMes / daysElapsedThisMonth;
+  const ritmoAnterior = paginasMesAnterior / daysInPrevMonth;
+  const variacionPct = ritmoAnterior > 0
+    ? Math.round(((ritmoActual - ritmoAnterior) / ritmoAnterior) * 100)
+    : null;
+
+  // 12 cubos semanales para el sparkline.
+  const semanas = Array.from({ length: 12 }, () => 0);
+  for (const s of sesionesSparkline) {
+    const dias = Math.floor(
+      (new Date(`${s.date}T00:00:00.000Z`).getTime() - twelveWeeksAgo.getTime()) / 86_400_000,
+    );
+    const semana = Math.min(11, Math.max(0, Math.floor(dias / 7)));
+    semanas[semana] += s.pagesRead;
+  }
+
+  // ── Géneros y superlativos del año en curso ─────────────────────────────
+  const completions = await prisma.readingCompletion.findMany({
+    where: { userId, finishedAt: { gte: yearStart(year), lt: yearEnd(year) } },
+    select: {
+      startedAt: true,
+      finishedAt: true,
+      book: { select: { title: true, coverUrl: true, totalPages: true, genre: { select: { name: true } } } },
+    },
+  });
+
+  const genreCounts = new Map<string, number>();
+  for (const c of completions) {
+    const genre = c.book.genre.name;
+    genreCounts.set(genre, (genreCounts.get(genre) ?? 0) + 1);
+  }
+  const totalConGenero = completions.length;
+  const generos = [...genreCounts.entries()]
+    .map(([nombre, count]) => ({
+      nombre,
+      porcentaje: totalConGenero > 0 ? Math.round((count / totalConGenero) * 100) : 0,
+    }))
+    .sort((a, b) => b.porcentaje - a.porcentaje)
+    .slice(0, 3);
+
+  const libroMasLargo = completions
+    .filter((c) => c.book.totalPages)
+    .sort((a, b) => (b.book.totalPages ?? 0) - (a.book.totalPages ?? 0))[0] ?? null;
+
+  const lecturasConInicio = completions
+    .filter((c): c is typeof c & { startedAt: Date } => c.startedAt != null)
+    .map((c) => ({
+      ...c,
+      dias: Math.max(
+        0,
+        Math.round((c.finishedAt.getTime() - c.startedAt.getTime()) / 86_400_000),
+      ),
+    }))
+    .sort((a, b) => a.dias - b.dias);
+  const lecturaMasRapida = lecturasConInicio[0] ?? null;
+
+  return {
+    ok: true as const,
+    ritmo: {
+      paginasPorDiaMes: Math.round(ritmoActual * 10) / 10,
+      variacionPct,
+      serie: semanas,
+    },
+    generos,
+    libroMasLargo: libroMasLargo
+      ? {
+          titulo: libroMasLargo.book.title,
+          paginas: libroMasLargo.book.totalPages,
+          coverUrl: libroMasLargo.book.coverUrl,
+        }
+      : null,
+    lecturaMasRapida: lecturaMasRapida
+      ? {
+          titulo: lecturaMasRapida.book.title,
+          dias: lecturaMasRapida.dias,
+          coverUrl: lecturaMasRapida.book.coverUrl,
+        }
+      : null,
+  };
+}
