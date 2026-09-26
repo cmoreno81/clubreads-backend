@@ -704,14 +704,22 @@ export async function getEstadisticasPersonales(userId: string, now: Date = new 
   }
 
   // ── Géneros y superlativos del año en curso ─────────────────────────────
-  const completions = await prisma.readingCompletion.findMany({
-    where: { userId, finishedAt: { gte: yearStart(year), lt: yearEnd(year) } },
-    select: {
-      startedAt: true,
-      finishedAt: true,
-      book: { select: { title: true, coverUrl: true, totalPages: true, genre: { select: { name: true } } } },
-    },
-  });
+  const [completions, completionsAnioAnterior] = await Promise.all([
+    prisma.readingCompletion.findMany({
+      where: { userId, finishedAt: { gte: yearStart(year), lt: yearEnd(year) } },
+      select: {
+        startedAt: true,
+        finishedAt: true,
+        rating: true,
+        readingFormat: true,
+        book: { select: { title: true, coverUrl: true, totalPages: true, genre: { select: { name: true } } } },
+      },
+    }),
+    prisma.readingCompletion.findMany({
+      where: { userId, finishedAt: { gte: yearStart(year - 1), lt: yearEnd(year - 1) } },
+      select: { book: { select: { totalPages: true } } },
+    }),
+  ]);
 
   const genreCounts = new Map<string, number>();
   for (const c of completions) {
@@ -743,6 +751,45 @@ export async function getEstadisticasPersonales(userId: string, now: Date = new 
     .sort((a, b) => a.dias - b.dias);
   const lecturaMasRapida = lecturasConInicio[0] ?? null;
 
+  // ── Formato de lectura ───────────────────────────────────────────────────
+  const formatLabels: Record<string, string> = {
+    PHYSICAL: 'Físico',
+    DIGITAL: 'Digital',
+    AUDIOBOOK: 'Audiolibro',
+  };
+  const formatCounts = new Map<string, number>();
+  for (const c of completions) {
+    if (!c.readingFormat) continue;
+    formatCounts.set(c.readingFormat, (formatCounts.get(c.readingFormat) ?? 0) + 1);
+  }
+  const formatos = [...formatCounts.entries()]
+    .map(([formato, cantidad]) => ({ formato: formatLabels[formato] ?? formato, cantidad }))
+    .sort((a, b) => b.cantidad - a.cantidad);
+
+  // ── Distribución de valoraciones (1-5 estrellas) ─────────────────────────
+  const ratingCounts = new Map<number, number>();
+  for (const c of completions) {
+    if (c.rating == null) continue;
+    const estrellas = Math.min(5, Math.max(1, Math.round(c.rating)));
+    ratingCounts.set(estrellas, (ratingCounts.get(estrellas) ?? 0) + 1);
+  }
+  const valoraciones = [5, 4, 3, 2, 1].map((estrellas) => ({
+    estrellas,
+    cantidad: ratingCounts.get(estrellas) ?? 0,
+  }));
+
+  // ── Comparativa año actual vs. año anterior ──────────────────────────────
+  const paginasAnio = (items: { book: { totalPages: number | null } }[]) =>
+    items.reduce((sum, c) => sum + (c.book.totalPages ?? 0), 0);
+  const comparativaAnual = {
+    actual: { anio: year, libros: completions.length, paginas: paginasAnio(completions) },
+    anterior: {
+      anio: year - 1,
+      libros: completionsAnioAnterior.length,
+      paginas: paginasAnio(completionsAnioAnterior),
+    },
+  };
+
   return {
     ok: true as const,
     ritmo: {
@@ -751,6 +798,9 @@ export async function getEstadisticasPersonales(userId: string, now: Date = new 
       serie: semanas,
     },
     generos,
+    formatos,
+    valoraciones,
+    comparativaAnual,
     libroMasLargo: libroMasLargo
       ? {
           titulo: libroMasLargo.book.title,
