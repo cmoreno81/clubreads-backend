@@ -9,6 +9,7 @@ import {
   getLigaHistorial,
   getLigaPodiosTemporada,
   getLigaTemporadaCerrada,
+  getRetoSemanalResumen,
   medallasUsuario,
   salirDeLaLiga,
   unirseALaLiga,
@@ -20,6 +21,11 @@ import { tablaLigaClubes } from '../services/ligas-clubes.service.js';
 export async function handleGetLiga(req: Request, res: Response) {
   const userId = req.auth!.userId;
   return res.json(await getLiga(userId));
+}
+
+export async function handleGetRetoSemanalResumen(req: Request, res: Response) {
+  const userId = req.auth!.userId;
+  return res.json(await getRetoSemanalResumen(userId));
 }
 
 export async function handleGetLigaDesglose(req: Request, res: Response) {

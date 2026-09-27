@@ -176,6 +176,7 @@ import {
   handleGetLigaHistorial,
   handleGetLigaPodiosTemporada,
   handleGetLigaTemporadaCerrada,
+  handleGetRetoSemanalResumen,
 } from '../controllers/ligas.controller.js';
 import { validateActionInput } from '../validation/api-validation.js';
 import { handleChooseAnnualBookOfYear, handleChooseBookOfYearDuel, handleGetClubBooksOfYear, handleGetMyBookOfYear, handleGetPublicBookOfYear, handleSaveMonthlyBookOfYear } from '../controllers/book-of-year.controller.js';
@@ -922,6 +923,10 @@ export async function handleApi(
       case 'liga':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetLiga(req, res);
+
+      case 'retoSemanalResumen':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetRetoSemanalResumen(req, res);
 
       case 'ligaDesglose':
         if (!req.auth) return requireAuthentication(req, res, () => {});

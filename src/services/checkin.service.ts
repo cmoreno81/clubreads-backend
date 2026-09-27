@@ -712,7 +712,23 @@ export async function getEstadisticasPersonales(userId: string, now: Date = new 
         finishedAt: true,
         rating: true,
         readingFormat: true,
-        book: { select: { title: true, coverUrl: true, totalPages: true, genre: { select: { name: true } } } },
+        book: {
+          select: {
+            title: true,
+            coverUrl: true,
+            totalPages: true,
+            genre: { select: { name: true } },
+            // La lectura pudo terminarse antes de que existiera el campo de
+            // formato, o antes de que la usuaria lo rellenara: si la
+            // finalización no tiene formato propio, usamos el que tenga hoy
+            // en su biblioteca en vez de dejarla fuera del recuento.
+            library: {
+              where: { userId },
+              select: { readingFormat: true },
+              take: 1,
+            },
+          },
+        },
       },
     }),
     prisma.readingCompletion.findMany({
@@ -759,8 +775,9 @@ export async function getEstadisticasPersonales(userId: string, now: Date = new 
   };
   const formatCounts = new Map<string, number>();
   for (const c of completions) {
-    if (!c.readingFormat) continue;
-    formatCounts.set(c.readingFormat, (formatCounts.get(c.readingFormat) ?? 0) + 1);
+    const formato = c.readingFormat ?? c.book.library[0]?.readingFormat;
+    if (!formato) continue;
+    formatCounts.set(formato, (formatCounts.get(formato) ?? 0) + 1);
   }
   const formatos = [...formatCounts.entries()]
     .map(([formato, cantidad]) => ({ formato: formatLabels[formato] ?? formato, cantidad }))

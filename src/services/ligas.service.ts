@@ -1681,6 +1681,23 @@ export async function estadoRetoSemanal(userId: string, now: Date = new Date()) 
   };
 }
 
+/**
+ * Versión ligera de `estadoRetoSemanal`, pensada para el check-in del
+ * dashboard: solo consulta si participa en Ligas (sin cargar tabla, división
+ * ni histórico) y, si es así, su progreso de la semana. Si no participa,
+ * `participando: false` — el check-in normal es el único que corresponde.
+ */
+export async function getRetoSemanalResumen(userId: string, now: Date = new Date()) {
+  if (!(await esParticipante(userId))) {
+    return { ok: true as const, participando: false as const };
+  }
+  return {
+    ok: true as const,
+    participando: true as const,
+    retoSemanal: await estadoRetoSemanal(userId, now),
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Aviso de racha en riesgo
 // ─────────────────────────────────────────────────────────────────────────────
