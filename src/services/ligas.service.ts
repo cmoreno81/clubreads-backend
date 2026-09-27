@@ -687,6 +687,20 @@ async function tendenciasPara(
   return mapa;
 }
 
+/**
+ * `RankingRankSnapshot.seasonNumber` reservado para la tabla "Acumulado" del
+ * histórico (suma de todas las temporadas + la actual en vivo, sin importar
+ * división) — no es una temporada real, así que usa un valor que
+ * `seasonNumberForDate` nunca produce (solo devuelve -1 o >= 0).
+ */
+const ACUMULADO_SNAPSHOT_SEASON = -100;
+
+async function tendenciasAcumuladoPara(
+  userIds: string[],
+): Promise<Map<string, { tendencia: Tendencia; delta: number | null }>> {
+  return tendenciasPara(ACUMULADO_SNAPSHOT_SEASON, userIds);
+}
+
 /** Divisiones que tienen al menos una participante ahora mismo. */
 async function divisionesEnUso(): Promise<RankingDivision[]> {
   const filas = await prisma.rankingParticipation.findMany({
@@ -1232,13 +1246,13 @@ export async function getLigaHistorial(userId: string) {
 }
 
 /**
- * Ranking histórico acumulado: suma los puntos de todas las temporadas ya
- * cerradas de cada usuaria más los que lleva en la temporada EN CURSO (en
- * vivo, según se van anotando sus `RankingPointEvent`), sin importar en qué
- * división jugara o juegue cada una. Es la pestaña "Acumulado" del
- * histórico de ligas — a tiempo real, no solo con temporadas cerradas.
+ * El ranking acumulado en sí (sin nombre/avatar/tendencia) — puntos de todas
+ * las temporadas ya cerradas de cada usuaria más los que lleva en la
+ * temporada EN CURSO (en vivo), sin importar en qué división jugara o
+ * juegue cada una. Compartido por [getLigaAcumulado] (que le añade nombre,
+ * avatar y tendencia) y [actualizarTendenciaAcumulado] (el snapshot del cron).
  */
-export async function getLigaAcumulado(userId: string, now: Date = new Date()) {
+async function rankingAcumuladoCompleto(now: Date) {
   const season = currentSeasonNumber(now);
 
   const [cerradas, enCurso, participantesActuales] = await Promise.all([
@@ -1265,34 +1279,97 @@ export async function getLigaAcumulado(userId: string, now: Date = new Date()) {
     ...puntosEnCurso.keys(),
     ...enJuegoAhora,
   ]);
-  if (ids.size === 0) return { ok: true as const, tabla: [] };
 
-  const usuarias = await prisma.user.findMany({
-    where: { id: { in: [...ids] } },
-    select: { id: true, name: true, avatarUrl: true },
-  });
-  const usuariaPorId = new Map(usuarias.map((u) => [u.id, u]));
-
-  const tabla = [...ids]
+  return [...ids]
     .map((id) => ({
       userId: id,
-      nombre: usuariaPorId.get(id)?.name ?? '—',
-      avatarUrl: usuariaPorId.get(id)?.avatarUrl ?? null,
       puntos: (puntosCerradas.get(id) ?? 0) + (puntosEnCurso.get(id) ?? 0),
       temporadasJugadas: (temporadasCerradas.get(id) ?? 0) + (enJuegoAhora.has(id) ? 1 : 0),
     }))
-    .sort((a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre))
-    .map((f, i) => ({
-      puesto: i + 1,
+    .sort((a, b) => b.puntos - a.puntos || a.userId.localeCompare(b.userId))
+    .map((f, i) => ({ ...f, puesto: i + 1 }));
+}
+
+/**
+ * Ranking histórico acumulado: suma los puntos de todas las temporadas ya
+ * cerradas de cada usuaria más los que lleva en la temporada EN CURSO (en
+ * vivo, según se van anotando sus `RankingPointEvent`), sin importar en qué
+ * división jugara o juegue cada una. Es la pestaña "Acumulado" del
+ * histórico de ligas — a tiempo real, no solo con temporadas cerradas.
+ */
+export async function getLigaAcumulado(userId: string, now: Date = new Date()) {
+  const ranking = await rankingAcumuladoCompleto(now);
+  if (ranking.length === 0) return { ok: true as const, tabla: [] };
+
+  const [usuarias, tendencias] = await Promise.all([
+    prisma.user.findMany({
+      where: { id: { in: ranking.map((f) => f.userId) } },
+      select: { id: true, name: true, avatarUrl: true },
+    }),
+    tendenciasAcumuladoPara(ranking.map((f) => f.userId)),
+  ]);
+  const usuariaPorId = new Map(usuarias.map((u) => [u.id, u]));
+
+  const tabla = ranking.map((f) => {
+    const { tendencia, delta } = tendencias.get(f.userId) ?? {
+      tendencia: null,
+      delta: null,
+    };
+    return {
+      puesto: f.puesto,
       userId: f.userId,
-      nombre: f.nombre,
-      avatarUrl: f.avatarUrl,
+      nombre: usuariaPorId.get(f.userId)?.name ?? '—',
+      avatarUrl: usuariaPorId.get(f.userId)?.avatarUrl ?? null,
       puntos: f.puntos,
       temporadasJugadas: f.temporadasJugadas,
       esTu: f.userId === userId,
-    }));
+      tendencia,
+      delta,
+    };
+  });
 
   return { ok: true as const, tabla };
+}
+
+/**
+ * Registra la posición actual de cada participante en el ranking acumulado
+ * para poder comparar en el siguiente ciclo — el equivalente de
+ * [actualizarTendencias] pero para la pestaña "Acumulado" (que no tiene
+ * división ni temporada: es un único ranking global). Se llama desde el
+ * cron `ligas:recompute`, igual que [actualizarTendencias].
+ */
+export async function actualizarTendenciaAcumulado(now: Date = new Date()): Promise<void> {
+  const ranking = await rankingAcumuladoCompleto(now);
+  if (ranking.length === 0) return;
+
+  const existentes = await prisma.rankingRankSnapshot.findMany({
+    where: {
+      seasonNumber: ACUMULADO_SNAPSHOT_SEASON,
+      userId: { in: ranking.map((f) => f.userId) },
+    },
+    select: { userId: true, rank: true },
+  });
+  const rankAnterior = new Map(existentes.map((e) => [e.userId, e.rank]));
+
+  for (const fila of ranking) {
+    const previousRank = rankAnterior.get(fila.userId) ?? null;
+    await prisma.rankingRankSnapshot.upsert({
+      where: {
+        userId_seasonNumber: {
+          userId: fila.userId,
+          seasonNumber: ACUMULADO_SNAPSHOT_SEASON,
+        },
+      },
+      create: {
+        userId: fila.userId,
+        seasonNumber: ACUMULADO_SNAPSHOT_SEASON,
+        rank: fila.puesto,
+        previousRank,
+        points: fila.puntos,
+      },
+      update: { rank: fila.puesto, previousRank, points: fila.puntos },
+    });
+  }
 }
 
 /**

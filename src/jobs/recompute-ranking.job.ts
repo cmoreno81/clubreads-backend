@@ -12,6 +12,7 @@
 
 import { prisma } from '../prisma.js';
 import {
+  actualizarTendenciaAcumulado,
   actualizarTendencias,
   avisarCierreProximo,
   avisarRachaEnRiesgo,
@@ -60,6 +61,9 @@ async function main() {
   // sube/baja puestos del siguiente ciclo.
   await actualizarTendencias(season).catch((error) => {
     console.error('Ligas: no se pudieron actualizar las tendencias:', error);
+  });
+  await actualizarTendenciaAcumulado(now).catch((error) => {
+    console.error('Ligas: no se pudo actualizar la tendencia del acumulado:', error);
   });
 
   // Aviso de cierre inminente de la temporada en curso (una vez por usuario).
