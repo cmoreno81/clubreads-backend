@@ -807,12 +807,20 @@ export async function getEstadisticasPersonales(userId: string, now: Date = new 
     },
   };
 
+  // Fecha de inicio (lunes-a-domingo real, ya que `twelveWeeksAgo` es fijo)
+  // de cada uno de los 12 cubos, para que el frontend pueda mostrar a qué
+  // semana corresponde cada barra en vez de un sparkline sin fechas.
+  const semanaInicio = Array.from({ length: 12 }, (_, i) =>
+    dateKey(new Date(twelveWeeksAgo.getTime() + i * 7 * 86_400_000)),
+  );
+
   return {
     ok: true as const,
     ritmo: {
       paginasPorDiaMes: Math.round(ritmoActual * 10) / 10,
       variacionPct,
       serie: semanas,
+      semanaInicio,
     },
     generos,
     formatos,
