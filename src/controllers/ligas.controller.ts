@@ -10,6 +10,7 @@ import {
   getLigaPodiosTemporada,
   getLigaTemporadaCerrada,
   getRetoSemanalResumen,
+  getSalaTrofeos,
   medallasUsuario,
   salirDeLaLiga,
   unirseALaLiga,
@@ -36,6 +37,10 @@ export async function handleGetLigaDesglose(req: Request, res: Response) {
 export async function handleGetLigaMedallas(req: Request, res: Response) {
   const targetUserId = String(req.query.userId ?? '').trim();
   return res.json(await medallasUsuario(targetUserId));
+}
+
+export async function handleGetLigaSalaTrofeos(_req: Request, res: Response) {
+  return res.json(await getSalaTrofeos());
 }
 
 export async function handleUnirseLiga(req: Request, res: Response) {

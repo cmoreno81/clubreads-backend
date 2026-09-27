@@ -819,6 +819,75 @@ export async function medallasUsuario(targetUserId: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sala de Trofeos — ranking global de medallas de Liga
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Cuánto "pesa" cada medalla a la hora de ordenar la Sala de Trofeos — las
+ * más difíciles de conseguir (Diamante, oro de temporada) valen más que un
+ * ascenso o una racha de constancia. */
+const PESO_MEDALLA: Record<MedalTier, number> = {
+  DIAMANTE: 6,
+  PODIO_ORO: 5,
+  PODIO_PLATA: 3,
+  PODIO_BRONCE: 2,
+  ASCENSO: 2,
+  CONSTANCIA: 1,
+};
+
+/**
+ * Ranking global de toda la comunidad por medallas de Liga acumuladas (de
+ * todas las temporadas ya cerradas), para la Sala de Trofeos: quién tiene el
+ * palmarés más vistoso, con acceso al medallero completo de cada una
+ * ([medallasUsuario]). Solo entra quien tiene al menos una medalla.
+ */
+export async function getSalaTrofeos(limit = 100) {
+  const agrupado = await prisma.seasonMedal.groupBy({
+    by: ['userId', 'tier'],
+    _count: { _all: true },
+  });
+
+  const porUsuario = new Map<string, Partial<Record<MedalTier, number>>>();
+  for (const fila of agrupado) {
+    const resumen = porUsuario.get(fila.userId) ?? {};
+    resumen[fila.tier] = fila._count._all;
+    porUsuario.set(fila.userId, resumen);
+  }
+
+  const filas = [...porUsuario.entries()].map(([userId, resumen]) => {
+    const entradas = Object.entries(resumen) as [MedalTier, number][];
+    const total = entradas.reduce((acc, [, cantidad]) => acc + cantidad, 0);
+    const peso = entradas.reduce(
+      (acc, [tier, cantidad]) => acc + PESO_MEDALLA[tier] * cantidad,
+      0,
+    );
+    return { userId, resumen, total, peso };
+  });
+
+  filas.sort((a, b) => b.peso - a.peso || b.total - a.total);
+
+  const top = filas.slice(0, limit);
+  const usuarios = await prisma.user.findMany({
+    where: { id: { in: top.map((f) => f.userId) } },
+    select: { id: true, name: true, avatarUrl: true },
+  });
+  const usuarioPorId = new Map(usuarios.map((u) => [u.id, u]));
+
+  const tabla = top.map((fila, i) => {
+    const usuario = usuarioPorId.get(fila.userId);
+    return {
+      puesto: i + 1,
+      userId: fila.userId,
+      nombre: usuario?.name ?? 'Lectora',
+      avatarUrl: usuario?.avatarUrl ?? null,
+      total: fila.total,
+      resumen: fila.resumen,
+    };
+  });
+
+  return { ok: true as const, totalParticipantes: filas.length, tabla };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Desglose de puntos de una participante
 // ─────────────────────────────────────────────────────────────────────────────
 

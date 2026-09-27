@@ -175,6 +175,7 @@ import {
   handleGetLigaAcumulado,
   handleGetLigaHistorial,
   handleGetLigaPodiosTemporada,
+  handleGetLigaSalaTrofeos,
   handleGetLigaTemporadaCerrada,
   handleGetRetoSemanalResumen,
 } from '../controllers/ligas.controller.js';
@@ -935,6 +936,10 @@ export async function handleApi(
       case 'ligaMedallas':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetLigaMedallas(req, res);
+
+      case 'ligaSalaTrofeos':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetLigaSalaTrofeos(req, res);
 
       case 'ligaHistorial':
         if (!req.auth) return requireAuthentication(req, res, () => {});
