@@ -19,6 +19,7 @@ import {
   calcularRetoSemanal,
   cerrarTemporada,
   currentSeasonNumber,
+  otorgarLibroDelAnioSiProcede,
   otorgarLibroDeOroSiProcede,
   recalcularTemporada,
   temporadaCerrada,
@@ -70,6 +71,11 @@ async function main() {
   // Libro de Oro: solo hace algo el 31 de diciembre, y solo una vez por año.
   await otorgarLibroDeOroSiProcede(now).catch((error) => {
     console.error('Ligas: no se pudo otorgar el Libro de Oro:', error);
+  });
+
+  // Medalla de Liga por completar el Libro del Año personal este año.
+  await otorgarLibroDelAnioSiProcede(now).catch((error) => {
+    console.error('Ligas: no se pudo otorgar la medalla del Libro del Año:', error);
   });
 
   // Aviso de cierre inminente de la temporada en curso (una vez por usuario).

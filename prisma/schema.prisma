@@ -1641,6 +1641,18 @@ enum MedalTier {
   DIAMANTE
   /// Racha de temporadas jugadas seguidas alcanzando un hito (3, 5, 10...).
   CONSTANCIA
+  /// Check-in los 14 días de una temporada, sin fallar ninguno.
+  RACHA_PERFECTA
+  /// Ha jugado alguna vez en las 5 divisiones (se otorga una sola vez).
+  POLIFACETICA
+  /// Oro de su división dos temporadas seguidas, en la misma división.
+  BICAMPEONA
+  /// 3ª vez que gana el oro de esa misma división (no necesariamente seguidas).
+  HATTRICK
+  /// Gran subida de puestos en su división en un solo ciclo del cron.
+  REMONTADA
+  /// Completó su Libro del Año personal (eligió un ganador final) ese año.
+  LIBRO_DEL_ANIO
 }
 
 /// Premio "Libro de Oro": quien sea 1ª del ranking Acumulado (todas las

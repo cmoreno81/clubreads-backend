@@ -743,6 +743,31 @@ export async function actualizarTendencias(season: number): Promise<void> {
         },
         update: { rank: fila.puesto, previousRank, points: fila.puntos },
       });
+
+      // Remontada: gran subida de puestos en un solo ciclo del cron, en
+      // plena temporada (a diferencia del resto de medallas, que se
+      // otorgan al cerrarla). Como máximo una por temporada (@@unique
+      // userId+seasonNumber+tier): la primera vez que se cruza el umbral,
+      // el resto de ciclos ya no hacen nada.
+      if (previousRank != null && previousRank - fila.puesto >= UMBRAL_REMONTADA) {
+        await prisma.seasonMedal.upsert({
+          where: {
+            userId_seasonNumber_tier: {
+              userId: fila.userId,
+              seasonNumber: season,
+              tier: 'REMONTADA',
+            },
+          },
+          create: {
+            userId: fila.userId,
+            seasonNumber: season,
+            division,
+            tier: 'REMONTADA',
+            rank: fila.puesto,
+          },
+          update: {},
+        });
+      }
     }
   }
 }
@@ -841,11 +866,17 @@ export async function medallasUsuario(targetUserId: string) {
  * ascenso o una racha de constancia. */
 const PESO_MEDALLA: Record<MedalTier, number> = {
   DIAMANTE: 6,
+  HATTRICK: 6,
   PODIO_ORO: 5,
+  BICAMPEONA: 5,
+  POLIFACETICA: 4,
+  LIBRO_DEL_ANIO: 4,
   PODIO_PLATA: 3,
+  RACHA_PERFECTA: 3,
   PODIO_BRONCE: 2,
   ASCENSO: 2,
   CONSTANCIA: 1,
+  REMONTADA: 1,
 };
 
 /**
@@ -1407,6 +1438,49 @@ export async function otorgarLibroDeOroSiProcede(now: Date = new Date()): Promis
   }
 }
 
+/**
+ * Medalla "Libro del Año" de Liga: quien haya completado su Libro del Año
+ * personal (BookOfYearWinner: eligió un ganador final) este año natural y
+ * participe en Ligas, la recibe una vez por año. A diferencia del resto de
+ * medallas (ligadas a una temporada de 14 días), esto se comprueba por año
+ * natural, así que la desduplicación es por rango de `awardedAt` en vez del
+ * `@@unique(userId, seasonNumber, tier)` — puede haber más de un cierre de
+ * temporada dentro del mismo año.
+ */
+export async function otorgarLibroDelAnioSiProcede(now: Date = new Date()): Promise<void> {
+  const year = Number(todayInTz(now).slice(0, 4));
+  const inicioAnio = new Date(Date.UTC(year, 0, 1));
+  const inicioAnioSiguiente = new Date(Date.UTC(year + 1, 0, 1));
+
+  const [ganadoras, yaPremiadas, participantes] = await Promise.all([
+    prisma.bookOfYearWinner.findMany({ where: { year }, select: { userId: true } }),
+    prisma.seasonMedal.findMany({
+      where: {
+        tier: 'LIBRO_DEL_ANIO',
+        awardedAt: { gte: inicioAnio, lt: inicioAnioSiguiente },
+      },
+      select: { userId: true },
+    }),
+    prisma.rankingParticipation.findMany({ select: { userId: true, division: true } }),
+  ]);
+
+  const yaPremiadasIds = new Set(yaPremiadas.map((m) => m.userId));
+  const divisionPorUsuario = new Map(participantes.map((p) => [p.userId, p.division]));
+  const season = currentSeasonNumber(now);
+
+  for (const { userId } of ganadoras) {
+    if (yaPremiadasIds.has(userId)) continue;
+    const division = divisionPorUsuario.get(userId);
+    if (!division) continue; // no participa en Ligas: no hay medallero donde mostrarla.
+
+    await prisma.seasonMedal.upsert({
+      where: { userId_seasonNumber_tier: { userId, seasonNumber: season, tier: 'LIBRO_DEL_ANIO' } },
+      create: { userId, seasonNumber: season, division, tier: 'LIBRO_DEL_ANIO' },
+      update: {},
+    });
+  }
+}
+
 /** Último "Libro de Oro" otorgado (o null si no hay ninguno todavía), para la vitrina de la Sala de Trofeos. */
 export async function getLibroDeOroActual() {
   const premio = await prisma.annualBookAward.findFirst({
@@ -1567,6 +1641,12 @@ export function calcularCambiosDivision(
 /** Rachas de temporadas seguidas jugadas que dan medalla de constancia. */
 export const HITOS_CONSTANCIA = [3, 5, 10, 20, 30];
 
+/** Puestos que hay que ganar en un solo ciclo del cron para la Remontada. */
+export const UMBRAL_REMONTADA = 5;
+
+/** Veces que hay que ganar el oro de la misma división para el Hattrick. */
+export const HATTRICK_VECES = 3;
+
 export type MedallaAOtorgar = {
   tier: MedalTier;
   rank?: number;
@@ -1655,7 +1735,10 @@ async function otorgarMedallasTemporada(
           )
         : false;
     const racha = await calcularRachaTemporadas(fila.userId, season);
-    const medallas = medallasParaFila(fila, division, cambios, racha, yaTieneDiamante);
+    const medallas = [
+      ...medallasParaFila(fila, division, cambios, racha, yaTieneDiamante),
+      ...(await medallasEspecialesParaFila(fila, season, division)),
+    ];
 
     for (const medalla of medallas) {
       await prisma.seasonMedal.upsert({
@@ -1678,6 +1761,76 @@ async function otorgarMedallasTemporada(
       });
     }
   }
+}
+
+/**
+ * Medallas que necesitan consultar la base de datos (a diferencia de
+ * [medallasParaFila], que es una función pura): racha perfecta de check-in,
+ * todas las divisiones, bicampeona y hattrick.
+ */
+async function medallasEspecialesParaFila(
+  fila: Pick<FilaTabla, 'puesto' | 'userId'>,
+  season: number,
+  division: RankingDivision,
+): Promise<MedallaAOtorgar[]> {
+  const medallas: MedallaAOtorgar[] = [];
+
+  // Racha perfecta: check-in los SEASON_LENGTH_DAYS días de la temporada,
+  // sin fallar ninguno.
+  const { startDate, endDate } = seasonWindow(season);
+  const diasConCheckin = await prisma.dailyCheckin.count({
+    where: { userId: fila.userId, date: { gte: startDate, lt: endDate } },
+  });
+  if (diasConCheckin >= SEASON_LENGTH_DAYS) {
+    medallas.push({ tier: 'RACHA_PERFECTA' });
+  }
+
+  if (fila.puesto === 1) {
+    // Bicampeona: oro de la misma división también la temporada anterior.
+    const oroAnterior = await prisma.seasonMedal.findUnique({
+      where: {
+        userId_seasonNumber_tier: {
+          userId: fila.userId,
+          seasonNumber: season - 1,
+          tier: 'PODIO_ORO',
+        },
+      },
+      select: { division: true },
+    });
+    if (oroAnterior?.division === division) {
+      medallas.push({ tier: 'BICAMPEONA' });
+    }
+
+    // Hattrick: esta es la 3ª vez (no necesariamente seguida) que gana el
+    // oro de esta misma división.
+    const orosEnDivision = await prisma.seasonMedal.count({
+      where: { userId: fila.userId, tier: 'PODIO_ORO', division },
+    });
+    if (orosEnDivision + 1 === HATTRICK_VECES) {
+      medallas.push({ tier: 'HATTRICK' });
+    }
+  }
+
+  // Todas las divisiones: ha jugado (RankingSeasonResult) alguna vez en las
+  // 5 — se otorga una sola vez, igual que Diamante.
+  const yaTienePolifacetica = await prisma.seasonMedal.findFirst({
+    where: { userId: fila.userId, tier: 'POLIFACETICA' },
+    select: { id: true },
+  });
+  if (!yaTienePolifacetica) {
+    const divisionesJugadas = await prisma.rankingSeasonResult.findMany({
+      where: { userId: fila.userId },
+      select: { division: true },
+      distinct: ['division'],
+    });
+    const divisiones = new Set(divisionesJugadas.map((d) => d.division));
+    divisiones.add(division); // la de esta misma temporada, aún sin guardar.
+    if (divisiones.size >= 5) {
+      medallas.push({ tier: 'POLIFACETICA' });
+    }
+  }
+
+  return medallas;
 }
 
 /**
