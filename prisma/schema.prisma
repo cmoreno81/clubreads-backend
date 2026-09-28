@@ -431,6 +431,7 @@ model User {
   rankingSeasonResults RankingSeasonResult[]
   rankingRankSnapshots RankingRankSnapshot[]
   seasonMedals         SeasonMedal[]
+  annualBookAwards     AnnualBookAward[]
   readingBingoMarks    ReadingBingoMark[]
 
   blockedUsers   UserBlock[] @relation("BlockedBy")
@@ -1640,6 +1641,22 @@ enum MedalTier {
   DIAMANTE
   /// Racha de temporadas jugadas seguidas alcanzando un hito (3, 5, 10...).
   CONSTANCIA
+}
+
+/// Premio "Libro de Oro": quien sea 1ª del ranking Acumulado (todas las
+/// temporadas del año, en vivo) al cerrar el 31 de diciembre — un único
+/// premio anual, no ligado a una temporada. Lo otorga el cron de Ligas
+/// (ver actualizarTendenciaAcumulado/cerrarTemporada) la primera vez que
+/// detecta esa fecha en cada año, de forma idempotente (@@unique en year).
+model AnnualBookAward {
+  id        String   @id @default(cuid())
+  year      Int      @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  points    Int
+  awardedAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 /// Instantánea al cerrar una temporada del ranking POR CLUB — dos vistas del

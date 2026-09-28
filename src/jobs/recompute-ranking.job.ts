@@ -19,6 +19,7 @@ import {
   calcularRetoSemanal,
   cerrarTemporada,
   currentSeasonNumber,
+  otorgarLibroDeOroSiProcede,
   recalcularTemporada,
   temporadaCerrada,
 } from '../services/ligas.service.js';
@@ -64,6 +65,11 @@ async function main() {
   });
   await actualizarTendenciaAcumulado(now).catch((error) => {
     console.error('Ligas: no se pudo actualizar la tendencia del acumulado:', error);
+  });
+
+  // Libro de Oro: solo hace algo el 31 de diciembre, y solo una vez por año.
+  await otorgarLibroDeOroSiProcede(now).catch((error) => {
+    console.error('Ligas: no se pudo otorgar el Libro de Oro:', error);
   });
 
   // Aviso de cierre inminente de la temporada en curso (una vez por usuario).

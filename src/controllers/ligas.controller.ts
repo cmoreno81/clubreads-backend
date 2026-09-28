@@ -8,6 +8,7 @@ import {
   getLigaDivision,
   getLigaHistorial,
   getLigaPodiosTemporada,
+  getLibroDeOroActual,
   getLigaTemporadaCerrada,
   getRetoSemanalResumen,
   getSalaTrofeos,
@@ -41,6 +42,10 @@ export async function handleGetLigaMedallas(req: Request, res: Response) {
 
 export async function handleGetLigaSalaTrofeos(_req: Request, res: Response) {
   return res.json(await getSalaTrofeos());
+}
+
+export async function handleGetLibroDeOro(_req: Request, res: Response) {
+  return res.json(await getLibroDeOroActual());
 }
 
 export async function handleUnirseLiga(req: Request, res: Response) {

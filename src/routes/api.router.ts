@@ -174,6 +174,7 @@ import {
   handleGetLigaDivision,
   handleGetLigaAcumulado,
   handleGetLigaHistorial,
+  handleGetLibroDeOro,
   handleGetLigaPodiosTemporada,
   handleGetLigaSalaTrofeos,
   handleGetLigaTemporadaCerrada,
@@ -940,6 +941,10 @@ export async function handleApi(
       case 'ligaSalaTrofeos':
         if (!req.auth) return requireAuthentication(req, res, () => {});
         return handleGetLigaSalaTrofeos(req, res);
+
+      case 'ligaLibroDeOro':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleGetLibroDeOro(req, res);
 
       case 'ligaHistorial':
         if (!req.auth) return requireAuthentication(req, res, () => {});

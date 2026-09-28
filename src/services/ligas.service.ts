@@ -1372,6 +1372,62 @@ export async function actualizarTendenciaAcumulado(now: Date = new Date()): Prom
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Libro de Oro — premio anual a la 1ª del Acumulado a 31 de diciembre
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Si hoy es 31 de diciembre (Europe/Madrid) y este año todavía no tiene
+ * premio, otorga el "Libro de Oro" a quien esté 1ª del ranking Acumulado en
+ * ese momento. Idempotente: `year` es único, así que un segundo ciclo del
+ * cron el mismo día (o una carrera entre dos) no crea un duplicado. Se
+ * llama desde el cron `ligas:recompute`, igual que [actualizarTendencias].
+ */
+export async function otorgarLibroDeOroSiProcede(now: Date = new Date()): Promise<void> {
+  const hoy = todayInTz(now);
+  if (!hoy.endsWith('-12-31')) return;
+  const year = Number(hoy.slice(0, 4));
+
+  const yaOtorgado = await prisma.annualBookAward.findUnique({ where: { year } });
+  if (yaOtorgado) return;
+
+  const ranking = await rankingAcumuladoCompleto(now);
+  const primera = ranking.find((f) => f.puesto === 1);
+  if (!primera) return;
+
+  try {
+    await prisma.annualBookAward.create({
+      data: { year, userId: primera.userId, points: primera.puntos },
+    });
+  } catch (error) {
+    // P2002 (año ya otorgado por una carrera entre dos ciclos del cron): ignorar.
+    if (!(error instanceof Error) || !error.message.includes('Unique constraint')) {
+      throw error;
+    }
+  }
+}
+
+/** Último "Libro de Oro" otorgado (o null si no hay ninguno todavía), para la vitrina de la Sala de Trofeos. */
+export async function getLibroDeOroActual() {
+  const premio = await prisma.annualBookAward.findFirst({
+    orderBy: { year: 'desc' },
+    include: { user: { select: { name: true, avatarUrl: true } } },
+  });
+  if (!premio) return { ok: true as const, premio: null };
+
+  return {
+    ok: true as const,
+    premio: {
+      year: premio.year,
+      userId: premio.userId,
+      nombre: premio.user.name,
+      avatarUrl: premio.user.avatarUrl,
+      puntos: premio.points,
+      awardedAt: premio.awardedAt,
+    },
+  };
+}
+
 /**
  * Detalle de una temporada ya cerrada: su tabla final completa (en la
  * división en la que jugó la usuaria), para poder revisarla como si fuera
