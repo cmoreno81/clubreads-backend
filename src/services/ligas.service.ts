@@ -1785,8 +1785,12 @@ async function medallasEspecialesParaFila(
     medallas.push({ tier: 'RACHA_PERFECTA' });
   }
 
-  if (fila.puesto === 1) {
-    // Bicampeona: oro de la misma división también la temporada anterior.
+  // Bicampeona y Hattrick son, a propósito, exclusivas de Diamante: en
+  // cualquier otra división ganar el oro asciende automáticamente (ver
+  // calcularCambiosDivision), así que repetir oro en la misma división no
+  // sería alcanzable de forma realista — son las medallas más difíciles.
+  if (fila.puesto === 1 && division === 'DIAMANTE') {
+    // Bicampeona: oro de Diamante también la temporada anterior.
     const oroAnterior = await prisma.seasonMedal.findUnique({
       where: {
         userId_seasonNumber_tier: {
@@ -1797,16 +1801,16 @@ async function medallasEspecialesParaFila(
       },
       select: { division: true },
     });
-    if (oroAnterior?.division === division) {
+    if (oroAnterior?.division === 'DIAMANTE') {
       medallas.push({ tier: 'BICAMPEONA' });
     }
 
     // Hattrick: esta es la 3ª vez (no necesariamente seguida) que gana el
-    // oro de esta misma división.
-    const orosEnDivision = await prisma.seasonMedal.count({
-      where: { userId: fila.userId, tier: 'PODIO_ORO', division },
+    // oro de Diamante.
+    const orosEnDiamante = await prisma.seasonMedal.count({
+      where: { userId: fila.userId, tier: 'PODIO_ORO', division: 'DIAMANTE' },
     });
-    if (orosEnDivision + 1 === HATTRICK_VECES) {
+    if (orosEnDiamante + 1 === HATTRICK_VECES) {
       medallas.push({ tier: 'HATTRICK' });
     }
   }
