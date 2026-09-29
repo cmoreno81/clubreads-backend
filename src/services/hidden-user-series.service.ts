@@ -103,6 +103,20 @@ export async function removeUserSeries(userId: string, rawSeriesId: unknown) {
   return { ok: true, sagaId: seriesId };
 }
 
+// A diferencia de OCULTA/ELIMINADA, ABANDONADA no saca la saga de "Mis
+// sagas": solo cambia su estado, para que siga viéndose (en la sección
+// "Abandonadas") en vez de desaparecer.
+export async function abandonUserSeries(userId: string, rawSeriesId: unknown) {
+  const seriesId = requiredSeriesId(rawSeriesId);
+  await requireSeriesInUserHistory(userId, seriesId);
+  await prisma.hiddenUserSeries.upsert({
+    where: { userId_seriesId: { userId, seriesId } },
+    update: { tipo: 'ABANDONADA' },
+    create: { userId, seriesId, tipo: 'ABANDONADA' },
+  });
+  return { ok: true, sagaId: seriesId };
+}
+
 export async function showUserSeries(userId: string, rawSeriesId: unknown) {
   const seriesId = requiredSeriesId(rawSeriesId);
   const series = await prisma.series.findUnique({

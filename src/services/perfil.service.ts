@@ -369,7 +369,17 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
 
   const hiddenSeriesIds = new Set(
     (await prisma.hiddenUserSeries.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, tipo: { in: ['OCULTA', 'ELIMINADA'] } },
+      select: { seriesId: true },
+    })).map(({ seriesId }) => seriesId),
+  );
+
+  // A diferencia de OCULTA/ELIMINADA, una saga marcada como ABANDONADA
+  // (desde el botón de abandono rápido) sigue apareciendo en "Mis sagas",
+  // solo que con ese estado — por eso no se junta con hiddenSeriesIds.
+  const abandonedSeriesIds = new Set(
+    (await prisma.hiddenUserSeries.findMany({
+      where: { userId: user.id, tipo: 'ABANDONADA' },
       select: { seriesId: true },
     })).map(({ seriesId }) => seriesId),
   );
@@ -597,11 +607,9 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         estadoEditorial: series.publicationStatus,
         estado: isComplete
           ? 'COMPLETADA'
-          : hasAbandoned && !hasStarted
+          : hasAbandoned || abandonedSeriesIds.has(series.id)
             ? 'ABANDONADA'
-            : hasAbandoned
-              ? 'ABANDONADA'
-              : !hasStarted
+            : !hasStarted
                 ? 'PENDIENTE'
                 : allKnownVolumesRead && !hasPreviousGaps
                 ? 'AL_DIA'
