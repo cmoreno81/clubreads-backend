@@ -1484,11 +1484,33 @@ export async function eliminarRespuestaLectura(
   return eliminarComentarioLectura(respuestaId, usuario);
 }
 
+/**
+ * Clubes en los que buscar conversaciones de un libro: todos los de la
+ * usuaria, no solo el club activo. Si solo mirásemos el club activo, una
+ * conversación ya abierta en otro club de la usuaria (p. ej. al entrar
+ * desde el Inicio global o Mi espacio, sin haber "entrado" antes en ese
+ * club) pasaría desapercibida y la ficha ofrecería abrir una nueva por
+ * error.
+ */
+async function clubIdsParaConversaciones(
+  club: { id: string },
+  user: { id: string } | null,
+) {
+  if (!user) return [club.id];
+  const memberships = await prisma.clubMember.findMany({
+    where: { userId: user.id },
+    select: { clubId: true },
+  });
+  const clubIds = memberships.map((membership) => membership.clubId);
+  return clubIds.length > 0 ? clubIds : [club.id];
+}
+
 export async function getConversacionesLibro(libro: string, usuario = '') {
-  const { club } = await getCurrentClubContext(usuario);
+  const { club, user } = await getCurrentClubContext(usuario);
+  const clubIds = await clubIdsParaConversaciones(club, user);
   const readings = await prisma.reading.findMany({
     where: {
-      clubId: club.id,
+      clubId: { in: clubIds },
       book: await bookFilterForLectura(libro),
     },
     include: {
@@ -1561,10 +1583,11 @@ export async function getConversacionesLibroPage(
   usuario: string,
   pagination: PaginationRequest,
 ) {
-  const { club } = await getCurrentClubContext(usuario);
+  const { club, user } = await getCurrentClubContext(usuario);
+  const clubIds = await clubIdsParaConversaciones(club, user);
   const readings = await prisma.reading.findMany({
     where: {
-      clubId: club.id,
+      clubId: { in: clubIds },
       book: await bookFilterForLectura(libro),
       ...descendingCursorFilter('startedAt', pagination.cursor),
     },
