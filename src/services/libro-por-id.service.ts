@@ -130,15 +130,22 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
     return 'PENDIENTE';
   };
 
-  // Igual que en la vista ClubReads: mezclamos lectoras de todos los clubes,
-  // pero solo revelamos nombre y foto de quienes comparten club con quien
+  // En modo club (global=false), clubFilter ya limitó la consulta a
+  // miembros de este club — así que todo el mundo aquí es "mismo club" de
+  // verdad, sea cual sea su club activo AHORA MISMO (puede pertenecer a
+  // varios y tener otro seleccionado). Comparar por activeClubId en este
+  // modo anonimizaba por error a compañeras de tu propio club.
+  //
+  // En modo global (global=true) sí mezclamos lectoras de todos los clubes
+  // y cuentas personales, así que ahí sí hace falta comparar activeClubId:
+  // solo revelamos nombre y foto de quienes comparten club activo con quien
   // pregunta. El resto se anonimiza ya desde el backend, nunca solo en el
   // cliente, para que ninguna versión de la app filtre con quién lee gente
   // de otros clubes.
   const libros = libraryEntries.map((item) => {
-    const mismoClub = Boolean(
-      user.activeClubId && item.user.activeClubId === user.activeClubId,
-    );
+    const mismoClub = global
+      ? Boolean(user.activeClubId && item.user.activeClubId === user.activeClubId)
+      : true;
     return {
       bookId: item.book.id,
       usuario: mismoClub ? item.user.name : 'Lectora de otro club',
@@ -168,9 +175,9 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
 
   const finalizados = completions.map((item) => {
     const review = item.book.reviews.find((r) => r.userId === item.userId);
-    const mismoClub = Boolean(
-      user.activeClubId && item.user.activeClubId === user.activeClubId,
-    );
+    const mismoClub = global
+      ? Boolean(user.activeClubId && item.user.activeClubId === user.activeClubId)
+      : true;
     return {
       bookId: item.book.id,
       usuario: mismoClub ? item.user.name : 'Lectora de otro club',
