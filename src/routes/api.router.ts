@@ -148,7 +148,7 @@ import {
 } from '../controllers/goodreads-import.controller.js';
 import { handleEliminarNotificacion, handleEliminarTodasNotificaciones, handleGetNotificaciones, handleMarcarLeida, handleMarcarTodasLeidas, handleGetPreferenciasNotificacion, handleActualizarPreferenciaNotificacion } from '../controllers/notifications.controller.js';
 import { handleGetSeriesOverrides, handleRemoveSeriesOverride, handleSetSeriesOverride } from '../controllers/series-override.controller.js';
-import { handleGetHiddenSeries, handleHideSeries, handleShowSeries, handleRemoveSeries, } from '../controllers/hidden-user-series.controller.js';
+import { handleGetHiddenSeries, handleHideSeries, handleShowSeries, handleRemoveSeries, handleRecoverAbandonedSeries, } from '../controllers/hidden-user-series.controller.js';
 import { handleSaveUserSeriesOrder } from '../controllers/user-series-order.controller.js';
 import {
   handleGetClubChallenges,
@@ -224,6 +224,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'ocultarSaga',
   'mostrarSaga',
   'eliminarSaga',
+  'recuperarSaga',
   'marcarLeida',
   'marcarTodasLeidas',
   'eliminarNotificacion',
@@ -427,7 +428,11 @@ export async function handleApi(
 
       case 'eliminarSaga':
         if (!req.auth) return requireAuthentication(req, res, () => {});
-        return handleRemoveSeries(req, res);  
+        return handleRemoveSeries(req, res);
+
+      case 'recuperarSaga':
+        if (!req.auth) return requireAuthentication(req, res, () => {});
+        return handleRecoverAbandonedSeries(req, res);
 
       case 'notificaciones':
         if (!req.auth) return requireAuthentication(req, res, () => {});

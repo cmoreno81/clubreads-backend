@@ -5,6 +5,7 @@ import { ClubContextError } from '../services/club-context.service.js';
 import { AuthError } from '../services/auth.service.js';
 import { GoodreadsImportError } from '../services/goodreads-import.service.js';
 import { HiddenUserSeriesError } from '../services/hidden-user-series.service.js';
+import { SeriesRecoveryError } from '../services/series-recovery.service.js';
 import { PaginationError } from '../utils/cursor-pagination.js';
 
 import {
@@ -100,7 +101,8 @@ export function globalErrorHandler(target: Logger = logger): ErrorRequestHandler
       error instanceof ClubContextError ||
       error instanceof AuthError ||
       error instanceof GoodreadsImportError ||
-      error instanceof HiddenUserSeriesError;
+      error instanceof HiddenUserSeriesError ||
+      error instanceof SeriesRecoveryError;
     const paginationError = error instanceof PaginationError;
     const explicitStatus = domainError
       ? error.statusCode
