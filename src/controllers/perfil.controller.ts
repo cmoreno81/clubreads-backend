@@ -167,7 +167,8 @@ export async function handleActualizarPrivacidadPerfil(
   const visibilidad = String(req.body?.visibilidad ?? '');
   if (
     visibilidad !== ProfileVisibility.CLUB &&
-    visibilidad !== ProfileVisibility.PRIVADO
+    visibilidad !== ProfileVisibility.PRIVADO &&
+    visibilidad !== ProfileVisibility.PUBLICO
   ) {
     return res.status(400).json({ ok: false, mensaje: 'Valor de privacidad no válido' });
   }

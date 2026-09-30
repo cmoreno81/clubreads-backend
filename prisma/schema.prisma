@@ -1336,6 +1336,11 @@ enum NotificationType {
 enum ProfileVisibility {
   CLUB
   PRIVADO
+  /// La usuaria revela su nombre, avatar y reseñas en la Vista ClubReads
+  /// (estadísticas y valoraciones de toda la comunidad) a cualquiera, no
+  /// solo a quien comparta club con ella. No afecta a quién puede ver su
+  /// perfil completo (biblioteca, logros…), que sigue rigiéndose por CLUB.
+  PUBLICO
 }
 
 model Notification {
