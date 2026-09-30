@@ -117,6 +117,52 @@ export async function abandonUserSeries(userId: string, rawSeriesId: unknown) {
   return { ok: true, sagaId: seriesId };
 }
 
+// Deshace un abandono, tanto si vino del botón de abandonar sagas (fila en
+// hiddenUserSeries) como si vino de marcar un libro suelto como "No era
+// para mí" en su ficha (Library.status = ABANDONED): sin resetear también
+// esos libros, la saga volvería a calcularse como Abandonada al momento,
+// porque esa marca por libro es la que decide el estado de la saga.
+export async function recoverUserSeries(
+  userId: string,
+  rawSeriesId: unknown,
+  rawBookIds: unknown,
+) {
+  const seriesId = requiredSeriesId(rawSeriesId);
+  await requireSeriesInUserHistory(userId, seriesId);
+
+  const bookIds = Array.isArray(rawBookIds)
+    ? [
+        ...new Set(
+          rawBookIds
+            .map((id) => String(id ?? '').trim())
+            .filter((id) => id.length > 0),
+        ),
+      ]
+    : [];
+
+  await prisma.$transaction(async (tx) => {
+    if (bookIds.length > 0) {
+      await tx.library.updateMany({
+        where: { userId, bookId: { in: bookIds }, status: 'ABANDONED' },
+        data: {
+          status: 'PENDING',
+          startedAt: null,
+          finishedAt: null,
+          pausedAt: null,
+          pauseReason: null,
+          lastProgress: null,
+          currentPage: null,
+          progressNote: null,
+          progressUpdatedAt: null,
+        },
+      });
+    }
+    await tx.hiddenUserSeries.deleteMany({ where: { userId, seriesId } });
+  });
+
+  return { ok: true, sagaId: seriesId };
+}
+
 export async function showUserSeries(userId: string, rawSeriesId: unknown) {
   const seriesId = requiredSeriesId(rawSeriesId);
   const series = await prisma.series.findUnique({

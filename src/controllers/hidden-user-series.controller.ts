@@ -6,6 +6,7 @@ import {
   showUserSeries,
   removeUserSeries,
   abandonUserSeries,
+  recoverUserSeries,
 } from '../services/hidden-user-series.service.js';
 
 export async function handleGetHiddenSeries(req: Request, res: Response) {
@@ -26,4 +27,10 @@ export async function handleRemoveSeries(req: Request, res: Response) {
 
 export async function handleAbandonSeries(req: Request, res: Response) {
   return res.json(await abandonUserSeries(req.auth!.userId, req.body?.sagaId));
+}
+
+export async function handleRecoverSeries(req: Request, res: Response) {
+  return res.json(
+    await recoverUserSeries(req.auth!.userId, req.body?.sagaId, req.body?.bookIds),
+  );
 }
