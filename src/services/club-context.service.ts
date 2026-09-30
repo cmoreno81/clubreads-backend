@@ -94,6 +94,30 @@ export async function getCurrentClubContext(usuario?: string) {
   };
 }
 
+/**
+ * IDs de todas las usuarias que comparten AL MENOS un club con userId
+ * (incluida ella misma). Se usa para decidir a quién revelar el nombre
+ * real en las vistas mixtas de ClubReads ("Vista ClubReads"): como una
+ * lista de amigas, no importa cuál sea el club activo de cada una ahora
+ * mismo, solo que compartan algún club, sea cual sea.
+ */
+export async function getClubmateIds(userId: string): Promise<Set<string>> {
+  const memberships = await prisma.clubMember.findMany({
+    where: { userId },
+    select: { clubId: true },
+  });
+  const clubIds = memberships.map((m) => m.clubId);
+
+  if (clubIds.length === 0) return new Set([userId]);
+
+  const clubmates = await prisma.clubMember.findMany({
+    where: { clubId: { in: clubIds } },
+    select: { userId: true },
+  });
+
+  return new Set(clubmates.map((m) => m.userId));
+}
+
 export async function requireClubMember(usuario?: string) {
   if (!usuario?.trim()) {
     throw new ClubContextError(
