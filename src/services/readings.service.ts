@@ -1529,6 +1529,7 @@ export async function getConversacionesLibro(libro: string, usuario = '') {
         },
       },
       book: true,
+      club: { select: { id: true, name: true } },
     },
     orderBy: {
       startedAt: 'desc',
@@ -1574,6 +1575,8 @@ export async function getConversacionesLibro(libro: string, usuario = '') {
       comentarios,
       likes,
       ultimaActividad: activityTimestamp(ultimaFecha),
+      clubId: reading.club.id,
+      clubNombre: reading.club.name,
     };
   });
 }
@@ -1597,6 +1600,7 @@ export async function getConversacionesLibroPage(
       status: true,
       startedAt: true,
       book: { select: { title: true } },
+      club: { select: { id: true, name: true } },
       conversations: {
         select: {
           comments: {
@@ -1656,6 +1660,8 @@ export async function getConversacionesLibroPage(
         comentarios,
         likes,
         ultimaActividad: activityTimestamp(ultimaFecha),
+        clubId: reading.club.id,
+        clubNombre: reading.club.name,
       };
     }),
   };
