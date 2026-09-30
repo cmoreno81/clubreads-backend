@@ -22,6 +22,13 @@ test('clubFilter ya restringe a miembros del club cuando global es false', () =>
   );
 });
 
+test('en modo global se precalcula el set de compañeras de club (cualquier club compartido)', () => {
+  assert.match(
+    service,
+    /const clubmateIds = global \? await getClubmateIds\(user\.id\) : null;/,
+  );
+});
+
 test('en modo club (global=false), mismoClub no depende del club activo actual', () => {
   for (const marker of [
     'const libros = libraryEntries.map((item) => {',
@@ -29,20 +36,12 @@ test('en modo club (global=false), mismoClub no depende del club activo actual',
   ]) {
     const bloque = extractMap(service, marker);
     // clubFilter ya garantiza pertenencia real al club cuando global=false,
-    // así que mismoClub debe ser incondicionalmente true en ese caso — no
-    // debe depender de si el club ACTIVO de esa persona coincide ahora
-    // mismo (podría tener otro club seleccionado y seguir siendo compañera
-    // de club nuestra).
+    // así que mismoClub debe ser incondicionalmente true en ese caso.
+    // En modo global, debe basarse en el set de compañeras de CUALQUIER
+    // club (lista de amigas), no en el club activo en este momento.
     assert.match(
       bloque,
-      /const mismoClub = global\s*\n\s*\? Boolean\(user\.activeClubId && item\.user\.activeClubId === user\.activeClubId\)\s*\n\s*: true;/,
+      /const mismoClub = global \? Boolean\(clubmateIds\?\.has\(item\.userId\)\) : true;/,
     );
   }
-});
-
-test('el modo global sigue anonimizando por club activo, como antes', () => {
-  assert.match(
-    service,
-    /global\s*\n\s*\? Boolean\(user\.activeClubId && item\.user\.activeClubId === user\.activeClubId\)/,
-  );
 });

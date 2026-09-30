@@ -20,7 +20,7 @@ import {
   spicyFromFlutter,
   spicyToFlutter,
 } from '../utils/spicy.utils.js';
-import { getCurrentClubContext } from './club-context.service.js';
+import { getCurrentClubContext, getClubmateIds } from './club-context.service.js';
 import {
   findBookByIdentity,
   findSimilarBooks,
@@ -394,8 +394,10 @@ export async function getLibrosGlobal(usuario: string) {
 async function _getLibrosGlobal(usuario: string) {
   const user = await prisma.user.findUnique({
     where: { name: usuario.trim() },
-    select: { id: true, activeClubId: true },
+    select: { id: true },
   });
+
+  const clubmateIds = user ? await getClubmateIds(user.id) : new Set<string>();
 
   const library = await prisma.library.findMany({
     where: {
@@ -411,13 +413,12 @@ async function _getLibrosGlobal(usuario: string) {
 
   return library.map((item) => {
     // Vista ClubReads: mezcla lectoras de todos los clubes. Solo revelamos
-    // nombre y foto de quienes comparten club con quien pregunta; el resto
+    // nombre y foto de quienes comparten AL MENOS un club con quien
+    // pregunta (como una lista de amigas, sea cual sea el club); el resto
     // se manda ya anonimizado desde el backend (no solo oculto en el
     // cliente) para que ninguna versión de la app exponga con quién lee
-    // gente de clubes ajenos al tuyo.
-    const mismoClub = Boolean(
-      user?.activeClubId && item.user.activeClubId === user.activeClubId,
-    );
+    // gente de clubes ajenos a los tuyos.
+    const mismoClub = clubmateIds.has(item.userId);
 
     return {
       bookId: item.book.id,
@@ -460,8 +461,10 @@ export async function getLibrosFinalizadosTodosGlobal(usuario: string) {
 async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
   const user = await prisma.user.findUnique({
     where: { name: usuario.trim() },
-    select: { id: true, activeClubId: true },
+    select: { id: true },
   });
+
+  const clubmateIds = user ? await getClubmateIds(user.id) : new Set<string>();
 
   const library = await prisma.library.findMany({
     where: {
@@ -472,7 +475,7 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
       userId: true,
       readingFormat: true,
       finishedAt: true,
-      user: { select: { name: true, avatarUrl: true, activeClubId: true } },
+      user: { select: { name: true, avatarUrl: true } },
       book: {
         select: {
           id: true,
@@ -503,9 +506,7 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
   return library.map((item) => {
     const review = item.book.reviews.find((r) => r.userId === item.userId);
     // Vista ClubReads: ver comentario en _getLibrosGlobal.
-    const mismoClub = Boolean(
-      user?.activeClubId && item.user.activeClubId === user.activeClubId,
-    );
+    const mismoClub = clubmateIds.has(item.userId);
     return {
       bookId: item.book.id,
       usuario: mismoClub ? item.user.name : 'Lectora de otro club',

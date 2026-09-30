@@ -1,6 +1,6 @@
 import { ReadingStatus } from '@prisma/client';
 import { prisma } from '../prisma.js';
-import { getCurrentClubContext } from './club-context.service.js';
+import { getCurrentClubContext, getClubmateIds } from './club-context.service.js';
 import { formatToFlutter } from './books.service.js';
 import { ratingToFlutter } from '../utils/rating.utils.js';
 import { spicyToFlutter } from '../utils/spicy.utils.js';
@@ -22,6 +22,8 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
   const clubFilter = global
     ? {}
     : { user: { clubMemberships: { some: { clubId: club.id } } } };
+
+  const clubmateIds = global ? await getClubmateIds(user.id) : null;
 
   const [libraryEntries, completions, book] = await Promise.all([
     // Entradas activas en Library (no finalizadas)
@@ -137,15 +139,14 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
   // modo anonimizaba por error a compañeras de tu propio club.
   //
   // En modo global (global=true) sí mezclamos lectoras de todos los clubes
-  // y cuentas personales, así que ahí sí hace falta comparar activeClubId:
-  // solo revelamos nombre y foto de quienes comparten club activo con quien
-  // pregunta. El resto se anonimiza ya desde el backend, nunca solo en el
-  // cliente, para que ninguna versión de la app filtre con quién lee gente
-  // de otros clubes.
+  // y cuentas personales, así que ahí sí hace falta filtrar: solo revelamos
+  // nombre y foto de quienes comparten AL MENOS un club contigo (como tu
+  // lista de amigas, sea cual sea el club), no solo el activo ahora mismo.
+  // El resto se anonimiza ya desde el backend, nunca solo en el cliente,
+  // para que ninguna versión de la app filtre con quién lee gente de otros
+  // clubes.
   const libros = libraryEntries.map((item) => {
-    const mismoClub = global
-      ? Boolean(user.activeClubId && item.user.activeClubId === user.activeClubId)
-      : true;
+    const mismoClub = global ? Boolean(clubmateIds?.has(item.userId)) : true;
     return {
       bookId: item.book.id,
       usuario: mismoClub ? item.user.name : 'Lectora de otro club',
@@ -175,9 +176,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
 
   const finalizados = completions.map((item) => {
     const review = item.book.reviews.find((r) => r.userId === item.userId);
-    const mismoClub = global
-      ? Boolean(user.activeClubId && item.user.activeClubId === user.activeClubId)
-      : true;
+    const mismoClub = global ? Boolean(clubmateIds?.has(item.userId)) : true;
     return {
       bookId: item.book.id,
       usuario: mismoClub ? item.user.name : 'Lectora de otro club',
