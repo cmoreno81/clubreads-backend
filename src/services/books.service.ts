@@ -1,6 +1,7 @@
 import {
   Prisma,
   Priority,
+  ProfileVisibility,
   ReactionType,
   ReadingFormat,
   ReadingStatus,
@@ -412,13 +413,15 @@ async function _getLibrosGlobal(usuario: string) {
   });
 
   return library.map((item) => {
-    // Vista ClubReads: mezcla lectoras de todos los clubes. Solo revelamos
+    // Vista ClubReads: mezcla lectoras de todos los clubes. Revelamos
     // nombre y foto de quienes comparten AL MENOS un club con quien
-    // pregunta (como una lista de amigas, sea cual sea el club); el resto
-    // se manda ya anonimizado desde el backend (no solo oculto en el
-    // cliente) para que ninguna versión de la app exponga con quién lee
-    // gente de clubes ajenos a los tuyos.
-    const mismoClub = clubmateIds.has(item.userId);
+    // pregunta (como una lista de amigas, sea cual sea el club) o de quien
+    // ha marcado su perfil como público; el resto se manda ya anonimizado
+    // desde el backend (no solo oculto en el cliente) para que ninguna
+    // versión de la app exponga con quién lee gente de clubes ajenos.
+    const mismoClub =
+      clubmateIds.has(item.userId) ||
+      item.user.profileVisibility === ProfileVisibility.PUBLICO;
 
     return {
       bookId: item.book.id,
@@ -475,7 +478,7 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
       userId: true,
       readingFormat: true,
       finishedAt: true,
-      user: { select: { name: true, avatarUrl: true } },
+      user: { select: { name: true, avatarUrl: true, profileVisibility: true } },
       book: {
         select: {
           id: true,
@@ -506,7 +509,9 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
   return library.map((item) => {
     const review = item.book.reviews.find((r) => r.userId === item.userId);
     // Vista ClubReads: ver comentario en _getLibrosGlobal.
-    const mismoClub = clubmateIds.has(item.userId);
+    const mismoClub =
+      clubmateIds.has(item.userId) ||
+      item.user.profileVisibility === ProfileVisibility.PUBLICO;
     return {
       bookId: item.book.id,
       usuario: mismoClub ? item.user.name : 'Lectora de otro club',

@@ -37,11 +37,18 @@ test('en modo club (global=false), mismoClub no depende del club activo actual',
     const bloque = extractMap(service, marker);
     // clubFilter ya garantiza pertenencia real al club cuando global=false,
     // así que mismoClub debe ser incondicionalmente true en ese caso.
-    // En modo global, debe basarse en el set de compañeras de CUALQUIER
-    // club (lista de amigas), no en el club activo en este momento.
+    // En modo global, debe basarse en el helper que combina el set de
+    // compañeras de CUALQUIER club (lista de amigas) con el perfil público.
     assert.match(
       bloque,
-      /const mismoClub = global \? Boolean\(clubmateIds\?\.has\(item\.userId\)\) : true;/,
+      /const mismoClub = global \? esMismoClubOPublico\(item\) : true;/,
     );
   }
+});
+
+test('en modo global, mismoClub también es true si la usuaria tiene el perfil público', () => {
+  assert.match(
+    service,
+    /const esMismoClubOPublico = \(item: \{ userId: string; user: \{ profileVisibility: ProfileVisibility \} \}\) =>\s*\n\s*Boolean\(clubmateIds\?\.has\(item\.userId\)\) \|\|\s*\n\s*item\.user\.profileVisibility === ProfileVisibility\.PUBLICO;/,
+  );
 });

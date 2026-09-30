@@ -1,0 +1,1 @@
+ALTER TYPE "ProfileVisibility" ADD VALUE IF NOT EXISTS 'PUBLICO';

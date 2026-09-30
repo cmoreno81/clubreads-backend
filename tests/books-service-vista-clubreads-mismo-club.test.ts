@@ -34,19 +34,25 @@ test('getClubmateIds calcula compañeras de CUALQUIER club compartido, no solo e
   );
 });
 
-test('_getLibrosGlobal usa clubmateIds en vez de comparar activeClubId', () => {
+test('_getLibrosGlobal usa clubmateIds en vez de comparar activeClubId, y también revela perfiles públicos', () => {
   const bloque = extractFunction(booksService, 'async function _getLibrosGlobal(usuario: string) {');
   assert.match(bloque, /const clubmateIds = user \? await getClubmateIds\(user\.id\) : new Set<string>\(\);/);
-  assert.match(bloque, /const mismoClub = clubmateIds\.has\(item\.userId\);/);
+  assert.match(
+    bloque,
+    /const mismoClub =\s*\n\s*clubmateIds\.has\(item\.userId\) \|\|\s*\n\s*item\.user\.profileVisibility === ProfileVisibility\.PUBLICO;/,
+  );
   assert.doesNotMatch(bloque, /activeClubId/);
 });
 
-test('_getLibrosFinalizadosTodosGlobal usa clubmateIds en vez de comparar activeClubId', () => {
+test('_getLibrosFinalizadosTodosGlobal usa clubmateIds en vez de comparar activeClubId, y también revela perfiles públicos', () => {
   const bloque = extractFunction(
     booksService,
     'async function _getLibrosFinalizadosTodosGlobal(usuario: string) {',
   );
   assert.match(bloque, /const clubmateIds = user \? await getClubmateIds\(user\.id\) : new Set<string>\(\);/);
-  assert.match(bloque, /const mismoClub = clubmateIds\.has\(item\.userId\);/);
+  assert.match(
+    bloque,
+    /const mismoClub =\s*\n\s*clubmateIds\.has\(item\.userId\) \|\|\s*\n\s*item\.user\.profileVisibility === ProfileVisibility\.PUBLICO;/,
+  );
   assert.doesNotMatch(bloque, /activeClubId/);
 });
