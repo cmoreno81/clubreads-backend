@@ -663,7 +663,22 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
     pendientes,
     generosFavoritos,
     sagas,
-    historicoMeses: buildHistoricoMeses(historialTerminados),
+    historicoMeses: buildHistoricoMeses(
+      historialTerminados,
+      biblioteca
+        .filter(
+          (item) =>
+            (item.status === ReadingStatus.READING ||
+              item.status === ReadingStatus.REREADING) &&
+            item.startedAt !== null,
+        )
+        .map((item) => ({
+          id: item.id,
+          bookId: item.bookId,
+          startedAt: item.startedAt,
+          book: { title: item.book.title, coverUrl: item.book.coverUrl },
+        })),
+    ),
     favoritos: biblioteca
       .filter((item) => item.isFavorite)
       .map((item) => ({
@@ -772,6 +787,16 @@ function buildHistoricoMeses(
     rating: number | null;
     book: { title: string; coverUrl: string | null };
   }>,
+  // Lecturas activas (LEYENDO/RELECTURA), todavía sin terminar. A
+  // diferencia de `historial`, no tienen finishedAt: se les da como fecha
+  // fin "hoy", para que el calendario muestre los días que se han leído de
+  // verdad, sin inventarles una valoración que aún no existe.
+  enCurso: Array<{
+    id: string;
+    bookId: string;
+    startedAt: Date | null;
+    book: { title: string; coverUrl: string | null };
+  }> = [],
 ) {
   // Agrupa las lecturas por mes (Europe/Madrid)
   const mesesMap = new Map<
@@ -787,6 +812,7 @@ function buildHistoricoMeses(
         fechaInicio: string;
         fechaFin: string;
         valoracion: number | null;
+        enCurso: boolean;
       }>;
     }
   >();
@@ -798,9 +824,17 @@ function buildHistoricoMeses(
     day: '2-digit',
   });
 
+  const formatear = (date: Date) => {
+    const parts = fmt.formatToParts(date);
+    return Object.fromEntries(parts.map((p) => [p.type, p.value])) as {
+      year: string;
+      month: string;
+      day: string;
+    };
+  };
+
   for (const item of historial) {
-    const parts = fmt.formatToParts(item.finishedAt);
-    const v = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    const v = formatear(item.finishedAt);
     const key = `${v.year}-${v.month}`;
     const anio = Number(v.year);
     const mes  = Number(v.month);
@@ -809,12 +843,7 @@ function buildHistoricoMeses(
       mesesMap.set(key, { anio, mes, lecturas: [] });
     }
 
-    const startParts = item.startedAt
-      ? fmt.formatToParts(item.startedAt)
-      : null;
-    const sv = startParts
-      ? Object.fromEntries(startParts.map((p) => [p.type, p.value]))
-      : null;
+    const sv = item.startedAt ? formatear(item.startedAt) : null;
 
     mesesMap.get(key)!.lecturas.push({
       id: item.id,
@@ -824,7 +853,57 @@ function buildHistoricoMeses(
       fechaInicio: sv ? `${sv.day}/${sv.month}/${sv.year}` : '',
       fechaFin: `${v.day}/${v.month}/${v.year}`,
       valoracion: item.rating ?? null,
+      enCurso: false,
     });
+  }
+
+  // Lecturas activas: se reparten por cada mes que tocan, desde su inicio
+  // hasta hoy (acotado a los límites de cada mes), igual que ya se hacía
+  // de forma implícita con las terminadas dentro de un único mes.
+  const hoy = new Date();
+  for (const item of enCurso) {
+    if (!item.startedAt || item.startedAt.getTime() > hoy.getTime()) continue;
+
+    let cursor = new Date(
+      Date.UTC(item.startedAt.getUTCFullYear(), item.startedAt.getUTCMonth(), 1),
+    );
+    const cursorFinal = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1));
+
+    while (cursor.getTime() <= cursorFinal.getTime()) {
+      const anio = cursor.getUTCFullYear();
+      const mesNum = cursor.getUTCMonth() + 1;
+      const key = `${anio}-${String(mesNum).padStart(2, '0')}`;
+
+      const primerDiaMes = new Date(Date.UTC(anio, mesNum - 1, 1));
+      const ultimoDiaMes = new Date(Date.UTC(anio, mesNum, 0));
+
+      const inicioEnMes =
+        item.startedAt.getTime() > primerDiaMes.getTime()
+          ? item.startedAt
+          : primerDiaMes;
+      const finEnMes =
+        hoy.getTime() < ultimoDiaMes.getTime() ? hoy : ultimoDiaMes;
+
+      if (!mesesMap.has(key)) {
+        mesesMap.set(key, { anio, mes: mesNum, lecturas: [] });
+      }
+
+      const sv = formatear(inicioEnMes);
+      const ev = formatear(finEnMes);
+
+      mesesMap.get(key)!.lecturas.push({
+        id: item.id,
+        bookId: item.bookId,
+        titulo: item.book.title,
+        coverUrl: item.book.coverUrl ?? '',
+        fechaInicio: `${sv.day}/${sv.month}/${sv.year}`,
+        fechaFin: `${ev.day}/${ev.month}/${ev.year}`,
+        valoracion: null,
+        enCurso: true,
+      });
+
+      cursor = new Date(Date.UTC(anio, mesNum, 1));
+    }
   }
 
   // Ordenar de más reciente a más antiguo
