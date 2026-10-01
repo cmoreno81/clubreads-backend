@@ -21,7 +21,10 @@ import {
   spicyFromFlutter,
   spicyToFlutter,
 } from '../utils/spicy.utils.js';
-import { getCurrentClubContext, getClubmateIds } from './club-context.service.js';
+import {
+  getCurrentClubContext,
+  getClubmateClubNames,
+} from './club-context.service.js';
 import {
   findBookByIdentity,
   findSimilarBooks,
@@ -398,7 +401,9 @@ async function _getLibrosGlobal(usuario: string) {
     select: { id: true },
   });
 
-  const clubmateIds = user ? await getClubmateIds(user.id) : new Set<string>();
+  const clubmateClubNames = user
+    ? await getClubmateClubNames(user.id)
+    : new Map<string, string>();
 
   const library = await prisma.library.findMany({
     where: {
@@ -419,14 +424,18 @@ async function _getLibrosGlobal(usuario: string) {
     // ha marcado su perfil como público; el resto se manda ya anonimizado
     // desde el backend (no solo oculto en el cliente) para que ninguna
     // versión de la app exponga con quién lee gente de clubes ajenos.
+    const enMiClub = clubmateClubNames.has(item.userId);
     const mismoClub =
-      clubmateIds.has(item.userId) ||
-      item.user.profileVisibility === ProfileVisibility.PUBLICO;
+      enMiClub || item.user.profileVisibility === ProfileVisibility.PUBLICO;
 
     return {
       bookId: item.book.id,
       usuario: mismoClub ? item.user.name : 'Lectora de otro club',
       mismoClub,
+      enMiClub,
+      clubCompartido: enMiClub
+        ? (clubmateClubNames.get(item.userId) ?? '')
+        : '',
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
@@ -467,7 +476,9 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
     select: { id: true },
   });
 
-  const clubmateIds = user ? await getClubmateIds(user.id) : new Set<string>();
+  const clubmateClubNames = user
+    ? await getClubmateClubNames(user.id)
+    : new Map<string, string>();
 
   const library = await prisma.library.findMany({
     where: {
@@ -509,13 +520,17 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
   return library.map((item) => {
     const review = item.book.reviews.find((r) => r.userId === item.userId);
     // Vista ClubReads: ver comentario en _getLibrosGlobal.
+    const enMiClub = clubmateClubNames.has(item.userId);
     const mismoClub =
-      clubmateIds.has(item.userId) ||
-      item.user.profileVisibility === ProfileVisibility.PUBLICO;
+      enMiClub || item.user.profileVisibility === ProfileVisibility.PUBLICO;
     return {
       bookId: item.book.id,
       usuario: mismoClub ? item.user.name : 'Lectora de otro club',
       mismoClub,
+      enMiClub,
+      clubCompartido: enMiClub
+        ? (clubmateClubNames.get(item.userId) ?? '')
+        : '',
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
