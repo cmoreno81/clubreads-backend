@@ -108,11 +108,11 @@ export async function getPerfilUsuario(
     };
   }
 
-  const ownProfile = nombre === solicitante.trim();
+  let ownProfile = nombre === solicitante.trim();
   const club = ownProfile
     ? null
     : (await getCurrentClubContext(solicitante)).club;
-  const user = await prisma.user.findFirst({
+  let user = await prisma.user.findFirst({
     where: {
       name: nombre,
       ...(club
@@ -127,6 +127,31 @@ export async function getPerfilUsuario(
       },
     },
   });
+
+  // La app guarda el nombre de usuaria en la sesión local y no lo vuelve
+  // a pedir en cada pantalla; si cambia su nombre (Ajustes > cambiar
+  // nombre), ese valor cacheado queda obsoleto hasta que cierra sesión y
+  // vuelve a entrar, y deja de encontrar a nadie con el nombre antiguo.
+  // En vez de dejarla bloqueada con un "no se pudo conectar", si quien
+  // pregunta está autenticada y no se encontró a nadie con el nombre
+  // pedido, reintentamos con su nombre vigente — probablemente sea ella
+  // misma pidiendo su propio perfil con un nombre que ya no existe.
+  if (!user && !ownProfile && solicitante.trim()) {
+    const propio = await prisma.user.findUnique({
+      where: { name: solicitante.trim() },
+      include: {
+        _count: {
+          select: {
+            clubMemberships: { where: { club: { tipo: ClubType.SOCIAL } } },
+          },
+        },
+      },
+    });
+    if (propio) {
+      user = propio;
+      ownProfile = true;
+    }
+  }
 
   if (!user) {
     return {
