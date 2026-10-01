@@ -735,17 +735,29 @@ export async function getPerfilHistorialPage(
 ) {
   const nombre = usuario.trim();
   if (!nombre) return { items: [], nextCursor: null, hasMore: false };
-  const ownProfile = nombre === solicitante.trim();
+  let ownProfile = nombre === solicitante.trim();
   const club = ownProfile
     ? null
     : (await getCurrentClubContext(solicitante)).club;
-  const user = await prisma.user.findFirst({
+  let user = await prisma.user.findFirst({
     where: {
       name: nombre,
       ...(club ? { clubMemberships: { some: { clubId: club.id } } } : {}),
     },
     select: { id: true, profileVisibility: true },
   });
+  // Mismo respaldo que en getPerfilUsuario: nombre cacheado obsoleto tras
+  // un cambio de nombre → reintentar como "mi propio perfil" vigente.
+  if (!user && !ownProfile && solicitante.trim()) {
+    const propio = await prisma.user.findUnique({
+      where: { name: solicitante.trim() },
+      select: { id: true, profileVisibility: true },
+    });
+    if (propio) {
+      user = propio;
+      ownProfile = true;
+    }
+  }
   if (!user) return { items: [], nextCursor: null, hasMore: false };
   if (!ownProfile && user.profileVisibility === ProfileVisibility.PRIVADO) {
     return { items: [], nextCursor: null, hasMore: false };
