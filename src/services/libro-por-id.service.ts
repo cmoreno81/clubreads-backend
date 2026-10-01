@@ -151,10 +151,16 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
 
   const libros = libraryEntries.map((item) => {
     const mismoClub = global ? esMismoClubOPublico(item) : true;
+    // Distingue, dentro de "mismoClub", a quien de verdad comparte club de
+    // quien solo se ve porque tiene el perfil en público — el cliente
+    // necesita saber esto para agrupar "En tus clubes" / "En otros clubes"
+    // y para decidir si puede abrir su perfil (solo si comparte club).
+    const enMiClub = global ? Boolean(clubmateIds?.has(item.userId)) : true;
     return {
       bookId: item.book.id,
       usuario: mismoClub ? item.user.name : 'Lectora de otro club',
       mismoClub,
+      enMiClub,
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
