@@ -118,6 +118,44 @@ export async function getClubmateIds(userId: string): Promise<Set<string>> {
   return new Set(clubmates.map((m) => m.userId));
 }
 
+/**
+ * Para cada usuaria que comparte AL MENOS un club con userId, el nombre de
+ * uno de esos clubes compartidos (si comparten varios, uno cualquiera pero
+ * siempre el mismo para un mismo par de usuarias). Se usa para mostrar "en
+ * qué club la conoces" sin tener que abrir su perfil — un dato más ligero
+ * que [getClubmateIds], que solo da el sí/no.
+ */
+export async function getClubmateClubNames(
+  userId: string,
+): Promise<Map<string, string>> {
+  const memberships = await prisma.clubMember.findMany({
+    where: { userId },
+    select: { clubId: true, club: { select: { name: true } } },
+  });
+
+  const clubNameById = new Map(
+    memberships.map((m) => [m.clubId, m.club.name]),
+  );
+  const clubIds = memberships.map((m) => m.clubId);
+
+  if (clubIds.length === 0) return new Map();
+
+  const clubmates = await prisma.clubMember.findMany({
+    where: { clubId: { in: clubIds } },
+    select: { userId: true, clubId: true },
+    orderBy: { clubId: 'asc' },
+  });
+
+  const result = new Map<string, string>();
+  for (const clubmate of clubmates) {
+    if (result.has(clubmate.userId)) continue;
+    const nombreClub = clubNameById.get(clubmate.clubId);
+    if (nombreClub) result.set(clubmate.userId, nombreClub);
+  }
+
+  return result;
+}
+
 export async function requireClubMember(usuario?: string) {
   if (!usuario?.trim()) {
     throw new ClubContextError(

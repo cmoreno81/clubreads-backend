@@ -1,6 +1,6 @@
 import { ProfileVisibility, ReadingStatus } from '@prisma/client';
 import { prisma } from '../prisma.js';
-import { getCurrentClubContext, getClubmateIds } from './club-context.service.js';
+import { getCurrentClubContext, getClubmateClubNames } from './club-context.service.js';
 import { formatToFlutter } from './books.service.js';
 import { ratingToFlutter } from '../utils/rating.utils.js';
 import { spicyToFlutter } from '../utils/spicy.utils.js';
@@ -23,7 +23,9 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
     ? {}
     : { user: { clubMemberships: { some: { clubId: club.id } } } };
 
-  const clubmateIds = global ? await getClubmateIds(user.id) : null;
+  const clubmateClubNames = global
+    ? await getClubmateClubNames(user.id)
+    : null;
 
   const [libraryEntries, completions, book] = await Promise.all([
     // Entradas activas en Library (no finalizadas)
@@ -146,7 +148,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
   // ya desde el backend, nunca solo en el cliente, para que ninguna versión
   // de la app filtre con quién lee gente de otros clubes.
   const esMismoClubOPublico = (item: { userId: string; user: { profileVisibility: ProfileVisibility } }) =>
-    Boolean(clubmateIds?.has(item.userId)) ||
+    Boolean(clubmateClubNames?.has(item.userId)) ||
     item.user.profileVisibility === ProfileVisibility.PUBLICO;
 
   const libros = libraryEntries.map((item) => {
@@ -155,12 +157,18 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
     // quien solo se ve porque tiene el perfil en público — el cliente
     // necesita saber esto para agrupar "En tus clubes" / "En otros clubes"
     // y para decidir si puede abrir su perfil (solo si comparte club).
-    const enMiClub = global ? Boolean(clubmateIds?.has(item.userId)) : true;
+    const enMiClub = global ? Boolean(clubmateClubNames?.has(item.userId)) : true;
     return {
       bookId: item.book.id,
       usuario: mismoClub ? item.user.name : 'Lectora de otro club',
       mismoClub,
       enMiClub,
+      // En vista de club (global=false) ya sabemos cuál es: el activo.
+      clubCompartido: enMiClub
+        ? global
+          ? (clubmateClubNames?.get(item.userId) ?? '')
+          : club.name
+        : '',
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
@@ -187,10 +195,17 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
   const finalizados = completions.map((item) => {
     const review = item.book.reviews.find((r) => r.userId === item.userId);
     const mismoClub = global ? esMismoClubOPublico(item) : true;
+    const enMiClub = global ? Boolean(clubmateClubNames?.has(item.userId)) : true;
     return {
       bookId: item.book.id,
       usuario: mismoClub ? item.user.name : 'Lectora de otro club',
       mismoClub,
+      enMiClub,
+      clubCompartido: enMiClub
+        ? global
+          ? (clubmateClubNames?.get(item.userId) ?? '')
+          : club.name
+        : '',
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
