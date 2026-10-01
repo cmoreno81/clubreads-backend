@@ -101,6 +101,7 @@ import { publicAuthRateLimiter } from '../middleware/rate-limit.middleware.js';
 import {
   handleActivateAccount,
   handleCompleteRegistration,
+  handleChangeName,
   handleChangePassword,
   handleDeleteAccount,
   handleLogin,
@@ -218,6 +219,7 @@ export const POST_ONLY_ACTIONS = new Set([
   ...PUBLIC_AUTH_ACTIONS,
   'logout',
   'cambiarPassword',
+  'cambiarNombre',
   'eliminarCuenta',
   'setSeriesOverride',
   'removeSeriesOverride',
@@ -384,6 +386,12 @@ export async function handleApi(
           return requireAuthentication(req, res, () => {});
         }
         return handleChangePassword(req, res);
+
+      case 'cambiarNombre':
+        if (!req.auth) {
+          return requireAuthentication(req, res, () => {});
+        }
+        return handleChangeName(req, res);
 
       case 'eliminarCuenta':
         if (!req.auth) {

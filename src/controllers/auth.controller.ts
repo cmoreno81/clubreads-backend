@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import {
   activateAccount,
   completeRegistration,
+  changeName,
   changePassword,
   eliminarCuenta,
   login,
@@ -122,5 +123,14 @@ export async function handleChangePassword(
       value(req, 'passwordActual'),
       value(req, 'passwordNueva'),
     ),
+  );
+}
+
+export async function handleChangeName(
+  req: Request,
+  res: Response,
+) {
+  return res.json(
+    await changeName(req.auth!.userId, value(req, 'nombre')),
   );
 }

@@ -637,6 +637,39 @@ export async function changePassword(
   return issueSession(user.id);
 }
 
+export async function changeName(userId: string, rawName: string) {
+  const name = rawName.trim().replace(/\s+/g, ' ');
+  if (name.length < 2 || name.length > 60) {
+    throw new AuthError(
+      'El nombre debe tener entre 2 y 60 caracteres',
+      400,
+      'INVALID_NAME',
+    );
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new AuthError('Usuaria no encontrada', 404, 'USER_NOT_FOUND');
+  }
+  if (user.name === name) {
+    return { ok: true, nombre: name };
+  }
+
+  const nameOwner = await prisma.user.findFirst({
+    where: { name: { equals: name, mode: 'insensitive' }, id: { not: userId } },
+  });
+  if (nameOwner) {
+    throw new AuthError(
+      'Ese nombre ya está en uso',
+      400,
+      'NAME_ALREADY_REGISTERED',
+    );
+  }
+
+  await prisma.user.update({ where: { id: userId }, data: { name } });
+  return { ok: true, nombre: name };
+}
+
 /// Un club que sigues siendo propietaria y que no es tu espacio personal
 /// bloquea la eliminación si tiene alguien más dentro — no hay forma de
 /// transferir la propiedad todavía, así que borrar la cuenta se llevaría
