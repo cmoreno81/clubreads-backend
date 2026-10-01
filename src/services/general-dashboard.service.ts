@@ -1,4 +1,4 @@
-import { ReadingStatus } from '@prisma/client';
+import { ClubType, ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
 import { normalizeBookIdentityText } from './book-identity.service.js';
@@ -332,7 +332,11 @@ export async function getGeneralDashboard(userId: string) {
         take: 6,
       }),
       Promise.all([
-        prisma.club.count(),
+        // "Mi espacio lector" es, por dentro, un club de tipo PERSONAL (sin
+        // funciones sociales) — no debe contar como club real en "La
+        // comunidad en una página". A quien lo tiene ya lo cuenta "lectoras"
+        // más abajo (por tener cuenta, no por pertenecer a este club).
+        prisma.club.count({ where: { tipo: ClubType.SOCIAL } }),
         prisma.user.count({
           where: {
             OR: [
