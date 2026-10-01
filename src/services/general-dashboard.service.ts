@@ -751,6 +751,7 @@ export async function getGeneralDashboard(userId: string) {
   return {
     ok: true,
     usuario: {
+      id: user.id,
       nombre: user.name,
       avatarUrl: user.avatarUrl ?? '',
     },
