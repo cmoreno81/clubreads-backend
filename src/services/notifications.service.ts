@@ -437,18 +437,23 @@ export async function notifyComentarioLectura({
   autorUserId,
   bookTitle,
   bookId,
+  chapterTitle,
   participantes,
   readingId,
+  abreElDebate = false,
 }: {
   clubId: string;
   autorNombre: string;
   autorUserId: string;
   bookTitle: string;
   bookId: string;
-  participantes: string[]; // userIds que han comentado en ese hilo
+  /** Capítulo donde se ha comentado, para saber por dónde va cada quien. */
+  chapterTitle?: string;
+  participantes: string[]; // userIds que participan en esta lectura
   readingId?: string;
+  /** Es el primer comentario en "Reflexión final": abre el debate del libro. */
+  abreElDebate?: boolean;
 }) {
-  // Solo notificar a participantes del hilo, no a todos
   const destinatarios = participantes.filter((id) => id !== autorUserId);
   if (destinatarios.length === 0) return;
 
@@ -456,12 +461,17 @@ export async function notifyComentarioLectura({
     data: destinatarios.map((userId) => ({
       userId,
       tipo: NotificationType.COMENTARIO_LECTURA,
-      titulo: '💬 Nuevo comentario',
-      mensaje: `${autorNombre} ha comentado en "${bookTitle}"`,
+      titulo: abreElDebate ? '🗣️ Debate abierto' : '💬 Nuevo comentario',
+      mensaje: abreElDebate
+        ? `${autorNombre} ha abierto el debate final de "${bookTitle}" — participa`
+        : chapterTitle
+          ? `${autorNombre} ha comentado en "${chapterTitle}" (${bookTitle})`
+          : `${autorNombre} ha comentado en "${bookTitle}"`,
       clubId,
       bookId,
       extra: JSON.stringify({
         bookTitle,
+        ...(chapterTitle ? { chapterTitle } : {}),
         ...(readingId ? { readingId } : {}),
       }),
     })),

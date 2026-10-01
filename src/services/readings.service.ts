@@ -61,6 +61,32 @@ export function shouldShowActiveReading(type: ReadingType, readers: number) {
   return type !== ReadingType.FREE || readers >= 2;
 }
 
+/**
+ * Quién participa realmente en una lectura: está leyéndola ahora mismo, o
+ * la terminó desde que empezó esta lectura concreta. Se usa para notificar
+ * comentarios solo a quien tiene algo que ver con ese libro — antes se
+ * avisaba a todo el club en cada comentario, lo cual era ruido para quien
+ * no estaba leyendo ese libro.
+ */
+async function participantesDeLectura(
+  clubId: string,
+  bookId: string,
+  startedAt: Date,
+) {
+  const rows = await prisma.library.findMany({
+    where: {
+      bookId,
+      user: { clubMemberships: { some: { clubId } } },
+      OR: [
+        { status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] } },
+        { status: ReadingStatus.FINISHED, finishedAt: { gte: startedAt } },
+      ],
+    },
+    select: { userId: true },
+  });
+  return rows.map((row) => row.userId);
+}
+
 function buildChapters(
   reading: {
     conversations: {
@@ -219,7 +245,28 @@ export async function getLecturasActivas(usuario = '') {
     const lectoras = lectorasByBook.get(reading.bookId) ?? 0;
 
     if (!shouldShowActiveReading(reading.type, lectoras)) {
-      continue;
+      // Puede que solo quede 1 persona leyendo porque el resto ya terminó,
+      // no porque nunca fue una lectura conjunta real. Si en algún momento
+      // desde que empezó esta lectura hubo al menos 2 personas implicadas
+      // (leyendo ahora o ya terminado desde entonces), se sigue mostrando
+      // mientras quede alguien leyéndola — en vez de desaparecer del menú
+      // en cuanto el grupo se reduce a 1, dejando a quien lee más despacio
+      // sin manera de encontrar la conversación (bug real reportado).
+      const fueCompartida =
+        reading.type === ReadingType.FREE &&
+        lectoras >= 1 &&
+        (await prisma.library.count({
+          where: {
+            bookId: reading.bookId,
+            user: { clubMemberships: { some: { clubId: club.id } } },
+            OR: [
+              { status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] } },
+              { status: ReadingStatus.FINISHED, finishedAt: { gte: reading.startedAt } },
+            ],
+          },
+        })) >= 2;
+
+      if (!fueCompartida) continue;
     }
 
     let comentarios = 0;
@@ -1172,10 +1219,20 @@ export async function enviarComentarioLectura(data: {
         book: await bookFilterForLectura(libro),
       },
     },
-    include: { reading: { select: { id: true, bookId: true } } },
+    include: { reading: { select: { id: true, bookId: true, startedAt: true } } },
   });
 
   if (!conversation) return { ok: false, mensaje: 'Capítulo no encontrado' };
+
+  // El primer comentario en "Reflexión final" abre el debate del final del
+  // libro — se avisa de forma distinta (más vistosa) que un comentario
+  // cualquiera, para que se note que ha arrancado la conversación.
+  const esReflexionFinal = conversation.title === '💭 Reflexión final';
+  const abreElDebate =
+    esReflexionFinal &&
+    (await prisma.comment.count({
+      where: { conversationId: conversation.id, deletedAt: null },
+    })) === 0;
 
   const created = await prisma.comment.create({
     data: {
@@ -1196,20 +1253,26 @@ export async function enviarComentarioLectura(data: {
     },
   });
 
-  // Notificar a otros participantes del hilo
-  const miembros = await prisma.clubMember.findMany({
-    where: { clubId: club.id },
-    select: { userId: true },
-  });
-  notifyComentarioLectura({
-    clubId: club.id,
-    autorNombre: user.name,
-    autorUserId: user.id,
-    bookTitle: libro,
-    bookId: conversation.reading?.bookId ?? '',
-    readingId: conversation.reading?.id,
-    participantes: miembros.map((m) => m.userId),
-  }).catch(backgroundError('comment_notification_failed'));
+  // Notificar solo a quien participa de verdad en esta lectura (la está
+  // leyendo ahora o la terminó desde que empezó), no a todo el club.
+  if (conversation.reading) {
+    const participantes = await participantesDeLectura(
+      club.id,
+      conversation.reading.bookId,
+      conversation.reading.startedAt,
+    );
+    notifyComentarioLectura({
+      clubId: club.id,
+      autorNombre: user.name,
+      autorUserId: user.id,
+      bookTitle: libro,
+      bookId: conversation.reading.bookId,
+      chapterTitle: conversation.title,
+      readingId: conversation.reading.id,
+      participantes,
+      abreElDebate,
+    }).catch(backgroundError('comment_notification_failed'));
+  }
 
   // Sincronizar logros al comentar
   void syncAchievementsForUser(user.id, user.name, club.id).catch(() => {});
@@ -1275,21 +1338,27 @@ export async function responderComentarioLectura(data: {
 
   const conversacionConLectura = await prisma.conversation.findUnique({
   where: { id: parent.conversationId },
-  include: { reading: { select: { id: true, bookId: true, book: { select: { title: true } } } } },
+  include: {
+    reading: {
+      select: { id: true, bookId: true, startedAt: true, book: { select: { title: true } } },
+    },
+  },
 });
 if (conversacionConLectura?.reading) {
-  const miembros = await prisma.clubMember.findMany({
-    where: { clubId: club.id },
-    select: { userId: true },
-  });
+  const participantes = await participantesDeLectura(
+    club.id,
+    conversacionConLectura.reading.bookId,
+    conversacionConLectura.reading.startedAt,
+  );
   notifyComentarioLectura({
     clubId: club.id,
     autorNombre: user.name,
     autorUserId: user.id,
     bookTitle: conversacionConLectura.reading.book?.title ?? '',
     bookId: conversacionConLectura.reading.bookId ?? '',
+    chapterTitle: conversacionConLectura.title,
     readingId: conversacionConLectura.reading.id,
-    participantes: miembros.map((m) => m.userId),
+    participantes,
   }).catch(backgroundError('reply_notification_failed'));
 }
 
