@@ -18,6 +18,7 @@ export async function handleGeneralDashboard(
 }
 
 import { prisma } from '../prisma.js';
+import { numeroSaga } from '../services/perfil.service.js';
 
 export async function handleLibrosPorAutor(req: Request, res: Response) {
   const autorId = req.query['autorId']?.toString();
@@ -31,7 +32,7 @@ export async function handleLibrosPorAutor(req: Request, res: Response) {
       books: {
         where: { deletedAt: null },
         include: { genre: true, series: { select: { id: true, name: true } } },
-        orderBy: [{ seriesId: 'asc' }, { seriesOrder: 'asc' }, { title: 'asc' }],
+        orderBy: [{ seriesId: 'asc' }, { title: 'asc' }],
       },
     },
   });
@@ -40,12 +41,23 @@ export async function handleLibrosPorAutor(req: Request, res: Response) {
     return res.status(404).json({ ok: false, mensaje: 'Autor no encontrado' });
   }
 
+  // seriesOrder admite formatos como "3", "3.5" o "3/5" (el "/5" indica el
+  // total de tomos previstos, usado en Sagas) — ordenar por ese texto tal
+  // cual ponía "3.5" antes que "3/5" (el punto pesa menos que la barra),
+  // así que un tomo intermedio como "3.5" se colaba antes del tomo 3. Se
+  // reutiliza el mismo parseo numérico que ya usa la pantalla de Sagas.
+  const librosOrdenados = [...author.books].sort((a, b) => {
+    if (a.seriesId !== b.seriesId) return (a.seriesId ?? '').localeCompare(b.seriesId ?? '');
+    const diff = numeroSaga(a.seriesOrder) - numeroSaga(b.seriesOrder);
+    return diff !== 0 ? diff : a.title.localeCompare(b.title);
+  });
+
   return res.json({
     id: author.id,
     nombre: author.name,
     photoUrl: author.photoUrl ?? '',
     biografia: author.biography ?? '',
-    libros: author.books.map((book) => ({
+    libros: librosOrdenados.map((book) => ({
       id: book.id,
       titulo: book.title,
       coverUrl: book.coverUrl ?? '',
