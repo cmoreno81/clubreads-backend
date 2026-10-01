@@ -631,6 +631,33 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         : left.nombre.localeCompare(right.nombre, 'es');
     });
 
+  // Aislado en try/catch: es cálculo derivado (no datos esenciales del
+  // perfil), así que si algo falla aquí no debe tirar abajo toda la
+  // carga del perfil — mejor un calendario sin lecturas en curso que un
+  // perfil que no carga.
+  let historicoMeses: ReturnType<typeof buildHistoricoMeses>;
+  try {
+    historicoMeses = buildHistoricoMeses(
+      historialTerminados,
+      biblioteca
+        .filter(
+          (item) =>
+            (item.status === ReadingStatus.READING ||
+              item.status === ReadingStatus.REREADING) &&
+            item.startedAt !== null,
+        )
+        .map((item) => ({
+          id: item.id,
+          bookId: item.bookId,
+          startedAt: item.startedAt,
+          book: { title: item.book.title, coverUrl: item.book.coverUrl },
+        })),
+    );
+  } catch (error) {
+    backgroundError('buildHistoricoMeses')(error);
+    historicoMeses = buildHistoricoMeses(historialTerminados);
+  }
+
   return {
     ok: true,
     userId: user.id,
@@ -663,22 +690,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
     pendientes,
     generosFavoritos,
     sagas,
-    historicoMeses: buildHistoricoMeses(
-      historialTerminados,
-      biblioteca
-        .filter(
-          (item) =>
-            (item.status === ReadingStatus.READING ||
-              item.status === ReadingStatus.REREADING) &&
-            item.startedAt !== null,
-        )
-        .map((item) => ({
-          id: item.id,
-          bookId: item.bookId,
-          startedAt: item.startedAt,
-          book: { title: item.book.title, coverUrl: item.book.coverUrl },
-        })),
-    ),
+    historicoMeses,
     favoritos: biblioteca
       .filter((item) => item.isFavorite)
       .map((item) => ({
