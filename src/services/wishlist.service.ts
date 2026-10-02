@@ -505,6 +505,31 @@ export async function getClubWishlist(userName: string) {
   });
   const recoveredItems = await Promise.all(allItems.map(recoverCatalogBook));
 
+  // Libros que la usuaria actual ya marcó como comprados: su ítem activo ya
+  // no está en allItems (se filtra por purchasedAt: null arriba), así que si
+  // otra persona del club todavía lo quiere, el grupo sigue apareciendo en la
+  // lista pero sin ella como miembro interesado. Sin esto, isInMyWishlist
+  // quedaría en false y el botón "Añadir a mi lista" volvería a aparecer
+  // para un libro que ya tiene.
+  const myPurchasedItems = user
+    ? await prisma.wishlistItem.findMany({
+        where: { userId: user.id, purchasedAt: { not: null } },
+        select: {
+          bookId: true,
+          title: true,
+          book: { select: { title: true } },
+        },
+      })
+    : [];
+  const myPurchasedKeys = new Set<string>();
+  for (const item of myPurchasedItems) {
+    if (item.bookId) myPurchasedKeys.add(item.bookId);
+    const rawTitle = item.title?.trim() || item.book?.title?.trim() || '';
+    if (rawTitle) {
+      myPurchasedKeys.add(normalizeForComparison(cleanText(rawTitle)));
+    }
+  }
+
   // Agrupar por libro (por bookId si existe, sino por title normalizado)
   type GroupKey = string;
   const groups = new Map<
@@ -553,7 +578,10 @@ export async function getClubWishlist(userName: string) {
         coverUrl,
         releaseDate: item.releaseDate,
         isUpcoming: item.releaseDate != null && item.releaseDate > new Date(),
-        isInMyWishlist: item.userId === user?.id,
+        isInMyWishlist:
+          item.userId === user?.id ||
+          (item.bookId != null && myPurchasedKeys.has(item.bookId)) ||
+          myPurchasedKeys.has(normalizeForComparison(title)),
         members: [
           {
             userId: item.userId,
@@ -567,7 +595,13 @@ export async function getClubWishlist(userName: string) {
     } else {
       if (!existing.author && author) existing.author = author;
       if (!existing.coverUrl && coverUrl) existing.coverUrl = coverUrl;
-      if (item.userId === user?.id) existing.isInMyWishlist = true;
+      if (
+        item.userId === user?.id ||
+        (item.bookId != null && myPurchasedKeys.has(item.bookId)) ||
+        myPurchasedKeys.has(normalizeForComparison(title))
+      ) {
+        existing.isInMyWishlist = true;
+      }
       existing.members.push({
         userId: item.userId,
         name: memberInfo.name,
