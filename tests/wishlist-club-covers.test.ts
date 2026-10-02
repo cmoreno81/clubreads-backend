@@ -46,10 +46,25 @@ test('la wishlist del club identifica los libros de la persona conectada', () =>
   assert.match(source, /const \{ club, user \} = await getCurrentClubContext/);
   assert.match(
     source,
-    /isInMyWishlist:\s*item\.userId === user\?\.id/,
+    /isInMyWishlist:\s*\n\s*item\.userId === user\?\.id \|\|/,
   );
   assert.match(
     source,
-    /item\.userId === user\?\.id\) existing\.isInMyWishlist = true/,
+    /item\.userId === user\?\.id \|\|[\s\S]*?\) \{\s*\n\s*existing\.isInMyWishlist = true;/,
+  );
+});
+
+test('la wishlist del club no vuelve a ofrecer libros que la usuaria ya compró', () => {
+  assert.match(
+    source,
+    /myPurchasedItems = user\s*\n\s*\? await prisma\.wishlistItem\.findMany\(\{\s*\n\s*where: \{ userId: user\.id, purchasedAt: \{ not: null \} \}/,
+  );
+  assert.match(
+    source,
+    /myPurchasedKeys\.has\(item\.bookId\)/,
+  );
+  assert.match(
+    source,
+    /myPurchasedKeys\.has\(normalizeForComparison\(title\)\)/,
   );
 });
