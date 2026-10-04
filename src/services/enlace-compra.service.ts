@@ -1,3 +1,4 @@
+import { StoreFormat } from '@prisma/client';
 import { prisma } from '../prisma.js';
 
 // Programa de afiliados "Casa del Libro ES" en Awin. Ninguno de los dos
@@ -23,11 +24,19 @@ function isbnEspanol(isbn: string | null | undefined): string | null {
     : null;
 }
 
+const FORMATOS: Record<string, StoreFormat> = {
+  papel: StoreFormat.PAPEL,
+  ebook: StoreFormat.EBOOK,
+  audio: StoreFormat.AUDIO,
+};
+
 export function construirEnlaceCasaDelLibro(params: {
   titulo: string;
   autora?: string | null;
   isbn?: string | null;
   referencia?: string;
+  /** Ficha exacta del libro en la tienda (BookStoreLink.url); si falta se busca. */
+  urlExacta?: string | null;
 }) {
   // Hay ISBN erróneos en el catálogo (p. ej. uno de "Corona de medianoche"
   // llevaba a otro libro), así que de momento se busca por título + autora,
@@ -41,7 +50,9 @@ export function construirEnlaceCasaDelLibro(params: {
     porIsbn ??
     `${params.titulo} ${params.autora ?? ''}`.trim().replace(/\s+/g, ' ');
 
-  const destino = `${CASA_DEL_LIBRO_BUSQUEDA}${encodeURIComponent(consulta)}`;
+  const destino =
+    params.urlExacta ??
+    `${CASA_DEL_LIBRO_BUSQUEDA}${encodeURIComponent(consulta)}`;
 
   const url = new URL('https://www.awin1.com/cread.php');
   url.searchParams.set('awinmid', AWIN_ADVERTISER_ID);
@@ -53,7 +64,7 @@ export function construirEnlaceCasaDelLibro(params: {
   return url.toString();
 }
 
-export async function getEnlaceCompra(bookId: string) {
+export async function getEnlaceCompra(bookId: string, formato = '') {
   const book = await prisma.book.findUnique({
     where: { id: bookId },
     select: {
@@ -61,12 +72,23 @@ export async function getEnlaceCompra(bookId: string) {
       isbn: true,
       deletedAt: true,
       author: { select: { name: true } },
+      storeLinks: {
+        where: { store: 'CASA_DEL_LIBRO' },
+        select: { format: true, url: true },
+      },
     },
   });
 
   if (!book || book.deletedAt) {
     return { ok: false, mensaje: 'Libro no encontrado' };
   }
+
+  // Ficha exacta: el formato pedido y, si no existe, papel; si el libro no
+  // está en la tienda con ese formato, se cae a la búsqueda por título y autora.
+  const pedido = FORMATOS[formato.toLowerCase()] ?? StoreFormat.PAPEL;
+  const exacta =
+    book.storeLinks.find((l) => l.format === pedido) ??
+    book.storeLinks.find((l) => l.format === StoreFormat.PAPEL);
 
   return {
     ok: true,
@@ -76,6 +98,7 @@ export async function getEnlaceCompra(bookId: string) {
       autora: book.author?.name,
       isbn: book.isbn,
       referencia: 'ficha-libro',
+      urlExacta: exacta?.url,
     }),
     aviso: AVISO_AFILIACION,
   };

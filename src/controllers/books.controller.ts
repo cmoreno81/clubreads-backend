@@ -316,7 +316,8 @@ export async function handleGetLibroPorId(req: Request, res: Response) {
 export async function handleGetEnlaceCompra(req: Request, res: Response) {
   const { getEnlaceCompra } = await import('../services/enlace-compra.service.js');
   const bookId = String(req.query.bookId || '').trim();
-  const data = await getEnlaceCompra(bookId);
+  const formato = String(req.query.formato || '').trim().toLowerCase();
+  const data = await getEnlaceCompra(bookId, formato);
   return res.json(data);
 }
 

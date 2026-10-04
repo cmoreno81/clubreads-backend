@@ -212,7 +212,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
 export const actionQuerySchemas: Record<string, z.ZodType> = {
   detalleReacciones: z.object({ action: z.literal('detalleReacciones'), targetType: z.enum(['COMMENT', 'PROGRESS']), targetId: identifierSchema }).passthrough(),
   libroPorId: z.object({ action: z.literal('libroPorId'), bookId: identifierSchema }).passthrough(),
-  enlaceCompra: z.object({ action: z.literal('enlaceCompra'), bookId: identifierSchema }).passthrough(),
+  enlaceCompra: z.object({ action: z.literal('enlaceCompra'), bookId: identifierSchema, formato: z.enum(['papel', 'ebook', 'audio']).optional() }).passthrough(),
   configuracionLectura: z.object({ action: z.literal('configuracionLectura'), libro: identifierSchema }).passthrough(),
   comentariosLectura: z.object({ action: z.literal('comentariosLectura'), libro: identifierSchema, capitulo: identifierSchema }).passthrough(),
   conversacionesLibro: z.object({ action: z.literal('conversacionesLibro'), libro: identifierSchema }).passthrough(),

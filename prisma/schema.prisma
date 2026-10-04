@@ -240,6 +240,8 @@ model Book {
 
   normalizedIsbn String?
 
+  storeLinks BookStoreLink[]
+
   /// Idioma de lectura (código ISO 639-1, ej. "es", "en"). Null si no se ha podido determinar.
   language String?
 
@@ -1731,4 +1733,44 @@ model ReadingBingoMark {
 
   @@id([userId, year, squareKey])
   @@index([userId, year])
+}
+
+enum StoreFormat {
+  PAPEL
+  EBOOK
+  AUDIO
+}
+
+/// Enlace exacto a la ficha de un libro en una tienda afiliada (hoy solo
+/// Casa del Libro vía Awin), obtenido cruzando el catálogo con el feed de la
+/// tienda. Si un libro no tiene fila para un formato, la app cae a la
+/// búsqueda por título y autora.
+model BookStoreLink {
+  id String @id @default(cuid())
+
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  store  String @default("CASA_DEL_LIBRO")
+  format StoreFormat
+
+  ean String?
+
+  /// merchant_deep_link del feed (URL de la ficha en la tienda).
+  url String
+
+  feedTitle  String?
+  feedAuthor String?
+
+  /// Similitud título/autora usada al cruzar (0..1).
+  confidence Float?
+
+  /// Disponibles / Stock / Preventa (los Agotados no se guardan).
+  stockStatus String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([bookId, store, format])
+  @@index([bookId])
 }
