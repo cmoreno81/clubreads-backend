@@ -357,10 +357,21 @@ async function getCompletedSeriesForUser(
 }
 
 export async function getAchievementsForUser(userName: string, callerUserId: string) {
-  const user = await prisma.user.findUnique({
+  let user = await prisma.user.findUnique({
     where: { name: userName.trim() },
     select: { id: true, name: true, clubMemberships: { select: { clubId: true } } },
   });
+  // La app guarda el nombre de usuaria en la sesión local y no lo vuelve a
+  // pedir en cada pantalla: tras un cambio de nombre, ese valor cacheado
+  // deja de encontrar a nadie. callerUserId viene siempre del token, nunca
+  // caduca, así que si el nombre no resuelve a nadie, probamos con quien
+  // realmente está preguntando antes de darla por "no encontrada".
+  if (!user) {
+    user = await prisma.user.findUnique({
+      where: { id: callerUserId },
+      select: { id: true, name: true, clubMemberships: { select: { clubId: true } } },
+    });
+  }
   if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
 
   // El perfil consultado debe compartir club con quien pregunta — si no,

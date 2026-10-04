@@ -108,11 +108,11 @@ export async function getPerfilUsuario(
     };
   }
 
-  const ownProfile = nombre === solicitante.trim();
+  let ownProfile = nombre === solicitante.trim();
   const club = ownProfile
     ? null
     : (await getCurrentClubContext(solicitante)).club;
-  const user = await prisma.user.findFirst({
+  let user = await prisma.user.findFirst({
     where: {
       name: nombre,
       ...(club
@@ -127,6 +127,31 @@ export async function getPerfilUsuario(
       },
     },
   });
+
+  // La app guarda el nombre de usuaria en la sesión local y no lo vuelve
+  // a pedir en cada pantalla; si cambia su nombre (Ajustes > cambiar
+  // nombre), ese valor cacheado queda obsoleto hasta que cierra sesión y
+  // vuelve a entrar, y deja de encontrar a nadie con el nombre antiguo.
+  // En vez de dejarla bloqueada con un "no se pudo conectar", si quien
+  // pregunta está autenticada y no se encontró a nadie con el nombre
+  // pedido, reintentamos con su nombre vigente — probablemente sea ella
+  // misma pidiendo su propio perfil con un nombre que ya no existe.
+  if (!user && !ownProfile && solicitante.trim()) {
+    const propio = await prisma.user.findUnique({
+      where: { name: solicitante.trim() },
+      include: {
+        _count: {
+          select: {
+            clubMemberships: { where: { club: { tipo: ClubType.SOCIAL } } },
+          },
+        },
+      },
+    });
+    if (propio) {
+      user = propio;
+      ownProfile = true;
+    }
+  }
 
   if (!user) {
     return {
@@ -631,6 +656,33 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
         : left.nombre.localeCompare(right.nombre, 'es');
     });
 
+  // Aislado en try/catch: es cálculo derivado (no datos esenciales del
+  // perfil), así que si algo falla aquí no debe tirar abajo toda la
+  // carga del perfil — mejor un calendario sin lecturas en curso que un
+  // perfil que no carga.
+  let historicoMeses: ReturnType<typeof buildHistoricoMeses>;
+  try {
+    historicoMeses = buildHistoricoMeses(
+      historialTerminados,
+      biblioteca
+        .filter(
+          (item) =>
+            (item.status === ReadingStatus.READING ||
+              item.status === ReadingStatus.REREADING) &&
+            item.startedAt !== null,
+        )
+        .map((item) => ({
+          id: item.id,
+          bookId: item.bookId,
+          startedAt: item.startedAt,
+          book: { title: item.book.title, coverUrl: item.book.coverUrl },
+        })),
+    );
+  } catch (error) {
+    backgroundError('buildHistoricoMeses')(error);
+    historicoMeses = buildHistoricoMeses(historialTerminados);
+  }
+
   return {
     ok: true,
     userId: user.id,
@@ -663,22 +715,7 @@ const valoresRating = Array.from(ultimaFinalizacionPorLibro.values())
     pendientes,
     generosFavoritos,
     sagas,
-    historicoMeses: buildHistoricoMeses(
-      historialTerminados,
-      biblioteca
-        .filter(
-          (item) =>
-            (item.status === ReadingStatus.READING ||
-              item.status === ReadingStatus.REREADING) &&
-            item.startedAt !== null,
-        )
-        .map((item) => ({
-          id: item.id,
-          bookId: item.bookId,
-          startedAt: item.startedAt,
-          book: { title: item.book.title, coverUrl: item.book.coverUrl },
-        })),
-    ),
+    historicoMeses,
     favoritos: biblioteca
       .filter((item) => item.isFavorite)
       .map((item) => ({
@@ -698,17 +735,29 @@ export async function getPerfilHistorialPage(
 ) {
   const nombre = usuario.trim();
   if (!nombre) return { items: [], nextCursor: null, hasMore: false };
-  const ownProfile = nombre === solicitante.trim();
+  let ownProfile = nombre === solicitante.trim();
   const club = ownProfile
     ? null
     : (await getCurrentClubContext(solicitante)).club;
-  const user = await prisma.user.findFirst({
+  let user = await prisma.user.findFirst({
     where: {
       name: nombre,
       ...(club ? { clubMemberships: { some: { clubId: club.id } } } : {}),
     },
     select: { id: true, profileVisibility: true },
   });
+  // Mismo respaldo que en getPerfilUsuario: nombre cacheado obsoleto tras
+  // un cambio de nombre → reintentar como "mi propio perfil" vigente.
+  if (!user && !ownProfile && solicitante.trim()) {
+    const propio = await prisma.user.findUnique({
+      where: { name: solicitante.trim() },
+      select: { id: true, profileVisibility: true },
+    });
+    if (propio) {
+      user = propio;
+      ownProfile = true;
+    }
+  }
   if (!user) return { items: [], nextCursor: null, hasMore: false };
   if (!ownProfile && user.profileVisibility === ProfileVisibility.PRIVADO) {
     return { items: [], nextCursor: null, hasMore: false };

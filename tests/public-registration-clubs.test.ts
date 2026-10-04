@@ -49,7 +49,7 @@ test('las bibliotecas se limitan a integrantes del club activo', () => {
 });
 
 test('el perfil propio es global y los perfiles ajenos respetan el club activo', () => {
-  assert.match(profile, /const ownProfile = nombre === solicitante\.trim\(\)/);
+  assert.match(profile, /let ownProfile = nombre === solicitante\.trim\(\)/);
   assert.match(profile, /const club = ownProfile[\s\S]*\? null/);
   assert.match(profile, /getCurrentClubContext\(solicitante\)/);
   assert.match(
