@@ -5,7 +5,7 @@ import { prisma } from '../prisma.js';
 // por entorno sin tocar código.
 const AWIN_ADVERTISER_ID = process.env.AWIN_CASA_DEL_LIBRO_MID ?? '21491';
 const AWIN_PUBLISHER_ID = process.env.AWIN_PUBLISHER_ID ?? '3109357';
-const CASA_DEL_LIBRO_BUSQUEDA = 'https://www.casadellibro.com/libros?q=';
+const CASA_DEL_LIBRO_BUSQUEDA = 'https://www.casadellibro.com/?query=';
 
 // Código de conducta de publicidad para influencers (2025): el contenido de
 // afiliación debe identificarse como publicidad, de forma visible.
