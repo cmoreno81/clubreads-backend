@@ -22,6 +22,7 @@ import { handleUsuarios } from '../controllers/users.controller.js';
 
 import {
   handleGetLibroPorId,
+  handleGetEnlaceCompra,
   handleGetSeriesVolumesForBook,
   handleLibros,
   handleLibrosGlobal,
@@ -644,6 +645,9 @@ export async function handleApi(
 
       case 'libroPorId':
         return handleGetLibroPorId(req, res);
+
+      case 'enlaceCompra':
+        return handleGetEnlaceCompra(req, res);
 
       case 'volumenesSaga':
         return handleGetSeriesVolumesForBook(req, res);
