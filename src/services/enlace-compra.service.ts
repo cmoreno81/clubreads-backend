@@ -81,40 +81,42 @@ const DESDE_LECTURA: Record<string, StoreFormat> = {
   AUDIOBOOK: StoreFormat.AUDIO,
 };
 
-export async function getEnlaceCompra(
-  bookId: string,
-  formato = '',
-  userId?: string,
+const SELECT_ENLACE = {
+  title: true,
+  isbn: true,
+  deletedAt: true,
+  author: { select: { name: true } },
+  storeLinks: {
+    where: { store: 'CASA_DEL_LIBRO' },
+    select: { format: true, url: true },
+  },
+  // Libros traídos de novedades/próximos lanzamientos: ya llevan la ficha
+  // exacta de Casa del Libro, aunque aún no estén en el feed.
+  sources: {
+    where: { sourceUrl: { contains: 'casadellibro.com/libro-' } },
+    select: { sourceUrl: true },
+    orderBy: { lastCheckedAt: 'desc' as const },
+    take: 1,
+  },
+} as const;
+
+type LibroEnlace = {
+  title: string;
+  isbn: string | null;
+  author: { name: string } | null;
+  storeLinks: { format: StoreFormat; url: string }[];
+  sources: { sourceUrl: string }[];
+};
+
+function resolverEnlace(
+  book: LibroEnlace,
+  pedido: StoreFormat | undefined,
+  lectura: string | null | undefined,
 ) {
-  const book = await prisma.book.findUnique({
-    where: { id: bookId },
-    select: {
-      title: true,
-      isbn: true,
-      deletedAt: true,
-      author: { select: { name: true } },
-      storeLinks: {
-        where: { store: 'CASA_DEL_LIBRO' },
-        select: { format: true, url: true },
-      },
-    },
-  });
-
-  if (!book || book.deletedAt) {
-    return { ok: false, mensaje: 'Libro no encontrado' };
-  }
-
   // Formato principal: el pedido, o el que usa la usuaria en su biblioteca
   // (si ya tiene el libro) y, si no, papel.
-  let principal: StoreFormat | undefined = FORMATOS[formato.toLowerCase()];
-  if (!principal && userId) {
-    const lib = await prisma.library.findFirst({
-      where: { userId, bookId },
-      select: { readingFormat: true },
-    });
-    principal = lib?.readingFormat ? DESDE_LECTURA[lib.readingFormat] : undefined;
-  }
-  principal ??= StoreFormat.PAPEL;
+  const principal =
+    pedido ?? (lectura ? DESDE_LECTURA[lectura] : undefined) ?? StoreFormat.PAPEL;
 
   const enlace = (urlExacta?: string | null) =>
     construirEnlaceCasaDelLibro({
@@ -126,6 +128,11 @@ export async function getEnlaceCompra(
     });
 
   const porFormato = new Map(book.storeLinks.map((l) => [l.format, l.url]));
+  const deNovedades = book.sources[0]?.sourceUrl;
+  if (deNovedades && !porFormato.has(StoreFormat.PAPEL)) {
+    porFormato.set(StoreFormat.PAPEL, deNovedades);
+  }
+
   // Si el formato principal no está en la tienda se cae a papel, luego al
   // primero disponible y, si no hay ninguno, a la búsqueda por título y autora.
   const disponible = ORDEN.filter((f) => porFormato.has(f));
@@ -134,18 +141,67 @@ export async function getEnlaceCompra(
     : porFormato.has(StoreFormat.PAPEL)
       ? StoreFormat.PAPEL
       : disponible[0];
-  const exacta = elegido ? porFormato.get(elegido) : null;
 
   return {
-    ok: true,
     tienda: 'Casa del Libro',
-    url: enlace(exacta),
+    url: enlace(elegido ? porFormato.get(elegido) : null),
+    exacto: Boolean(elegido),
     formato: (elegido ?? StoreFormat.PAPEL).toLowerCase(),
     formatos: disponible.map((f) => ({
       formato: f.toLowerCase(),
       etiqueta: ETIQUETA[f],
       url: enlace(porFormato.get(f)),
     })),
+  };
+}
+
+export async function getEnlaceCompra(
+  bookId: string,
+  formato = '',
+  userId?: string,
+) {
+  const book = await prisma.book.findUnique({
+    where: { id: bookId },
+    select: SELECT_ENLACE,
+  });
+
+  if (!book || book.deletedAt) {
+    return { ok: false, mensaje: 'Libro no encontrado' };
+  }
+
+  const lib = userId
+    ? await prisma.library.findFirst({
+        where: { userId, bookId },
+        select: { readingFormat: true },
+      })
+    : null;
+
+  return {
+    ok: true,
+    ...resolverEnlace(book, FORMATOS[formato.toLowerCase()], lib?.readingFormat),
     aviso: AVISO_AFILIACION,
   };
+}
+
+/// Enlaces de varios libros de una vez (página "Tu próxima compra").
+export async function getEnlacesCompraLote(bookIds: string[], userId?: string) {
+  const ids = [...new Set(bookIds.filter(Boolean))].slice(0, 80);
+  const [books, libs] = await Promise.all([
+    prisma.book.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true, ...SELECT_ENLACE },
+    }),
+    userId
+      ? prisma.library.findMany({
+          where: { userId, bookId: { in: ids } },
+          select: { bookId: true, readingFormat: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const lectura = new Map(libs.map((l) => [l.bookId, l.readingFormat]));
+  const enlaces: Record<string, ReturnType<typeof resolverEnlace>> = {};
+  for (const b of books) {
+    enlaces[b.id] = resolverEnlace(b, undefined, lectura.get(b.id));
+  }
+  return { ok: true, enlaces, aviso: AVISO_AFILIACION };
 }

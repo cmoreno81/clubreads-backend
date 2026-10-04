@@ -321,6 +321,16 @@ export async function handleGetEnlaceCompra(req: Request, res: Response) {
   return res.json(data);
 }
 
+export async function handleGetEnlacesCompraLote(req: Request, res: Response) {
+  const { getEnlacesCompraLote } = await import('../services/enlace-compra.service.js');
+  const bookIds = String(req.query.bookIds || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const data = await getEnlacesCompraLote(bookIds, req.auth?.userId);
+  return res.json(data);
+}
+
 export async function handleGetSeriesVolumesForBook(req: Request, res: Response) {
   const { getSeriesVolumesForBook } = await import('../services/series-volumes.service.js');
   const bookId = String(req.query.bookId || req.query.id || '').trim();
