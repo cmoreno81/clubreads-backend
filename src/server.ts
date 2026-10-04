@@ -118,6 +118,7 @@ export function startServer() {
   const server = app.listen(port, () => {
     logger.info({ event: 'server_started', port }, 'server started');
     void installUpcomingReleaseSync();
+    void installStoreLinkSync();
   });
   installGracefulShutdown(server);
   return server;
@@ -153,3 +154,40 @@ const entrypoint = process.argv[1]
   ? pathToFileURL(process.argv[1]).href
   : '';
 if (import.meta.url === entrypoint) startServer();
+
+// Enlaces de compra (Casa del Libro vía Awin): una pasada al día, de madrugada
+// (hora de Madrid), solo si AWIN_FEED_URL está configurada. No se lanza al
+// arrancar para no descargar el feed en cada despliegue.
+async function installStoreLinkSync() {
+  const { hasStoreFeedConfigured, runStoreLinkSync } = await import(
+    './jobs/sync-store-links.job.js'
+  );
+  if (!hasStoreFeedConfigured()) return;
+
+  const STORE_SYNC_HOUR = 4;
+  let lastRunDay = '';
+  const tick = async () => {
+    const now = new Date();
+    const hour = Number(
+      new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        hourCycle: 'h23',
+        timeZone: 'Europe/Madrid',
+      }).format(now),
+    );
+    const day = now.toISOString().slice(0, 10);
+    if (hour !== STORE_SYNC_HOUR || day === lastRunDay) return;
+    lastRunDay = day;
+    try {
+      const summary = await runStoreLinkSync();
+      logger.info({ event: 'store_links_synced', ...summary }, 'store links synced');
+    } catch (error) {
+      logger.error(
+        { event: 'store_links_sync_failed', error },
+        'store links sync failed',
+      );
+    }
+  };
+  const interval = setInterval(() => void tick(), 15 * 60 * 1000);
+  interval.unref();
+}
