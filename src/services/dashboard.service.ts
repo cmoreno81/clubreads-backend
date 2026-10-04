@@ -523,6 +523,7 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
 
     lecturaActual: {
       ok: Boolean(ganador),
+      bookId: ganador ? winnerBookId : '',
       titulo: ganador || clubvision.mensaje || '',
       comentarios: comentariosLecturaActual,
       likes: likesLecturaActual,

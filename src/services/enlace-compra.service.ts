@@ -192,12 +192,15 @@ export async function getEnlaceCompra(
   const lib = userId
     ? await prisma.library.findFirst({
         where: { userId, bookId },
-        select: { readingFormat: true, personalLanguage: true },
+        select: { readingFormat: true, personalLanguage: true, status: true },
       })
     : null;
 
   return {
     ok: true,
+    // La lectora ya ha empezado o terminado el libro (no solo lo tiene
+    // pendiente): no hace falta ofrecerle comprarlo.
+    yaEmpezado: Boolean(lib && lib.status !== 'PENDING'),
     ...resolverEnlace(book, FORMATOS[formato.toLowerCase()], lib),
     aviso: AVISO_AFILIACION,
   };
