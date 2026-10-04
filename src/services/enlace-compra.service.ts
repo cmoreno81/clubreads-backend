@@ -64,7 +64,28 @@ export function construirEnlaceCasaDelLibro(params: {
   return url.toString();
 }
 
-export async function getEnlaceCompra(bookId: string, formato = '') {
+const ETIQUETA: Record<StoreFormat, string> = {
+  PAPEL: 'Papel',
+  EBOOK: 'Ebook',
+  AUDIO: 'Audiolibro',
+};
+const ORDEN: StoreFormat[] = [
+  StoreFormat.PAPEL,
+  StoreFormat.EBOOK,
+  StoreFormat.AUDIO,
+];
+// Formato de lectura de la usuaria -> formato de la tienda.
+const DESDE_LECTURA: Record<string, StoreFormat> = {
+  PHYSICAL: StoreFormat.PAPEL,
+  DIGITAL: StoreFormat.EBOOK,
+  AUDIOBOOK: StoreFormat.AUDIO,
+};
+
+export async function getEnlaceCompra(
+  bookId: string,
+  formato = '',
+  userId?: string,
+) {
   const book = await prisma.book.findUnique({
     where: { id: bookId },
     select: {
@@ -83,23 +104,48 @@ export async function getEnlaceCompra(bookId: string, formato = '') {
     return { ok: false, mensaje: 'Libro no encontrado' };
   }
 
-  // Ficha exacta: el formato pedido y, si no existe, papel; si el libro no
-  // está en la tienda con ese formato, se cae a la búsqueda por título y autora.
-  const pedido = FORMATOS[formato.toLowerCase()] ?? StoreFormat.PAPEL;
-  const exacta =
-    book.storeLinks.find((l) => l.format === pedido) ??
-    book.storeLinks.find((l) => l.format === StoreFormat.PAPEL);
+  // Formato principal: el pedido, o el que usa la usuaria en su biblioteca
+  // (si ya tiene el libro) y, si no, papel.
+  let principal: StoreFormat | undefined = FORMATOS[formato.toLowerCase()];
+  if (!principal && userId) {
+    const lib = await prisma.library.findFirst({
+      where: { userId, bookId },
+      select: { readingFormat: true },
+    });
+    principal = lib?.readingFormat ? DESDE_LECTURA[lib.readingFormat] : undefined;
+  }
+  principal ??= StoreFormat.PAPEL;
 
-  return {
-    ok: true,
-    tienda: 'Casa del Libro',
-    url: construirEnlaceCasaDelLibro({
+  const enlace = (urlExacta?: string | null) =>
+    construirEnlaceCasaDelLibro({
       titulo: book.title,
       autora: book.author?.name,
       isbn: book.isbn,
       referencia: 'ficha-libro',
-      urlExacta: exacta?.url,
-    }),
+      urlExacta,
+    });
+
+  const porFormato = new Map(book.storeLinks.map((l) => [l.format, l.url]));
+  // Si el formato principal no está en la tienda se cae a papel, luego al
+  // primero disponible y, si no hay ninguno, a la búsqueda por título y autora.
+  const disponible = ORDEN.filter((f) => porFormato.has(f));
+  const elegido = porFormato.has(principal)
+    ? principal
+    : porFormato.has(StoreFormat.PAPEL)
+      ? StoreFormat.PAPEL
+      : disponible[0];
+  const exacta = elegido ? porFormato.get(elegido) : null;
+
+  return {
+    ok: true,
+    tienda: 'Casa del Libro',
+    url: enlace(exacta),
+    formato: (elegido ?? StoreFormat.PAPEL).toLowerCase(),
+    formatos: disponible.map((f) => ({
+      formato: f.toLowerCase(),
+      etiqueta: ETIQUETA[f],
+      url: enlace(porFormato.get(f)),
+    })),
     aviso: AVISO_AFILIACION,
   };
 }

@@ -317,7 +317,7 @@ export async function handleGetEnlaceCompra(req: Request, res: Response) {
   const { getEnlaceCompra } = await import('../services/enlace-compra.service.js');
   const bookId = String(req.query.bookId || '').trim();
   const formato = String(req.query.formato || '').trim().toLowerCase();
-  const data = await getEnlaceCompra(bookId, formato);
+  const data = await getEnlaceCompra(bookId, formato, req.auth?.userId);
   return res.json(data);
 }
 
