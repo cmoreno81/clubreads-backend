@@ -1754,6 +1754,10 @@ model BookStoreLink {
   store  String @default("CASA_DEL_LIBRO")
   format StoreFormat
 
+  /// Idioma de la edición (ISO 639-1). Por defecto se ofrece "es"; solo se
+  /// usa otro si la lectora tiene el libro en ese idioma.
+  language String @default("es")
+
   ean String?
 
   /// merchant_deep_link del feed (URL de la ficha en la tienda).
@@ -1771,6 +1775,6 @@ model BookStoreLink {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([bookId, store, format])
+  @@unique([bookId, store, format, language])
   @@index([bookId])
 }

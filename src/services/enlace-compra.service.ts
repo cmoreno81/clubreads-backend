@@ -84,11 +84,12 @@ const DESDE_LECTURA: Record<string, StoreFormat> = {
 const SELECT_ENLACE = {
   title: true,
   isbn: true,
+  language: true,
   deletedAt: true,
   author: { select: { name: true } },
   storeLinks: {
     where: { store: 'CASA_DEL_LIBRO' },
-    select: { format: true, url: true },
+    select: { format: true, url: true, language: true },
   },
   // Libros traídos de novedades/próximos lanzamientos: ya llevan la ficha
   // exacta de Casa del Libro, aunque aún no estén en el feed.
@@ -103,20 +104,36 @@ const SELECT_ENLACE = {
 type LibroEnlace = {
   title: string;
   isbn: string | null;
+  language: string | null;
   author: { name: string } | null;
-  storeLinks: { format: StoreFormat; url: string }[];
+  storeLinks: { format: StoreFormat; url: string; language: string }[];
   sources: { sourceUrl: string }[];
 };
+
+type LecturaUsuario = {
+  readingFormat: string | null;
+  personalLanguage: string | null;
+} | null;
+
+// Siempre se ofrece la edición en español, salvo que la usuaria tenga el
+// libro en otro idioma (el suyo propio o, si no lo fijó, el del libro).
+function idiomaDeseado(book: LibroEnlace, lectura: LecturaUsuario | undefined) {
+  if (!lectura) return 'es';
+  return (lectura.personalLanguage ?? book.language ?? 'es').toLowerCase();
+}
 
 function resolverEnlace(
   book: LibroEnlace,
   pedido: StoreFormat | undefined,
-  lectura: string | null | undefined,
+  lectura: LecturaUsuario | undefined,
 ) {
+  const idioma = idiomaDeseado(book, lectura);
   // Formato principal: el pedido, o el que usa la usuaria en su biblioteca
   // (si ya tiene el libro) y, si no, papel.
   const principal =
-    pedido ?? (lectura ? DESDE_LECTURA[lectura] : undefined) ?? StoreFormat.PAPEL;
+    pedido ??
+    (lectura?.readingFormat ? DESDE_LECTURA[lectura.readingFormat] : undefined) ??
+    StoreFormat.PAPEL;
 
   const enlace = (urlExacta?: string | null) =>
     construirEnlaceCasaDelLibro({
@@ -127,9 +144,12 @@ function resolverEnlace(
       urlExacta,
     });
 
-  const porFormato = new Map(book.storeLinks.map((l) => [l.format, l.url]));
+  const porFormato = new Map(
+    book.storeLinks.filter((l) => l.language === idioma).map((l) => [l.format, l.url]),
+  );
+  // Las fichas de novedades son ediciones en español.
   const deNovedades = book.sources[0]?.sourceUrl;
-  if (deNovedades && !porFormato.has(StoreFormat.PAPEL)) {
+  if (idioma === 'es' && deNovedades && !porFormato.has(StoreFormat.PAPEL)) {
     porFormato.set(StoreFormat.PAPEL, deNovedades);
   }
 
@@ -172,13 +192,13 @@ export async function getEnlaceCompra(
   const lib = userId
     ? await prisma.library.findFirst({
         where: { userId, bookId },
-        select: { readingFormat: true },
+        select: { readingFormat: true, personalLanguage: true },
       })
     : null;
 
   return {
     ok: true,
-    ...resolverEnlace(book, FORMATOS[formato.toLowerCase()], lib?.readingFormat),
+    ...resolverEnlace(book, FORMATOS[formato.toLowerCase()], lib),
     aviso: AVISO_AFILIACION,
   };
 }
@@ -194,14 +214,14 @@ export async function getEnlacesCompraLote(bookIds: string[], userId?: string) {
     userId
       ? prisma.library.findMany({
           where: { userId, bookId: { in: ids } },
-          select: { bookId: true, readingFormat: true },
+          select: { bookId: true, readingFormat: true, personalLanguage: true },
         })
       : Promise.resolve([]),
   ]);
-  const lectura = new Map(libs.map((l) => [l.bookId, l.readingFormat]));
+  const lectura = new Map(libs.map((l) => [l.bookId, l]));
   const enlaces: Record<string, ReturnType<typeof resolverEnlace>> = {};
   for (const b of books) {
-    enlaces[b.id] = resolverEnlace(b, undefined, lectura.get(b.id));
+    enlaces[b.id] = resolverEnlace(b, undefined, lectura.get(b.id) ?? null);
   }
   return { ok: true, enlaces, aviso: AVISO_AFILIACION };
 }
