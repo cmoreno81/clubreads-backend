@@ -29,8 +29,16 @@ export function construirEnlaceCasaDelLibro(params: {
   isbn?: string | null;
   referencia?: string;
 }) {
+  // Hay ISBN erróneos en el catálogo (p. ej. uno de "Corona de medianoche"
+  // llevaba a otro libro), así que de momento se busca por título + autora,
+  // que no puede mandar a un libro equivocado. Cuando los ISBN estén
+  // validados contra el feed de Casa del Libro, activar AWIN_BUSCAR_POR_ISBN.
+  const porIsbn =
+    process.env.AWIN_BUSCAR_POR_ISBN === 'true'
+      ? isbnEspanol(params.isbn)
+      : null;
   const consulta =
-    isbnEspanol(params.isbn) ??
+    porIsbn ??
     `${params.titulo} ${params.autora ?? ''}`.trim().replace(/\s+/g, ' ');
 
   const destino = `${CASA_DEL_LIBRO_BUSQUEDA}${encodeURIComponent(consulta)}`;
