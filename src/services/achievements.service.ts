@@ -28,6 +28,8 @@ interface AchievementData {
   totalPages?: number;
   genreCounts?: Map<string, number>;
   booksThisMonth?: number;
+  /// Más libros terminados en un mismo mes natural del periodo evaluado.
+  booksBestMonth?: number;
   booksThisYear?: number;
   abandonedBooks?: number;
   bingoLineas?: number;
@@ -88,6 +90,35 @@ export function buildAchievementDefinitions(): AchievementDefinition[] {
     { id: 'bingo-linea', key: 'bingo-linea', title: 'Línea de bingo', description: 'Completa una línea del bingo lector.', icon: '🎯', rarity: 'rare', target: 1, category: 'bingo' },
     { id: 'bingo-completo', key: 'bingo-completo', title: 'Bingo completo', description: 'Completa las 25 casillas del bingo lector.', icon: '🏆', rarity: 'legendary', target: 25, category: 'bingo' },
   ];
+}
+
+/// Fecha en la que se alcanzó por primera vez el objetivo dentro de un mismo
+/// mes natural (la fecha del libro que completó la cuenta).
+export function getMonthlyUnlockDate(dates: (Date | null)[], target: number): Date | null {
+  const byMonth = new Map<string, Date[]>();
+  for (const d of dates) {
+    if (!d) continue;
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    byMonth.set(key, [...(byMonth.get(key) ?? []), d]);
+  }
+  let first: Date | null = null;
+  for (const list of byMonth.values()) {
+    if (list.length < target) continue;
+    const reached = list.sort((a, b) => a.getTime() - b.getTime())[target - 1]!;
+    if (!first || reached < first) first = reached;
+  }
+  return first;
+}
+
+/// Máximo de libros terminados en un mismo mes natural.
+export function bestMonthCount(dates: (Date | null)[]): number {
+  const byMonth = new Map<string, number>();
+  for (const d of dates) {
+    if (!d) continue;
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    byMonth.set(key, (byMonth.get(key) ?? 0) + 1);
+  }
+  return Math.max(0, ...byMonth.values());
 }
 
 function getUnlockDate(dates: Array<Date | null>, target: number): Date | null {
@@ -160,6 +191,7 @@ export function buildAchievementState(
   const clubvisionVotes = data.clubvisionVotes ?? 0;
   const totalPages = data.totalPages ?? 0;
   const booksThisMonth = data.booksThisMonth ?? 0;
+  const booksBestMonth = data.booksBestMonth ?? booksThisMonth;
   const booksThisYear = data.booksThisYear ?? 0;
   return definitions.map((def) => {
     let progress = 0;
@@ -242,18 +274,12 @@ export function buildAchievementState(
 
       case 'tres-en-mes':
       case 'cinco-en-mes':
-        progress = booksThisMonth;
+        // "X libros en un mes": cuenta el mejor mes, no solo el actual. Con el
+        // mes en curso el logro se perdía (y la sincronización lo revocaba)
+        // en cuanto empezaba el mes siguiente.
+        progress = booksBestMonth;
         unlockedAt = progress >= def.target
-          ? getCountUnlockDate(
-              completedBooks
-                .filter(b => {
-                  if (!b.finishedAt) return false;
-                  const now = new Date();
-                  return b.finishedAt >= new Date(now.getFullYear(), now.getMonth(), 1);
-                })
-                .map(b => b.finishedAt),
-              def.target,
-            )
+          ? getMonthlyUnlockDate(completedBooks.map(b => b.finishedAt), def.target)
           : null;
         break;
 
@@ -425,6 +451,7 @@ const completedSeries = await getCompletedSeriesForUser(user.id, completedBooks)
     b => b.finishedAt && b.finishedAt >= monthStart,
   ).length;
   const booksThisYear = completedBooks.length;
+  const booksBestMonth = bestMonthCount(completedBooks.map(b => b.finishedAt));
 
   const bingo = await getBingoLector(user.id, now.getFullYear());
   const bingoMarcadas = bingo.marcadas.length;
@@ -434,7 +461,7 @@ const completedSeries = await getCompletedSeriesForUser(user.id, completedBooks)
   const achievements = buildAchievementState(definitions, {
     completedBooks, completedSeries, reviews,
     comments, clubvisionVotes, totalPages,
-    genreCounts, booksThisMonth, booksThisYear,
+    genreCounts, booksThisMonth, booksBestMonth, booksThisYear,
     abandonedBooks: 0,
     bingoLineas, bingoMarcadas,
   });
@@ -462,7 +489,12 @@ export async function syncAchievementsForUser(userId: string, userName: string, 
     await prisma.achievementUnlock.create({
       data: { userId, achievementId: ach.id },
     });
-    newUnlocks.push(ach);
+    // Solo se avisa al club de logros recién conseguidos: uno que se
+    // reconoce con retraso (p. ej. al corregir cómo se calcula) se guarda
+    // sin notificar, para no llenar el club de avisos de meses pasados.
+    const reciente = !ach.unlockedAt
+      || Date.now() - ach.unlockedAt.getTime() < 3 * 24 * 60 * 60 * 1000;
+    if (reciente) newUnlocks.push(ach);
   }
 
   // Revocar logros persistidos que ya no correspondan — p. ej. al corregir

@@ -53,3 +53,41 @@ test('métricas ausentes y valores cero se interpretan defensivamente como cero'
       progress === 0 && unlocked === false && unlockedAt === null));
   }
 });
+
+test('"10 libros en un mes" cuenta el mejor mes, no solo el mes en curso', () => {
+  const definitions = buildAchievementDefinitions();
+  // Diez libros terminados a lo largo de marzo y ninguno en el mes en curso.
+  const completedBooks = Array.from({ length: 11 }, (_, i) => ({
+    bookId: `b${i}`,
+    finishedAt: new Date(2026, 2, i + 1, 12),
+  }));
+  const results = buildAchievementState(definitions, {
+    completedBooks,
+    booksThisMonth: 0,
+    booksBestMonth: 11,
+    booksThisYear: 11,
+  });
+  const byKey = new Map(results.map((result) => [result.key, result]));
+  assert.equal(byKey.get('cinco-en-mes')?.progress, 11);
+  assert.equal(byKey.get('cinco-en-mes')?.unlocked, true);
+  // Se desbloquea el día del décimo libro, no el del undécimo.
+  assert.equal(byKey.get('cinco-en-mes')?.unlockedAt?.getDate(), 10);
+  assert.equal(byKey.get('tres-en-mes')?.unlocked, true);
+  assert.equal(byKey.get('tres-en-mes')?.unlockedAt?.getDate(), 5);
+});
+
+test('"10 libros en un mes" no se desbloquea repartiendo los libros en meses distintos', () => {
+  const definitions = buildAchievementDefinitions();
+  const completedBooks = Array.from({ length: 12 }, (_, i) => ({
+    bookId: `b${i}`,
+    finishedAt: new Date(2026, i, 15),
+  }));
+  const results = buildAchievementState(definitions, {
+    completedBooks,
+    booksBestMonth: 1,
+    booksThisYear: 12,
+  });
+  const byKey = new Map(results.map((result) => [result.key, result]));
+  assert.equal(byKey.get('cinco-en-mes')?.unlocked, false);
+  assert.equal(byKey.get('tres-en-mes')?.unlocked, false);
+});
