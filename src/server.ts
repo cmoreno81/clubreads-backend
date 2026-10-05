@@ -159,7 +159,7 @@ if (import.meta.url === entrypoint) startServer();
 // (hora de Madrid), solo si AWIN_FEED_URL está configurada. No se lanza al
 // arrancar para no descargar el feed en cada despliegue.
 async function installStoreLinkSync() {
-  const { hasStoreFeedConfigured, runStoreLinkSync } = await import(
+  const { hasStoreFeedConfigured, runStoreLinkNightly } = await import(
     './jobs/sync-store-links.job.js'
   );
   if (!hasStoreFeedConfigured()) return;
@@ -179,7 +179,7 @@ async function installStoreLinkSync() {
     if (hour !== STORE_SYNC_HOUR || day === lastRunDay) return;
     lastRunDay = day;
     try {
-      const summary = await runStoreLinkSync();
+      const summary = await runStoreLinkNightly();
       logger.info({ event: 'store_links_synced', ...summary }, 'store links synced');
     } catch (error) {
       logger.error(

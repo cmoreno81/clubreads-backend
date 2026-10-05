@@ -350,13 +350,18 @@ export async function syncStoreLinks(
     } else if (
       current.url !== candidate.url ||
       current.stockStatus !== candidate.stockStatus ||
-      current.ean !== candidate.ean
+      current.ean !== candidate.ean ||
+      current.source !== 'FEED'
     ) {
       updated++;
       if (!dryRun) {
         await prisma.bookStoreLink.update({
           where: { id: current.id },
           data: {
+            // El feed manda sobre lo leído de la ficha. Si la ficha de papel
+            // cambia, se vuelve a mirar qué otros formatos enlaza.
+            source: 'FEED',
+            ...(current.url !== candidate.url ? { pageCheckedAt: null } : {}),
             url: candidate.url,
             ean: candidate.ean,
             feedTitle: candidate.feedTitle,
@@ -372,8 +377,10 @@ export async function syncStoreLinks(
   // Enlaces que ya no salen en el feed (ficha retirada, agotado, libro
   // fusionado…): solo se borran si el feed se leyó entero.
   const canPrune = matcher.rows >= MIN_ROWS_TO_PRUNE;
+  // Los enlaces leídos de la ficha (source PAGE) los gestiona
+  // store-link-page.service.ts: aquí no se tocan.
   const stale = canPrune
-    ? existing.filter((e) => !matcher.best.has(key(e)))
+    ? existing.filter((e) => e.source === 'FEED' && !matcher.best.has(key(e)))
     : [];
   if (!dryRun && stale.length > 0) {
     await prisma.bookStoreLink.deleteMany({

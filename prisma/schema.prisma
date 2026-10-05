@@ -1758,6 +1758,14 @@ model BookStoreLink {
   /// usa otro si la lectora tiene el libro en ese idioma.
   language String @default("es")
 
+  /// De dónde sale el enlace: "FEED" (feed de Awin) o "PAGE" (leído de la
+  /// ficha de la tienda, para formatos que el feed no trae, como el ebook).
+  source String @default("FEED")
+
+  /// Solo en las filas de papel: última vez que se abrió su ficha para buscar
+  /// el resto de formatos.
+  pageCheckedAt DateTime?
+
   ean String?
 
   /// merchant_deep_link del feed (URL de la ficha en la tienda).
