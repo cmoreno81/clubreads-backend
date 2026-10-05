@@ -4,6 +4,7 @@ import { canonicalBookTitle } from './catalog.service.js';
 import { getCurrentClubContext } from './club-context.service.js';
 import { cleanText, cleanTextNullable, normalizeForComparison } from '../utils/text.js';
 import { logger } from '../logging/logger.js';
+import { normalizeBookIsbn } from './book-identity.service.js';
 
 // canonicalBookTitle() no toca la puntuación (se comparte con
 // importTitleVariants(), que sí necesita comas/dos puntos intactos para
@@ -84,6 +85,81 @@ function formatItem(item: {
     isUpcoming: item.releaseDate != null && item.releaseDate > new Date(),
     isInLibrary: options.isInLibrary ?? false,
   };
+}
+
+/// Un deseo escrito a mano nace sin libro del catálogo (bookId vacío) y, sin
+/// él, no puede tener botones de compra. Si el ISBN, o el título + la autora,
+/// coinciden con un libro del catálogo, se enlaza (y se guarda para no repetir
+/// la búsqueda). Si hay duda —autora distinta, varias fichas— no se toca.
+async function linkCatalogBook<
+  T extends {
+    id?: string;
+    title: string;
+    author: string | null;
+    isbn?: string | null;
+    bookId: string | null;
+    book?: {
+      title: string;
+      coverUrl: string | null;
+      author: { name: string } | null;
+    } | null;
+  },
+>(item: T): Promise<T> {
+  if (item.bookId || !item.id) return item;
+  const select = {
+    id: true,
+    title: true,
+    coverUrl: true,
+    author: { select: { name: true } },
+  } as const;
+
+  let match: {
+    id: string;
+    title: string;
+    coverUrl: string | null;
+    author: { name: string } | null;
+  } | null = null;
+
+  const isbn = normalizeBookIsbn(item.isbn);
+  if (isbn) {
+    match = await prisma.book.findFirst({
+      where: { deletedAt: null, normalizedIsbn: isbn },
+      select,
+    });
+  }
+  if (!match) {
+    const wanted = titleKeyForRecovery(item.title);
+    if (!wanted) return item;
+    const candidates = await prisma.book.findMany({
+      where: {
+        deletedAt: null,
+        title: { equals: item.title.trim(), mode: 'insensitive' },
+      },
+      select,
+      take: 10,
+    });
+    const author = item.author ? normalizeForComparison(item.author) : null;
+    const exact = candidates.filter(
+      (c) =>
+        titleKeyForRecovery(c.title) === wanted &&
+        (!author ||
+          normalizeForComparison(c.author?.name ?? '') === author),
+    );
+    // Solo si hay una única ficha posible.
+    if (exact.length === 1) match = exact[0]!;
+  }
+  if (!match) return item;
+
+  try {
+    await prisma.wishlistItem.update({
+      where: { id: item.id },
+      data: { bookId: match.id },
+    });
+  } catch (error) {
+    logger.warn(error, 'No se pudo enlazar el deseo con el catálogo');
+    return item;
+  }
+  return { ...item, bookId: match.id, book: item.book ?? match };
 }
 
 async function recoverCatalogBook<
@@ -206,7 +282,9 @@ export async function getWishlist(userName: string) {
   });
   const libraryBookIds = new Set(libraryEntries.map((entry) => entry.bookId));
   // Separar lista activa (pendientes de comprar) de historial de compras
-  const recoveredItems = await Promise.all(allItems.map(recoverCatalogBook));
+  const recoveredItems = await Promise.all(
+    allItems.map(async (item) => recoverCatalogBook(await linkCatalogBook(item))),
+  );
   const pending = recoveredItems.filter((i) => i.purchasedAt === null);
   const purchased = recoveredItems
     .filter((i) => i.purchasedAt !== null)
