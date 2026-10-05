@@ -84,7 +84,9 @@ export async function enrichStoreLinksFromPages(
   const fetcher = options.fetcher ?? defaultFetcher;
   const recheckBefore = new Date(Date.now() - RECHECK_DAYS * 24 * 60 * 60 * 1000);
 
-  // Fichas de papel sin revisar o revisadas hace tiempo; primero las nunca revisadas.
+  // Fichas de papel sin revisar o revisadas hace tiempo. Primero las nunca
+  // revisadas y, entre ellas, las de los libros creados más recientemente
+  // (los que acaba de añadir alguien), antes que la cola de libros antiguos.
   const papers = await prisma.bookStoreLink.findMany({
     where: {
       store: STORE,
@@ -93,7 +95,10 @@ export async function enrichStoreLinksFromPages(
       book: { deletedAt: null },
       OR: [{ pageCheckedAt: null }, { pageCheckedAt: { lt: recheckBefore } }],
     },
-    orderBy: [{ pageCheckedAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'asc' }],
+    orderBy: [
+      { pageCheckedAt: { sort: 'asc', nulls: 'first' } },
+      { book: { createdAt: 'desc' } },
+    ],
     take: limit,
   });
 
