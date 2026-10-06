@@ -25,7 +25,7 @@ test('clubFilter ya restringe a miembros del club cuando global es false', () =>
 test('en modo global se precalcula el set de compañeras de club (cualquier club compartido)', () => {
   assert.match(
     service,
-    /const clubmateIds = global \? await getClubmateIds\(user\.id\) : null;/,
+    /const clubmateClubNames = global\s*\n?\s*\? await getClubmateClubNames\(user\.id\)\s*\n?\s*: null;/,
   );
 });
 
@@ -49,6 +49,21 @@ test('en modo club (global=false), mismoClub no depende del club activo actual',
 test('en modo global, mismoClub también es true si la usuaria tiene el perfil público', () => {
   assert.match(
     service,
-    /const esMismoClubOPublico = \(item: \{ userId: string; user: \{ profileVisibility: ProfileVisibility \} \}\) =>\s*\n\s*Boolean\(clubmateIds\?\.has\(item\.userId\)\) \|\|\s*\n\s*item\.user\.profileVisibility === ProfileVisibility\.PUBLICO;/,
+    /const esMismoClubOPublico = \(item: \{ userId: string; user: \{ profileVisibility: ProfileVisibility \} \}\) =>\s*\n\s*Boolean\(clubmateClubNames\?\.has\(item\.userId\)\) \|\|\s*\n\s*item\.user\.profileVisibility === ProfileVisibility\.PUBLICO;/,
   );
+});
+
+test('el texto de la reseña solo se envía si su autora es visible para quien mira', () => {
+  const bloque = extractMap(
+    service,
+    'const finalizados = completions.map((item) => {',
+  );
+  assert.match(bloque, /resena: mismoClub \? \(review\?\.review \?\? ''\) : ''/);
+  assert.match(bloque, /review: mismoClub \? \(review\?\.review \?\? ''\) : ''/);
+  assert.doesNotMatch(bloque, /resena: review\?\.review \?\? ''/);
+});
+
+test('cada finalizado indica si su reseña contiene spoilers', () => {
+  assert.match(service, /containsSpoilers: true/);
+  assert.match(service, /contieneSpoilers: review\?\.containsSpoilers \?\? false/);
 });

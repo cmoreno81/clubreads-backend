@@ -92,7 +92,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
             series: { select: { name: true } },
             reviews: {
               where: { deletedAt: null },
-              select: { userId: true, rating: true, spicyRating: true, review: true },
+              select: { userId: true, rating: true, spicyRating: true, review: true, containsSpoilers: true },
             },
           },
         },
@@ -216,8 +216,12 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
       picante: spicyToFlutter(review?.spicyRating),
       formato: formatToFlutter(item.readingFormat),
       fechaAlta: item.book.createdAt.toISOString(),
-      resena: review?.review ?? '',
-      review: review?.review ?? '',
+      // Solo se revela el texto de la reseña si su autora es visible para quien
+      // mira (comparte club o tiene el perfil en público); si no, solo cuenta
+      // la nota.
+      resena: mismoClub ? (review?.review ?? '') : '',
+      review: mismoClub ? (review?.review ?? '') : '',
+      contieneSpoilers: review?.containsSpoilers ?? false,
       goodreads: item.book.goodreadsUrl ?? '',
       fecha: item.finishedAt ?? '',
       coverUrl: item.book.coverUrl ?? '',
