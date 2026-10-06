@@ -398,7 +398,7 @@ model User {
   /// Quién puede ver el perfil y las estadísticas de esta usuaria.
   /// CLUB = solo miembros de su club actual (comportamiento de siempre).
   /// PRIVADO = nadie más que ella misma.
-  profileVisibility ProfileVisibility @default(CLUB)
+  profileVisibility ProfileVisibility @default(PUBLICO)
 
   /// Fecha en la que la usuaria eliminó su cuenta. A partir de ese momento
   /// name/email quedan anonimizados (ver eliminarCuenta) y no puede volver
