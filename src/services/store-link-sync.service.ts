@@ -4,6 +4,10 @@ import { parse } from 'csv-parse';
 import { StoreFormat } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
+import {
+  cargarDeseosSinLibro,
+  crearLibrosDeDeseos,
+} from './wishlist-book-sync.service.js';
 
 // Sincroniza BookStoreLink con el feed de productos de Casa del Libro (Awin):
 // cruza cada libro del catálogo con las fichas de la tienda por ISBN o por
@@ -152,7 +156,7 @@ export function editionLanguage(title: string, url: string, ean: string) {
 
 // ── Cruce ────────────────────────────────────────────────────────────────────
 
-type CatalogBook = {
+export type CatalogBook = {
   id: string;
   nt: string;
   authors: Set<string>;
@@ -160,7 +164,7 @@ type CatalogBook = {
   wanted: Set<string>;
 };
 
-type Candidate = {
+export type Candidate = {
   bookId: string;
   format: StoreFormat;
   language: string;
@@ -170,6 +174,10 @@ type Candidate = {
   feedAuthor: string;
   confidence: number;
   stockStatus: string;
+  /// Solo para dar de alta libros nuevos a partir de un deseo (no se guardan
+  /// en BookStoreLink).
+  imagenUrl?: string;
+  categoria?: string;
 };
 
 const key = (c: { bookId: string; format: string; language: string }) =>
@@ -253,6 +261,8 @@ export class LinkMatcher {
         feedAuthor: author.slice(0, 300),
         confidence: Math.round(confidence * 1000) / 1000,
         stockStatus: stock,
+        imagenUrl: row.merchant_image_url || undefined,
+        categoria: row.merchant_category || undefined,
       };
       const k = key(candidate);
       const current = this.best.get(k);
@@ -316,14 +326,20 @@ export type StoreLinkSyncSummary = {
   updated: number;
   removed: number;
   pruned: boolean;
+  /// Libros nuevos del catálogo creados a partir de deseos sin libro.
+  librosDeDeseos: number;
 };
 
 export async function syncStoreLinks(
   input: Readable,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; altaDeDeseos?: boolean } = {},
 ): Promise<StoreLinkSyncSummary> {
   const dryRun = options.dryRun ?? false;
   const matcher = new LinkMatcher(await loadCatalog());
+  // Deseos que aún no tienen libro del catálogo: se buscan en el mismo feed.
+  const deseos =
+    options.altaDeDeseos === false ? null : await cargarDeseosSinLibro();
+  const deseosMatcher = deseos ? new LinkMatcher(deseos.catalogo) : null;
 
   const parser = input.pipe(
     parse({
@@ -334,7 +350,10 @@ export async function syncStoreLinks(
       skip_records_with_error: true,
     }),
   );
-  for await (const row of parser as AsyncIterable<FeedRow>) matcher.add(row);
+  for await (const row of parser as AsyncIterable<FeedRow>) {
+    matcher.add(row);
+    deseosMatcher?.add(row);
+  }
 
   const existing = await prisma.bookStoreLink.findMany({ where: { store: STORE } });
   const existingByKey = new Map(existing.map((e) => [key(e), e]));
@@ -345,7 +364,8 @@ export async function syncStoreLinks(
     if (!current) {
       created++;
       if (!dryRun) {
-        await prisma.bookStoreLink.create({ data: { ...candidate, store: STORE } });
+        const { imagenUrl: _imagen, categoria: _categoria, ...datos } = candidate;
+        await prisma.bookStoreLink.create({ data: { ...datos, store: STORE } });
       }
     } else if (
       current.url !== candidate.url ||
@@ -397,6 +417,10 @@ export async function syncStoreLinks(
     updated,
     removed: stale.length,
     pruned: canPrune,
+    librosDeDeseos:
+      deseos && deseosMatcher
+        ? await crearLibrosDeDeseos(deseosMatcher.best, deseos.grupos, dryRun)
+        : 0,
   };
 }
 
