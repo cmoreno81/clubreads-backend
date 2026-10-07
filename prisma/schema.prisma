@@ -709,6 +709,11 @@ model Library {
   /// Cuándo se marcó "ya lo tengo" (para la evolución de la pila de pendientes).
   ownedAt DateTime?
 
+  /// Cuándo dejó de estar pendiente (empezó, terminó…). Lo rellena un
+  /// trigger de la base de datos en cada cambio de estado, así que es exacto
+  /// desde que existe; en filas antiguas es null.
+  leftPendingAt DateTime?
+
   /// Idioma en el que ESTA lectora leyó su copia, cuando difiere del idioma
   /// de referencia de la ficha (Book.language). Null = usa el de la ficha.
   personalLanguage String?

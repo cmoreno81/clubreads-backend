@@ -17,6 +17,8 @@ type FilaAnio = FilaPila & {
   owned: boolean;
   /// Papel o sin formato: los ebooks y audiolibros no ocupan estantería.
   fisico: boolean;
+  /// La salida viene del trigger (exacta), no de una fecha de lectura.
+  exacta?: boolean;
 };
 
 const UNA_HORA = 60 * 60 * 1000;
@@ -24,7 +26,7 @@ const UNA_HORA = 60 * 60 * 1000;
 /// Un libro pasó de verdad por la pila si sigue pendiente o si empezó bastante
 /// después de añadirse (los que se añaden ya empezados o terminados no cuentan).
 function pasoPorLaPila(f: FilaAnio) {
-  if (f.enPendiente) return true;
+  if (f.enPendiente || f.exacta) return true;
   return Boolean(f.entro && f.salioEn && f.salioEn.getTime() - f.entro.getTime() > UNA_HORA);
 }
 
@@ -97,6 +99,7 @@ export async function getEstanteriaPendientes(usuario: string, solicitante: stri
       owned: true,
       ownedAt: true,
       createdAt: true,
+      leftPendingAt: true,
       readingFormat: true,
       startedAt: true,
       finishedAt: true,
@@ -104,14 +107,21 @@ export async function getEstanteriaPendientes(usuario: string, solicitante: stri
     },
   });
 
+  const esFisico = (f: { readingFormat: ReadingFormat | null }) =>
+    f.readingFormat === null || f.readingFormat === ReadingFormat.PHYSICAL;
+  // La fecha exacta del trigger si existe; en filas antiguas, la de empezar.
   const salida = (f: (typeof filas)[number]) =>
     f.status === ReadingStatus.PENDING
       ? null
-      : (f.startedAt ?? f.finishedAt ?? f.updatedAt);
+      : (f.leftPendingAt ?? f.startedAt ?? f.finishedAt ?? f.updatedAt);
+  const inicioAnio = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+  const terminados = await prisma.readingCompletion.findMany({
+    where: { userId: user.id, finishedAt: { gte: inicioAnio } },
+    select: { readingFormat: true },
+  });
+  const terminadosPapel = terminados.filter(esFisico).length;
   const pendientes = filas.filter((f) => f.status === ReadingStatus.PENDING);
   const tengo = pendientes.filter((f) => f.owned);
-  const esFisico = (f: { readingFormat: ReadingFormat | null }) =>
-    f.readingFormat === null || f.readingFormat === ReadingFormat.PHYSICAL;
   const enEstanteria = tengo.filter(esFisico);
 
   return {
@@ -121,6 +131,7 @@ export async function getEstanteriaPendientes(usuario: string, solicitante: stri
     tengo: tengo.length,
     enEstanteria: enEstanteria.length,
     otrosFormatos: tengo.length - enEstanteria.length,
+    terminadosPapel,
     anio: balanceAnual(
       filas.map((f) => ({
         entro: f.createdAt,
@@ -128,6 +139,7 @@ export async function getEstanteriaPendientes(usuario: string, solicitante: stri
         enPendiente: f.status === ReadingStatus.PENDING,
         owned: f.owned,
         fisico: esFisico(f),
+        exacta: f.leftPendingAt !== null,
       })),
     ),
     serie: pilaPorMes(filas.map((f) => ({ entro: f.createdAt, salioEn: salida(f) }))),

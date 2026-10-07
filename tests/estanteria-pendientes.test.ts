@@ -65,3 +65,32 @@ test('el balance del año cuenta lo que salió de la pila, lo que entró y lo qu
   );
   assert.deepEqual(b, { anio: 2026, leidos: 2, leidosEnCasa: 1, entraron: 3 });
 });
+
+test('una salida con fecha exacta del trigger cuenta aunque el libro se añadiera y empezara el mismo día', () => {
+  const b = balanceAnual(
+    [
+      {
+        entro: d('2026-09-01'),
+        salioEn: d('2026-09-01'),
+        enPendiente: false,
+        owned: false,
+        fisico: true,
+        exacta: true,
+      },
+    ],
+    d('2026-10-20'),
+  );
+  assert.equal(b.leidos, 1);
+  assert.equal(b.entraron, 1);
+});
+
+test('la migración guarda cuándo deja de ser pendiente con un trigger', () => {
+  const sql = readFileSync(
+    new URL('../prisma/migrations/20261007200000_library_left_pending/migration.sql', import.meta.url),
+    'utf8',
+  );
+  assert.match(sql, /ADD COLUMN "leftPendingAt"/);
+  assert.match(sql, /CREATE TRIGGER library_left_pending/);
+  assert.match(sql, /BEFORE UPDATE OF "status" ON "Library"/);
+  assert.match(servicio, /terminadosPapel/);
+});
