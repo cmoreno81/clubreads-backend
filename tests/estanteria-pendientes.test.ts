@@ -93,4 +93,5 @@ test('la migración guarda cuándo deja de ser pendiente con un trigger', () => 
   assert.match(sql, /CREATE TRIGGER library_left_pending/);
   assert.match(sql, /BEFORE UPDATE OF "status" ON "Library"/);
   assert.match(servicio, /terminadosPapel/);
+  assert.match(servicio, /terminadosSinFormato/);
 });

@@ -120,6 +120,7 @@ export async function getEstanteriaPendientes(usuario: string, solicitante: stri
     select: { readingFormat: true },
   });
   const terminadosPapel = terminados.filter(esFisico).length;
+  const terminadosSinFormato = terminados.filter((t) => t.readingFormat === null).length;
   const pendientes = filas.filter((f) => f.status === ReadingStatus.PENDING);
   const tengo = pendientes.filter((f) => f.owned);
   const enEstanteria = tengo.filter(esFisico);
@@ -132,6 +133,7 @@ export async function getEstanteriaPendientes(usuario: string, solicitante: stri
     enEstanteria: enEstanteria.length,
     otrosFormatos: tengo.length - enEstanteria.length,
     terminadosPapel,
+    terminadosSinFormato,
     anio: balanceAnual(
       filas.map((f) => ({
         entro: f.createdAt,
