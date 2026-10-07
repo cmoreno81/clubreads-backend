@@ -44,11 +44,12 @@ test('ebook y audiolibro no entran en la estantería física, y "Solo yo" la ocu
 
 test('el balance del año cuenta lo que salió de la pila, lo que entró y lo que ya estaba en casa', () => {
   const ahora = d('2026-10-20');
-  const fila = (entro: string, salio: string | null, owned = false) => ({
+  const fila = (entro: string, salio: string | null, owned = false, fisico = true) => ({
     entro: d(entro),
     salioEn: salio ? d(salio) : null,
     enPendiente: salio === null,
     owned,
+    fisico,
   });
   const b = balanceAnual(
     [
@@ -58,6 +59,7 @@ test('el balance del año cuenta lo que salió de la pila, lo que entró y lo qu
       fila('2026-04-01', null), // entró este año, sigue pendiente
       fila('2025-04-01', null), // pendiente de antes
       fila('2026-06-01', '2026-06-01'), // añadido ya empezado: no pasó por la pila
+      fila('2026-02-01', '2026-04-01', true, false), // ebook: no cuenta
     ],
     ahora,
   );

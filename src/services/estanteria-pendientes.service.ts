@@ -12,7 +12,12 @@ type FilaPila = {
 
 const MESES_SERIE = 12;
 
-type FilaAnio = FilaPila & { enPendiente: boolean; owned: boolean };
+type FilaAnio = FilaPila & {
+  enPendiente: boolean;
+  owned: boolean;
+  /// Papel o sin formato: los ebooks y audiolibros no ocupan estantería.
+  fisico: boolean;
+};
 
 const UNA_HORA = 60 * 60 * 1000;
 
@@ -23,12 +28,12 @@ function pasoPorLaPila(f: FilaAnio) {
   return Boolean(f.entro && f.salioEn && f.salioEn.getTime() - f.entro.getTime() > UNA_HORA);
 }
 
-/// Balance del año: pendientes que se han empezado o leído, los que han
+/// Balance del año, solo de libros en papel: pendientes que se han empezado o leído, los que han
 /// entrado nuevos y, de los que salieron, cuántos ya estaban en casa.
 export function balanceAnual(filas: FilaAnio[], ahora = new Date()) {
   const anio = ahora.getUTCFullYear();
   const delAnio = (d: Date | null) => Boolean(d && d.getUTCFullYear() === anio);
-  const pasaron = filas.filter(pasoPorLaPila);
+  const pasaron = filas.filter((f) => f.fisico && pasoPorLaPila(f));
   const leidos = pasaron.filter((f) => !f.enPendiente && delAnio(f.salioEn));
   return {
     anio,
@@ -122,6 +127,7 @@ export async function getEstanteriaPendientes(usuario: string, solicitante: stri
         salioEn: salida(f),
         enPendiente: f.status === ReadingStatus.PENDING,
         owned: f.owned,
+        fisico: esFisico(f),
       })),
     ),
     serie: pilaPorMes(filas.map((f) => ({ entro: f.createdAt, salioEn: salida(f) }))),
