@@ -12,6 +12,32 @@ type FilaPila = {
 
 const MESES_SERIE = 12;
 
+type FilaAnio = FilaPila & { enPendiente: boolean; owned: boolean };
+
+const UNA_HORA = 60 * 60 * 1000;
+
+/// Un libro pasó de verdad por la pila si sigue pendiente o si empezó bastante
+/// después de añadirse (los que se añaden ya empezados o terminados no cuentan).
+function pasoPorLaPila(f: FilaAnio) {
+  if (f.enPendiente) return true;
+  return Boolean(f.entro && f.salioEn && f.salioEn.getTime() - f.entro.getTime() > UNA_HORA);
+}
+
+/// Balance del año: pendientes que se han empezado o leído, los que han
+/// entrado nuevos y, de los que salieron, cuántos ya estaban en casa.
+export function balanceAnual(filas: FilaAnio[], ahora = new Date()) {
+  const anio = ahora.getUTCFullYear();
+  const delAnio = (d: Date | null) => Boolean(d && d.getUTCFullYear() === anio);
+  const pasaron = filas.filter(pasoPorLaPila);
+  const leidos = pasaron.filter((f) => !f.enPendiente && delAnio(f.salioEn));
+  return {
+    anio,
+    leidos: leidos.length,
+    leidosEnCasa: leidos.filter((f) => f.owned).length,
+    entraron: pasaron.filter((f) => delAnio(f.entro)).length,
+  };
+}
+
 /// Pendientes al final de cada mes, de los últimos [MESES_SERIE]: los libros
 /// que ya estaban en la biblioteca y todavía no se habían empezado.
 export function pilaPorMes(filas: FilaPila[], ahora = new Date()) {
@@ -73,6 +99,10 @@ export async function getEstanteriaPendientes(usuario: string, solicitante: stri
     },
   });
 
+  const salida = (f: (typeof filas)[number]) =>
+    f.status === ReadingStatus.PENDING
+      ? null
+      : (f.startedAt ?? f.finishedAt ?? f.updatedAt);
   const pendientes = filas.filter((f) => f.status === ReadingStatus.PENDING);
   const tengo = pendientes.filter((f) => f.owned);
   const esFisico = (f: { readingFormat: ReadingFormat | null }) =>
@@ -86,14 +116,14 @@ export async function getEstanteriaPendientes(usuario: string, solicitante: stri
     tengo: tengo.length,
     enEstanteria: enEstanteria.length,
     otrosFormatos: tengo.length - enEstanteria.length,
-    serie: pilaPorMes(
+    anio: balanceAnual(
       filas.map((f) => ({
         entro: f.createdAt,
-        salioEn:
-          f.status === ReadingStatus.PENDING
-            ? null
-            : (f.startedAt ?? f.finishedAt ?? f.updatedAt),
+        salioEn: salida(f),
+        enPendiente: f.status === ReadingStatus.PENDING,
+        owned: f.owned,
       })),
     ),
+    serie: pilaPorMes(filas.map((f) => ({ entro: f.createdAt, salioEn: salida(f) }))),
   };
 }
