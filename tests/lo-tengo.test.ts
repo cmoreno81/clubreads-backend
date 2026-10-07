@@ -46,10 +46,10 @@ test('setLoTengo solo cambia "owned" de la biblioteca de esa lectora', async () 
   });
   try {
     assert.deepEqual(await setLoTengo('u1', 'b1', true), { ok: true, loTengo: true });
-    assert.deepEqual(llamadas[0], {
-      where: { userId: 'u1', bookId: 'b1' },
-      data: { owned: true },
-    });
+    const llamada = llamadas[0] as { where: unknown; data: { owned: boolean; ownedAt: Date | null } };
+    assert.deepEqual(llamada.where, { userId: 'u1', bookId: 'b1' });
+    assert.equal(llamada.data.owned, true);
+    assert.ok(llamada.data.ownedAt instanceof Date);
   } finally {
     restaurar();
   }

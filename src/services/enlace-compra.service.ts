@@ -268,7 +268,8 @@ async function tieneDeseoComprado(userId: string, bookIds: string[]) {
 export async function setLoTengo(userId: string, bookId: string, owned: boolean) {
   const { count } = await prisma.library.updateMany({
     where: { userId, bookId },
-    data: { owned },
+    // La fecha solo se pone al marcar; al desmarcar se borra.
+    data: { owned, ownedAt: owned ? new Date() : null },
   });
   if (count === 0) {
     return { ok: false, mensaje: 'Este libro no está en tu biblioteca.' };

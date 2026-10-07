@@ -331,6 +331,12 @@ export async function handleGetEnlacesCompraLote(req: Request, res: Response) {
   return res.json(data);
 }
 
+export async function handleGetEstanteriaPendientes(req: Request, res: Response) {
+  const { getEstanteriaPendientes } = await import('../services/estanteria-pendientes.service.js');
+  const usuario = String(req.query.usuario ?? requestUserName(req) ?? '');
+  return res.json(await getEstanteriaPendientes(usuario, requestUserName(req)));
+}
+
 export async function handleSetLoTengo(req: Request, res: Response) {
   const { setLoTengo } = await import('../services/enlace-compra.service.js');
   const bookId = String(req.params['bookId'] || '').trim();

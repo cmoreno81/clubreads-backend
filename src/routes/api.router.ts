@@ -24,6 +24,7 @@ import {
   handleGetLibroPorId,
   handleGetEnlaceCompra,
   handleSetLoTengo,
+  handleGetEstanteriaPendientes,
   handleGetEnlacesCompraLote,
   handleGetSeriesVolumesForBook,
   handleLibros,
@@ -650,6 +651,9 @@ export async function handleApi(
 
       case 'enlaceCompra':
         return handleGetEnlaceCompra(req, res);
+
+      case 'estanteriaPendientes':
+        return handleGetEstanteriaPendientes(req, res);
 
       case 'enlaceCompraLote':
         return handleGetEnlacesCompraLote(req, res);
