@@ -160,6 +160,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   editarLibro: body({ bookId: identifierSchema.optional(), id: identifierSchema.optional(), ...bookMutationFields }).refine((v) => Boolean(v.bookId || v.id), { path: ['bookId'], message: 'Identificador obligatorio' }),
   anadirLibroExistente: body({ libro: identifierSchema, prioridad: prioritySchema, formato: formatSchema.optional(), idioma: bookLanguageSchema.optional() }),
   actualizarIdiomaLibro: body({ bookId: identifierSchema, idioma: bookLanguageSchema }),
+  actualizarFormatoLibro: body({ bookId: identifierSchema, formato: formatSchema }),
   actualizarGeneroLibro: body({ bookId: identifierSchema, genero: shortTextSchema }),
   actualizarPreferenciasLibro: body({ libro: identifierSchema, prioridad: prioritySchema, formato: formatSchema.optional() }),
   quitarLibroPendientes: bookBody, iniciarLectura: bookBody,

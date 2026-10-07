@@ -41,6 +41,7 @@ import {
   handleQuitarLibroPendientes,
   handleEditarLibro,
   handleActualizarIdiomaLibro,
+  handleActualizarFormatoLibro,
   handleActualizarGeneroLibro,
   handleActualizarValoracionLibro,
   handleActualizarProgresoLectura,
@@ -672,6 +673,9 @@ export async function handleApi(
 
       case 'actualizarIdiomaLibro':
         return handleActualizarIdiomaLibro(req, res);
+
+      case 'actualizarFormatoLibro':
+        return handleActualizarFormatoLibro(req, res);
 
       case 'actualizarGeneroLibro':
         return handleActualizarGeneroLibro(req, res);

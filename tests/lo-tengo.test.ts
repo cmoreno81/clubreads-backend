@@ -93,3 +93,12 @@ test('el lote marca loTengo si lo marcó o si compró el deseo', async () => {
     fin.forEach((f) => f());
   }
 });
+
+test('corregir el formato de un libro terminado toca solo la finalización y la biblioteca de la lectora', () => {
+  const servicio = readFileSync(new URL('../src/services/books.service.ts', import.meta.url), 'utf8');
+  const fn = servicio.match(/export async function actualizarFormatoLibro[\s\S]*?\n\}\n/)?.[0] ?? '';
+  assert.match(fn, /readingCompletion\.update\(\{\s*where: \{ id: finalizacion\.id \},\s*data: \{ readingFormat: formato \}/);
+  assert.match(fn, /library\.updateMany\(\{\s*where: \{ userId: user\.id, bookId: resolvedBookId \}/);
+  assert.doesNotMatch(fn, /prisma\.book\./);
+  assert.match(router, /case 'actualizarFormatoLibro':/);
+});

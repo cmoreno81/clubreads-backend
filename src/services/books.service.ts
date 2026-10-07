@@ -1118,6 +1118,56 @@ export async function actualizarGeneroLibro(bookId: string, genero: string) {
 }
 
 /**
+ * Corrige el formato con el que la usuaria leyó un libro que YA terminó
+ * (papel, ebook o audiolibro). Es un dato personal: toca su finalización más
+ * reciente y su fila de biblioteca, nunca el catálogo ni otras lectoras.
+ */
+export async function actualizarFormatoLibro(params: {
+  usuario: string;
+  bookId: string;
+  formato: unknown;
+}) {
+  const usuario = params.usuario.trim();
+  const bookId = String(params.bookId || '').trim();
+  const formato = formatFromFlutter(params.formato);
+
+  if (!usuario) return { ok: false, mensaje: 'Falta la usuaria' };
+  if (!bookId) return { ok: false, mensaje: 'Falta el identificador del libro' };
+  if (!formato) return { ok: false, mensaje: 'Formato no válido' };
+
+  const user = await prisma.user.findUnique({
+    where: { name: usuario },
+    select: { id: true },
+  });
+  if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
+
+  const resolvedBookId = await resolveCanonicalBookId(prisma, bookId);
+  const finalizacion = await prisma.readingCompletion.findFirst({
+    where: { userId: user.id, bookId: resolvedBookId },
+    orderBy: { finishedAt: 'desc' },
+    select: { id: true },
+  });
+  if (!finalizacion) {
+    return { ok: false, mensaje: 'Todavía no has terminado este libro' };
+  }
+
+  await prisma.$transaction([
+    prisma.readingCompletion.update({
+      where: { id: finalizacion.id },
+      data: { readingFormat: formato },
+    }),
+    prisma.library.updateMany({
+      where: { userId: user.id, bookId: resolvedBookId },
+      data: { readingFormat: formato },
+    }),
+  ]);
+
+  invalidateAllLibraryCaches();
+
+  return { ok: true, formato: formatToFlutter(formato) };
+}
+
+/**
  * Edita la valoración/picante/reseña de un libro que la usuaria YA terminó,
  * sin tocar su estado ni crear una nueva finalización. Existe para que la
  * ficha del libro pueda ofrecer "editar mi valoración" sin obligar a pasar

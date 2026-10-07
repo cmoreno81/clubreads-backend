@@ -14,6 +14,7 @@ import {
   crearLibro,
   quitarLibroPendientes,
   editarLibro,
+  actualizarFormatoLibro,
   actualizarIdiomaLibro,
   actualizarGeneroLibro,
   actualizarValoracionLibro,
@@ -203,6 +204,16 @@ export async function handleActualizarIdiomaLibro(req: Request, res: Response) {
     String(body.bookId ?? ''),
     String(body.idioma ?? ''),
   );
+  return res.json(data);
+}
+
+export async function handleActualizarFormatoLibro(req: Request, res: Response) {
+  const body = req.body ?? {};
+  const data = await actualizarFormatoLibro({
+    usuario: requestUserName(req),
+    bookId: String(body.bookId ?? ''),
+    formato: body.formato,
+  });
   return res.json(data);
 }
 
