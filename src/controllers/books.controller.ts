@@ -348,6 +348,19 @@ export async function handleGetEstanteriaPendientes(req: Request, res: Response)
   return res.json(await getEstanteriaPendientes(usuario, requestUserName(req)));
 }
 
+export async function handleGetKitLectura(req: Request, res: Response) {
+  const { getKitLectura } = await import('../services/kit-lectura.service.js');
+  const bookId = String(req.query.bookId || '').trim();
+  return res.json(await getKitLectura(req.auth!.userId, bookId));
+}
+
+export async function handleGuardarKitLectura(req: Request, res: Response) {
+  const { guardarKitLectura } = await import('../services/kit-lectura.service.js');
+  const body = req.body ?? {};
+  const data = await guardarKitLectura(req.auth!.userId, String(body.bookId ?? ''), body.kit);
+  return res.status(data.ok ? 200 : 400).json(data);
+}
+
 export async function handleSetLoTengo(req: Request, res: Response) {
   const { setLoTengo } = await import('../services/enlace-compra.service.js');
   const bookId = String(req.params['bookId'] || '').trim();

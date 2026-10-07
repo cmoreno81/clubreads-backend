@@ -241,6 +241,7 @@ model Book {
   normalizedIsbn String?
 
   storeLinks BookStoreLink[]
+  readingKits ReadingKit[]
 
   /// Idioma de lectura (código ISO 639-1, ej. "es", "en"). Null si no se ha podido determinar.
   language String?
@@ -380,6 +381,7 @@ model User {
   conversationReads ConversationRead[]
 
   ownedClubs         Club[]               @relation("OwnedClubs")
+  readingKits        ReadingKit[]
   clubMemberships    ClubMember[]
   clubJoinRequests   ClubJoinRequest[]
   notifications      Notification[]
@@ -1797,4 +1799,26 @@ model BookStoreLink {
 
   @@unique([bookId, store, format, language])
   @@index([bookId])
+}
+
+/// Kit de lectura de una lectora para un libro (paleta, subrayadores,
+/// atmósfera, playlist…). Antes vivía solo en el móvil y se perdía al
+/// reinstalar la app; aquí queda en su cuenta. El contenido lo define la app
+/// y se guarda tal cual.
+model ReadingKit {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  data Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, bookId])
+  @@index([userId])
 }

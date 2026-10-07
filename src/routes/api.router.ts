@@ -25,6 +25,8 @@ import {
   handleGetEnlaceCompra,
   handleSetLoTengo,
   handleGetEstanteriaPendientes,
+  handleGetKitLectura,
+  handleGuardarKitLectura,
   handleGetEnlacesCompraLote,
   handleGetSeriesVolumesForBook,
   handleLibros,
@@ -653,6 +655,9 @@ export async function handleApi(
       case 'enlaceCompra':
         return handleGetEnlaceCompra(req, res);
 
+      case 'kitLectura':
+        return handleGetKitLectura(req, res);
+
       case 'estanteriaPendientes':
         return handleGetEstanteriaPendientes(req, res);
 
@@ -673,6 +678,9 @@ export async function handleApi(
 
       case 'actualizarIdiomaLibro':
         return handleActualizarIdiomaLibro(req, res);
+
+      case 'guardarKitLectura':
+        return handleGuardarKitLectura(req, res);
 
       case 'actualizarFormatoLibro':
         return handleActualizarFormatoLibro(req, res);
