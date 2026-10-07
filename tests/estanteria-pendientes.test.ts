@@ -11,13 +11,13 @@ const servicio = readFileSync(
   'utf8',
 );
 
-test('la pila sube al marcar "ya lo tengo" y baja al empezar el libro', () => {
+test('la pila sube al añadir un pendiente y baja al empezarlo', () => {
   const ahora = d('2026-10-20');
   const serie = pilaPorMes(
     [
-      { ownedAt: d('2026-08-10'), salioEn: null },
-      { ownedAt: d('2026-08-20'), salioEn: d('2026-09-15') },
-      { ownedAt: d('2026-09-05'), salioEn: null },
+      { entro: d('2026-08-10'), salioEn: null },
+      { entro: d('2026-08-20'), salioEn: d('2026-09-15') },
+      { entro: d('2026-09-05'), salioEn: null },
     ],
     ahora,
   );
@@ -30,7 +30,7 @@ test('la pila sube al marcar "ya lo tengo" y baja al empezar el libro', () => {
 });
 
 test('sin fechas la serie sale a cero y el último punto es el mes actual', () => {
-  const serie = pilaPorMes([{ ownedAt: null, salioEn: null }], d('2026-10-20'));
+  const serie = pilaPorMes([{ entro: null, salioEn: null }], d('2026-10-20'));
   assert.ok(serie.every((p) => p.pila === 0));
   assert.equal(serie.at(-1)!.mes, '2026-10');
 });
