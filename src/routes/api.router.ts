@@ -23,6 +23,7 @@ import { handleUsuarios } from '../controllers/users.controller.js';
 import {
   handleGetLibroPorId,
   handleGetEnlaceCompra,
+  handleSetLoTengo,
   handleGetEnlacesCompraLote,
   handleGetSeriesVolumesForBook,
   handleLibros,
@@ -1041,6 +1042,8 @@ apiRouter.patch('/wishlist/:id', requireAuthentication, handleUpdateWishlistItem
 apiRouter.delete('/wishlist/:id', requireAuthentication, handleDeleteWishlistItem);
 apiRouter.post('/wishlist/:id/purchased', requireAuthentication, handleMarkPurchased);
 apiRouter.delete('/wishlist/:id/purchased', requireAuthentication, handleUnmarkPurchased);
+apiRouter.put('/libros/:bookId/lo-tengo', requireAuthentication, handleSetLoTengo);
+apiRouter.delete('/libros/:bookId/lo-tengo', requireAuthentication, handleSetLoTengo);
 apiRouter.get('/club/wishlist', requireAuthentication, handleGetClubWishlist);
 apiRouter.get('/', handleApi);
 apiRouter.post('/', handleApi);

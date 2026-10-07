@@ -192,12 +192,25 @@ export async function getEnlaceCompra(
   const lib = userId
     ? await prisma.library.findFirst({
         where: { userId, bookId },
-        select: { readingFormat: true, personalLanguage: true, status: true },
+        select: {
+          readingFormat: true,
+          personalLanguage: true,
+          status: true,
+          owned: true,
+        },
       })
     : null;
+  const loTengo = userId
+    ? Boolean(lib?.owned) || (await tieneDeseoComprado(userId, [bookId])).has(bookId)
+    : false;
 
   return {
     ok: true,
+    // La lectora ya tiene el libro (lo marcó, o compró el deseo): no se le
+    // ofrece comprarlo, pero el libro sigue donde estaba.
+    loTengo,
+    // El libro está en su biblioteca: solo entonces se puede marcar.
+    enBiblioteca: Boolean(lib),
     // La lectora ya ha empezado o terminado el libro (no solo lo tiene
     // pendiente): no hace falta ofrecerle comprarlo.
     yaEmpezado: Boolean(lib && lib.status !== 'PENDING'),
@@ -217,14 +230,48 @@ export async function getEnlacesCompraLote(bookIds: string[], userId?: string) {
     userId
       ? prisma.library.findMany({
           where: { userId, bookId: { in: ids } },
-          select: { bookId: true, readingFormat: true, personalLanguage: true },
+          select: {
+            bookId: true,
+            readingFormat: true,
+            personalLanguage: true,
+            owned: true,
+          },
         })
       : Promise.resolve([]),
   ]);
   const lectura = new Map(libs.map((l) => [l.bookId, l]));
-  const enlaces: Record<string, ReturnType<typeof resolverEnlace>> = {};
+  const comprados = userId ? await tieneDeseoComprado(userId, ids) : new Set<string>();
+  const enlaces: Record<
+    string,
+    ReturnType<typeof resolverEnlace> & { loTengo: boolean }
+  > = {};
   for (const b of books) {
-    enlaces[b.id] = resolverEnlace(b, undefined, lectura.get(b.id) ?? null);
+    enlaces[b.id] = {
+      ...resolverEnlace(b, undefined, lectura.get(b.id) ?? null),
+      loTengo: Boolean(lectura.get(b.id)?.owned) || comprados.has(b.id),
+    };
   }
   return { ok: true, enlaces, aviso: AVISO_AFILIACION };
+}
+
+/// Libros de la lista cuyo deseo ya se marcó como comprado.
+async function tieneDeseoComprado(userId: string, bookIds: string[]) {
+  const filas = await prisma.wishlistItem.findMany({
+    where: { userId, bookId: { in: bookIds }, purchasedAt: { not: null } },
+    select: { bookId: true },
+  });
+  return new Set(filas.map((f) => f.bookId).filter((id): id is string => Boolean(id)));
+}
+
+/// Marca (o desmarca) "Ya lo tengo" en la biblioteca de la lectora. Solo
+/// apaga los botones de compra: no toca estado, lectura ni estadísticas.
+export async function setLoTengo(userId: string, bookId: string, owned: boolean) {
+  const { count } = await prisma.library.updateMany({
+    where: { userId, bookId },
+    data: { owned },
+  });
+  if (count === 0) {
+    return { ok: false, mensaje: 'Este libro no está en tu biblioteca.' };
+  }
+  return { ok: true, loTengo: owned };
 }

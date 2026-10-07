@@ -702,6 +702,10 @@ model Library {
 
   isFavorite Boolean @default(false)
 
+  /// La lectora ya tiene este libro (comprado por otra vía, regalo, etc.):
+  /// solo apaga los botones de compra para ella; no cambia estado ni estadísticas.
+  owned Boolean @default(false)
+
   /// Idioma en el que ESTA lectora leyó su copia, cuando difiere del idioma
   /// de referencia de la ficha (Book.language). Null = usa el de la ficha.
   personalLanguage String?

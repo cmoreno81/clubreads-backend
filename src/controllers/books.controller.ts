@@ -331,6 +331,14 @@ export async function handleGetEnlacesCompraLote(req: Request, res: Response) {
   return res.json(data);
 }
 
+export async function handleSetLoTengo(req: Request, res: Response) {
+  const { setLoTengo } = await import('../services/enlace-compra.service.js');
+  const bookId = String(req.params['bookId'] || '').trim();
+  if (!bookId) return res.status(400).json({ ok: false, mensaje: 'Libro requerido.' });
+  const data = await setLoTengo(req.auth!.userId, bookId, req.method !== 'DELETE');
+  return res.status(data.ok ? 200 : 404).json(data);
+}
+
 export async function handleGetSeriesVolumesForBook(req: Request, res: Response) {
   const { getSeriesVolumesForBook } = await import('../services/series-volumes.service.js');
   const bookId = String(req.query.bookId || req.query.id || '').trim();
