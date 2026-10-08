@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { ReadingStatus } from '@prisma/client';
@@ -10,6 +11,7 @@ import {
   SEASON_LENGTH_DAYS,
   bonusPorRacha,
   calcularCambiosDivision,
+  calcularCambiosTemporada,
   calcularCuotaAscensoDescenso,
   calcularTendencia,
   currentSeasonNumber,
@@ -295,4 +297,55 @@ test('primeraPorDia: el día se cuenta en hora de Madrid', () => {
     { id: 'b', createdAt: new Date('2026-09-16T23:30:00Z') },
   ]);
   assert.deepEqual([...ids].sort(), ['a', 'b']);
+});
+
+// ── Cierre de temporada: nadie sube dos escalones de una vez ────────────────
+
+const fila = (userId: string, puesto: number, puntos: number): FilaTabla => ({
+  puesto,
+  userId,
+  nombre: userId,
+  avatarUrl: null,
+  puntos,
+  esTu: false,
+});
+
+test('el cierre usa la foto de todas las divisiones: quien sube a Plata no sube también a Oro', () => {
+  // Temporada 1 real: Bronce con 12 personas y Plata con 3.
+  const bronce = [
+    ['Sarah', 1155], ['Ana', 934], ['Bea', 889], ['Silvia2', 778], ['Silvia', 672],
+    ['Mery', 638], ['Marta', 542], ['aalbita3', 438], ['Cris', 426],
+    ['Maria', 276], ['Alicia', 255], ['Vicks', 27],
+  ].map(([n, p], i) => fila(n as string, i + 1, p as number));
+  const plata = [['Marian', 669], ['Lily', 416], ['Elena', 400]].map(([n, p], i) =>
+    fila(n as string, i + 1, p as number),
+  );
+
+  const cambios = calcularCambiosTemporada(
+    new Map([
+      ['BRONCE', bronce],
+      ['PLATA', plata],
+    ]),
+  );
+
+  assert.equal(cambios.get('BRONCE')!.get('Sarah'), 'PLATA');
+  assert.equal(cambios.get('BRONCE')!.get('Ana'), 'PLATA');
+  assert.equal(cambios.get('PLATA')!.get('Marian'), 'ORO');
+  assert.equal(cambios.get('PLATA')!.get('Elena'), 'BRONCE');
+  // Sarah y Ana no aparecen en los cambios de Plata: no jugaron en Plata.
+  assert.equal(cambios.get('PLATA')!.has('Sarah'), false);
+  assert.equal(cambios.get('PLATA')!.has('Ana'), false);
+  // Y Lily, en medio de su tabla, se queda donde estaba.
+  assert.equal(cambios.get('PLATA')!.has('Lily'), false);
+});
+
+test('cerrarTemporada lee todas las tablas antes de cambiar la división de nadie', () => {
+  const fuente = readFileSync(new URL('../src/services/ligas.service.ts', import.meta.url), 'utf8');
+  const cierre = fuente.match(/export async function cerrarTemporada[\s\S]*?\n\}\n/)?.[0] ?? '';
+  const ultimaLectura = cierre.lastIndexOf('await tablaTemporada(');
+  const primerCambio = cierre.indexOf('rankingParticipation');
+  const primerUpdate = cierre.indexOf('.update({ where: { userId }');
+  assert.ok(ultimaLectura > 0 && primerUpdate > 0);
+  assert.ok(ultimaLectura < primerUpdate, 'las tablas se leen antes de aplicar cambios');
+  assert.ok(primerCambio >= 0);
 });

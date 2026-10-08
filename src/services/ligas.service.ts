@@ -1638,6 +1638,23 @@ export function calcularCambiosDivision(
   return cambios;
 }
 
+/**
+ * Qué cambia de división cada persona al cerrar una temporada, calculado a
+ * partir de las tablas de TODAS las divisiones tal y como terminaron. Se
+ * decide todo de una vez y sobre la misma foto: quien sube de Bronce a Plata
+ * no entra en la tabla de Plata de esa misma temporada (no ha jugado en
+ * ella), así que nadie puede subir dos escalones en un cierre.
+ */
+export function calcularCambiosTemporada(
+  tablas: Map<RankingDivision, FilaTabla[]>,
+): Map<RankingDivision, Map<string, RankingDivision>> {
+  const porDivision = new Map<RankingDivision, Map<string, RankingDivision>>();
+  for (const [division, tabla] of tablas) {
+    porDivision.set(division, calcularCambiosDivision(tabla, division));
+  }
+  return porDivision;
+}
+
 /** Rachas de temporadas seguidas jugadas que dan medalla de constancia. */
 export const HITOS_CONSTANCIA = [3, 5, 10, 20, 30];
 
@@ -1850,10 +1867,20 @@ export async function cerrarTemporada(season: number): Promise<number> {
     await recalcularTemporada(userId, season).catch(() => undefined);
   }
 
-  let totalCerrados = 0;
+  // Foto de todas las tablas ANTES de mover a nadie. Las tablas se arman con
+  // la división actual de cada participante: si se leyeran una a una mientras
+  // se aplican los cambios, quien acaba de subir de Bronce a Plata aparecería
+  // también en la tabla de Plata de la misma temporada y podía subir otra vez
+  // (y desplazaba a quien sí había jugado en Plata).
+  const tablas = new Map<RankingDivision, FilaTabla[]>();
   for (const division of await divisionesEnUso()) {
     const tabla = await tablaTemporada(season, division);
-    if (tabla.length === 0) continue;
+    if (tabla.length > 0) tablas.set(division, tabla);
+  }
+  const cambiosPorDivision = calcularCambiosTemporada(tablas);
+
+  let totalCerrados = 0;
+  for (const [division, tabla] of tablas) {
     totalCerrados += tabla.length;
 
     for (const fila of tabla) {
@@ -1872,7 +1899,7 @@ export async function cerrarTemporada(season: number): Promise<number> {
       });
     }
 
-    const cambios = calcularCambiosDivision(tabla, division);
+    const cambios = cambiosPorDivision.get(division) ?? new Map();
     for (const [userId, nuevaDivision] of cambios) {
       await prisma.rankingParticipation
         .update({ where: { userId }, data: { division: nuevaDivision } })
