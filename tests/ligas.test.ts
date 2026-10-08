@@ -349,3 +349,22 @@ test('cerrarTemporada lee todas las tablas antes de cambiar la división de nadi
   assert.ok(ultimaLectura < primerUpdate, 'las tablas se leen antes de aplicar cambios');
   assert.ok(primerCambio >= 0);
 });
+
+test('quien desciende no recibe podio, aunque su puesto sea de los tres primeros', () => {
+  // Plata con 3 personas: 1ª sube, 3ª baja; la 3ª es podio de bronce por puesto.
+  const plata = [fila('A', 1, 669), fila('B', 2, 416), fila('C', 3, 400)];
+  const cambios = calcularCambiosDivision(plata, 'PLATA');
+  assert.equal(cambios.get('C'), 'BRONCE');
+  const tiers = (f: FilaTabla) =>
+    medallasParaFila(f, 'PLATA', cambios, 0, false).map((m) => m.tier);
+  assert.deepEqual(tiers(plata[0]), ['PODIO_ORO', 'ASCENSO']);
+  assert.deepEqual(tiers(plata[1]), ['PODIO_PLATA']);
+  assert.deepEqual(tiers(plata[2]), []);
+});
+
+test('en Bronce, que no desciende, el podio se da siempre', () => {
+  const bronce = [fila('A', 1, 9), fila('B', 2, 8), fila('C', 3, 7)];
+  const cambios = calcularCambiosDivision(bronce, 'BRONCE');
+  const tiers = medallasParaFila(bronce[2], 'BRONCE', cambios, 0, false).map((m) => m.tier);
+  assert.deepEqual(tiers, ['PODIO_BRONCE']);
+});

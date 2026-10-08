@@ -1685,9 +1685,17 @@ export function medallasParaFila(
 ): MedallaAOtorgar[] {
   const medallas: MedallaAOtorgar[] = [];
 
-  if (fila.puesto === 1) medallas.push({ tier: 'PODIO_ORO', rank: fila.puesto });
-  else if (fila.puesto === 2) medallas.push({ tier: 'PODIO_PLATA', rank: fila.puesto });
-  else if (fila.puesto === 3) medallas.push({ tier: 'PODIO_BRONCE', rank: fila.puesto });
+  // Quien desciende no recibe podio, aunque su puesto sea de los tres
+  // primeros (pasa en divisiones pequeñas, donde subir y bajar cae sobre los
+  // mismos puestos).
+  const desciende =
+    division !== 'BRONCE' && cambios.get(fila.userId) === divisionInferior(division);
+
+  if (!desciende) {
+    if (fila.puesto === 1) medallas.push({ tier: 'PODIO_ORO', rank: fila.puesto });
+    else if (fila.puesto === 2) medallas.push({ tier: 'PODIO_PLATA', rank: fila.puesto });
+    else if (fila.puesto === 3) medallas.push({ tier: 'PODIO_BRONCE', rank: fila.puesto });
+  }
 
   if (cambios.get(fila.userId) === divisionSuperior(division)) {
     medallas.push({ tier: 'ASCENSO', rank: fila.puesto });
