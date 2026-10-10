@@ -8,6 +8,34 @@ const AWIN_ADVERTISER_ID = process.env.AWIN_CASA_DEL_LIBRO_MID ?? '21491';
 const AWIN_PUBLISHER_ID = process.env.AWIN_PUBLISHER_ID ?? '3109357';
 const CASA_DEL_LIBRO_BUSQUEDA = 'https://www.casadellibro.com/?query=';
 
+// Amazon Afiliados. Sin AMAZON_ASSOCIATE_TAG (el «tracking id» que da Amazon
+// al aprobar el alta) esta tienda queda apagada y nada cambia. Para
+// encenderla basta con definir la variable en Railway.
+const AMAZON_BUSQUEDA = 'https://www.amazon.es/s';
+export const AVISO_AMAZON =
+  'Como afiliado de Amazon, obtengo ingresos por las compras adscritas que cumplen los requisitos aplicables.';
+
+export function amazonActivo() {
+  return Boolean(process.env.AMAZON_ASSOCIATE_TAG?.trim());
+}
+
+/// Enlace de afiliado de Amazon por título y autora (no hay ASIN en el
+/// catálogo). `papel` busca en libros; `ebook` en Kindle.
+export function construirEnlaceAmazon(params: {
+  titulo: string;
+  autora?: string | null;
+  formato: 'papel' | 'ebook';
+}) {
+  const url = new URL(AMAZON_BUSQUEDA);
+  url.searchParams.set(
+    'k',
+    `${params.titulo} ${params.autora ?? ''}`.trim().replace(/\s+/g, ' '),
+  );
+  url.searchParams.set('i', params.formato === 'ebook' ? 'digital-text' : 'stripbooks');
+  url.searchParams.set('tag', process.env.AMAZON_ASSOCIATE_TAG!.trim());
+  return url.toString();
+}
+
 // Código de conducta de publicidad para influencers (2025): el contenido de
 // afiliación debe identificarse como publicidad, de forma visible.
 export const AVISO_AFILIACION =
@@ -162,7 +190,7 @@ function resolverEnlace(
       ? StoreFormat.PAPEL
       : disponible[0];
 
-  return {
+  const casaDelLibro = {
     tienda: 'Casa del Libro',
     url: enlace(elegido ? porFormato.get(elegido) : null),
     exacto: Boolean(elegido),
@@ -172,7 +200,35 @@ function resolverEnlace(
       etiqueta: ETIQUETA[f],
       url: enlace(porFormato.get(f)),
     })),
+    aviso: AVISO_AFILIACION,
   };
+
+  // Amazon, si está activo: papel y Kindle, buscando por título y autora.
+  // Las apps antiguas solo entienden una tienda y la llaman «Casa del Libro»,
+  // así que el nivel superior de la respuesta sigue siendo SOLO Casa del
+  // Libro; Amazon va únicamente en `tiendas`, que leen las apps nuevas.
+  const tiendas = [casaDelLibro];
+  if (amazonActivo()) {
+    const amazon = (formato: 'papel' | 'ebook') =>
+      construirEnlaceAmazon({ titulo: book.title, autora: book.author?.name, formato });
+    const preferido = principal === StoreFormat.EBOOK ? 'ebook' : 'papel';
+    const tiendaAmazon = {
+      tienda: 'Amazon',
+      url: amazon(preferido),
+      exacto: true,
+      formato: preferido,
+      formatos: [
+        { formato: 'papel', etiqueta: 'Papel', url: amazon('papel') },
+        { formato: 'ebook', etiqueta: 'Kindle', url: amazon('ebook') },
+      ],
+      aviso: `${AVISO_AFILIACION} ${AVISO_AMAZON}`,
+    };
+    // Casa del Libro primero si tiene el libro; si no, Amazon pasa delante.
+    if (casaDelLibro.exacto) tiendas.push(tiendaAmazon);
+    else tiendas.unshift(tiendaAmazon);
+  }
+
+  return { ...casaDelLibro, tiendas };
 }
 
 export async function getEnlaceCompra(
@@ -215,7 +271,6 @@ export async function getEnlaceCompra(
     // pendiente): no hace falta ofrecerle comprarlo.
     yaEmpezado: Boolean(lib && lib.status !== 'PENDING'),
     ...resolverEnlace(book, FORMATOS[formato.toLowerCase()], lib),
-    aviso: AVISO_AFILIACION,
   };
 }
 
@@ -251,7 +306,7 @@ export async function getEnlacesCompraLote(bookIds: string[], userId?: string) {
       loTengo: Boolean(lectura.get(b.id)?.owned) || comprados.has(b.id),
     };
   }
-  return { ok: true, enlaces, aviso: AVISO_AFILIACION };
+  return { ok: true, enlaces, aviso: amazonActivo() ? `${AVISO_AFILIACION} ${AVISO_AMAZON}` : AVISO_AFILIACION };
 }
 
 /// Libros de la lista cuyo deseo ya se marcó como comprado.
