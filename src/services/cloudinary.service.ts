@@ -97,3 +97,43 @@ export async function subirAvatarDesdeBase64(params: {
     publicId: resultado.public_id,
   };
 }
+
+export async function subirImagenComentarioDesdeBase64(params: {
+  imageBase64: string;
+}) {
+  validarConfiguracion();
+
+  const imageBase64 = params.imageBase64.trim();
+  if (!imageBase64.startsWith('data:image/')) {
+    throw new Error('La imagen no es válida');
+  }
+
+  const resultado = await cloudinary.uploader.upload(imageBase64, {
+    folder: 'clubreads/comments',
+    resource_type: 'image',
+    transformation: [
+      {
+        width: 1600,
+        height: 1600,
+        crop: 'limit',
+        quality: 'auto',
+        fetch_format: 'auto',
+      },
+    ],
+  });
+
+  return {
+    url: resultado.secure_url,
+    publicId: resultado.public_id,
+  };
+}
+
+export async function borrarImagenCloudinary(publicId: string) {
+  validarConfiguracion();
+  const id = publicId.trim();
+  if (!id) return;
+  await cloudinary.uploader.destroy(id, {
+    resource_type: 'image',
+    invalidate: true,
+  });
+}

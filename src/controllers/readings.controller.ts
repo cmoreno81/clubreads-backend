@@ -169,6 +169,7 @@ export async function handleGuardarComentarioLectura(
     comentario: comentarioText,
     tipo: String(body.tipo || 'COMMENT'),
     color: String(body.color || ''),
+    imagenBase64: typeof body.imagen === 'string' ? body.imagen : undefined,
   });
 
   logger.info({

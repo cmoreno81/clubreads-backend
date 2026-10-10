@@ -34,6 +34,11 @@ const avatarUrlSchema = z.union([
   z.string().startsWith('data:image/').max(MAX_AVATAR_BASE64),
 ]);
 
+// Foto de un comentario: el cliente la reduce antes de enviarla; el límite
+// queda por debajo de los 5 MB del cuerpo JSON del servidor.
+const MAX_COMMENT_IMAGE_BASE64 = 4 * 1024 * 1024;
+const commentImageSchema = z.string().startsWith('data:image/').max(MAX_COMMENT_IMAGE_BASE64);
+
 const finiteNumber = z.number().finite();
 const decimalString = z.string().trim().regex(/^-?(?:\d+|\d+\.\d+|\.\d+)$/);
 export const compatibleNumberSchema = z.union([finiteNumber, decimalString]);
@@ -180,7 +185,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   editarLectura: body({ libro: identifierSchema, capitulos: integerSchema.refine((v) => Number(v) >= 0, 'Debe ser mayor o igual a cero'), prologo: legacyBooleanSchema.optional(), epilogo: legacyBooleanSchema.optional() }),
   renombrarCapitulo: body({ libro: identifierSchema, tituloActual: identifierSchema, tituloNuevo: z.string().trim().min(1).max(60) }),
   vincularEdicionLibro: body({ libro: identifierSchema, otroBookId: identifierSchema }),
-  guardarComentarioLectura: body({ libro: identifierSchema, capitulo: z.union([identifierSchema, integerSchema]), comentario: textSchema.optional(), texto: textSchema.optional(), tipo: commentTypeSchema.optional(), color: z.string().max(32).optional() }).refine((v) => Boolean(v.comentario || v.texto), { path: ['comentario'], message: 'Comentario obligatorio' }),
+  guardarComentarioLectura: body({ libro: identifierSchema, capitulo: z.union([identifierSchema, integerSchema]), comentario: textSchema.optional(), texto: textSchema.optional(), tipo: commentTypeSchema.optional(), color: z.string().max(32).optional(), imagen: commentImageSchema.optional() }).refine((v) => Boolean(v.comentario || v.texto || v.imagen), { path: ['comentario'], message: 'Comentario obligatorio' }),
   responderComentario: body({ comentarioId: identifierSchema, respuesta: textSchema }),
   toggleLikeComentario: commentIdBody.and(body({ reaccion: reactionSchema.optional() })),
   editarComentario: commentIdBody.and(body({ comentario: textSchema.min(1) })), eliminarComentario: commentIdBody,

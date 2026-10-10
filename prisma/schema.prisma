@@ -1079,6 +1079,10 @@ model Comment {
   type  String  @default("COMMENT")
   color String?
 
+  /// Foto adjunta al comentario (Cloudinary). Solo en comentarios de primer nivel.
+  imageUrl      String?
+  imagePublicId String?
+
   parentId String?
   parent   Comment?  @relation("CommentTree", fields: [parentId], references: [id])
   replies  Comment[] @relation("CommentTree")

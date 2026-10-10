@@ -22,7 +22,11 @@ import {
   type PaginationRequest,
 } from '../utils/cursor-pagination.js';
 import { syncAchievementsForUser } from './achievements.service.js';
-import { backgroundError } from '../logging/logger.js';
+import { backgroundError, logger } from '../logging/logger.js';
+import {
+  borrarImagenCloudinary,
+  subirImagenComentarioDesdeBase64,
+} from './cloudinary.service.js';
 import { normalizeReadingType } from '../validation/api-enums.js';
 import { activityTimestamp } from '../utils/activity-timestamp.js';
 import { idsBloqueadosPor } from './moderation.service.js';
@@ -1012,6 +1016,7 @@ export async function getComentariosLectura(
       comentario: comment.text,
       tipo: comment.type,
       color: comment.color ?? '',
+      imagenUrl: comment.imageUrl ?? '',
       likes: comment.likes.length,
       reacciones: contarReacciones(comment.likes),
       miReaccion: comment.likes.find((like) => like.userId === usuarioId)?.reaction ?? null,
@@ -1104,6 +1109,7 @@ export async function getComentariosLecturaPage(
       text: true,
       type: true,
       color: true,
+      imageUrl: true,
       edited: true,
       createdAt: true,
       user: { select: { name: true, avatarUrl: true } },
@@ -1150,6 +1156,7 @@ export async function getComentariosLecturaPage(
       comentario: comment.text,
       tipo: comment.type,
       color: comment.color ?? '',
+      imagenUrl: comment.imageUrl ?? '',
       likes: comment.likes.length,
       reacciones: contarReacciones(comment.likes),
       miReaccion: comment.likes.find(({ userId }) => userId === usuarioId)?.reaction ?? null,
@@ -1186,6 +1193,8 @@ export async function enviarComentarioLectura(data: {
   comentario: string;
   tipo?: string;
   color?: string;
+  /** Foto adjunta como data URL (ya reducida por la app). */
+  imagenBase64?: string;
 }) {
   const libro = data.libro.trim();
   const capitulo = data.capitulo.trim();
@@ -1202,7 +1211,9 @@ export async function enviarComentarioLectura(data: {
     ? data.color!.trim().toUpperCase()
     : null;
 
-  if (!libro || !capitulo || !usuario || !comentario) {
+  const imagenBase64 = data.imagenBase64?.trim() ?? '';
+
+  if (!libro || !capitulo || !usuario || (!comentario && !imagenBase64)) {
     return { ok: false, mensaje: 'Faltan datos' };
   }
 
@@ -1234,6 +1245,16 @@ export async function enviarComentarioLectura(data: {
       where: { conversationId: conversation.id, deletedAt: null },
     })) === 0;
 
+  let imagen: { url: string; publicId: string } | null = null;
+  if (imagenBase64) {
+    try {
+      imagen = await subirImagenComentarioDesdeBase64({ imageBase64: imagenBase64 });
+    } catch (error) {
+      logger.warn({ err: error, usuario }, 'comment_image_upload_failed');
+      return { ok: false, mensaje: 'No se ha podido subir la imagen' };
+    }
+  }
+
   const created = await prisma.comment.create({
     data: {
       conversationId: conversation.id,
@@ -1241,12 +1262,15 @@ export async function enviarComentarioLectura(data: {
       text: comentario,
       type: tipo,
       color: tipo !== 'COMMENT' ? color : null,
+      imageUrl: imagen?.url ?? null,
+      imagePublicId: imagen?.publicId ?? null,
     },
     select: {
       id: true,
       text: true,
       type: true,
       color: true,
+      imageUrl: true,
       edited: true,
       createdAt: true,
       user: { select: { name: true, avatarUrl: true } },
@@ -1289,6 +1313,7 @@ export async function enviarComentarioLectura(data: {
       comentario: created.text,
       tipo: created.type,
       color: created.color ?? '',
+      imagenUrl: created.imageUrl ?? '',
       likes: 0,
       reacciones: contarReacciones([]),
       miReaccion: null,
@@ -1532,8 +1557,17 @@ export async function eliminarComentarioLectura(
     where: { id: comentarioId },
     data: {
       deletedAt: new Date(),
+      imageUrl: null,
+      imagePublicId: null,
     },
   });
+
+  // La foto de un comentario eliminado no debe seguir accesible por su URL.
+  if (existing.imagePublicId) {
+    void borrarImagenCloudinary(existing.imagePublicId).catch((error) =>
+      logger.warn({ err: error, comentarioId }, 'comment_image_delete_failed'),
+    );
+  }
 
   return { ok: true };
 }
