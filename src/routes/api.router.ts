@@ -27,6 +27,8 @@ import {
   handleGetEstanteriaPendientes,
   handleGetKitLectura,
   handleGuardarKitLectura,
+  handleGetCategoriasComentario,
+  handleGuardarCategoriasComentario,
   handleGetEnlacesCompraLote,
   handleGetSeriesVolumesForBook,
   handleLibros,
@@ -281,6 +283,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'renombrarCapitulo',
   'vincularEdicionLibro',
   'guardarComentarioLectura',
+  'guardarCategoriasComentario',
   'responderComentario',
   'toggleLikeComentario',
   'editarComentario',
@@ -658,6 +661,9 @@ export async function handleApi(
       case 'kitLectura':
         return handleGetKitLectura(req, res);
 
+      case 'categoriasComentario':
+        return handleGetCategoriasComentario(req, res);
+
       case 'estanteriaPendientes':
         return handleGetEstanteriaPendientes(req, res);
 
@@ -681,6 +687,9 @@ export async function handleApi(
 
       case 'guardarKitLectura':
         return handleGuardarKitLectura(req, res);
+
+      case 'guardarCategoriasComentario':
+        return handleGuardarCategoriasComentario(req, res);
 
       case 'actualizarFormatoLibro':
         return handleActualizarFormatoLibro(req, res);

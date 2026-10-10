@@ -23,6 +23,7 @@ import {
 } from '../utils/cursor-pagination.js';
 import { syncAchievementsForUser } from './achievements.service.js';
 import { backgroundError, logger } from '../logging/logger.js';
+import { limpiarTextoCorto } from './comment-categories.service.js';
 import {
   borrarImagenCloudinary,
   subirImagenComentarioDesdeBase64,
@@ -1017,6 +1018,7 @@ export async function getComentariosLectura(
       tipo: comment.type,
       color: comment.color ?? '',
       imagenUrl: comment.imageUrl ?? '',
+      etiqueta: comment.typeLabel ?? '',
       likes: comment.likes.length,
       reacciones: contarReacciones(comment.likes),
       miReaccion: comment.likes.find((like) => like.userId === usuarioId)?.reaction ?? null,
@@ -1110,6 +1112,7 @@ export async function getComentariosLecturaPage(
       type: true,
       color: true,
       imageUrl: true,
+      typeLabel: true,
       edited: true,
       createdAt: true,
       user: { select: { name: true, avatarUrl: true } },
@@ -1157,6 +1160,7 @@ export async function getComentariosLecturaPage(
       tipo: comment.type,
       color: comment.color ?? '',
       imagenUrl: comment.imageUrl ?? '',
+      etiqueta: comment.typeLabel ?? '',
       likes: comment.likes.length,
       reacciones: contarReacciones(comment.likes),
       miReaccion: comment.likes.find(({ userId }) => userId === usuarioId)?.reaction ?? null,
@@ -1195,6 +1199,8 @@ export async function enviarComentarioLectura(data: {
   color?: string;
   /** Foto adjunta como data URL (ya reducida por la app). */
   imagenBase64?: string;
+  /** Nombre que la autora da a la categoría («🎭 Villanos»). */
+  etiqueta?: string;
 }) {
   const libro = data.libro.trim();
   const capitulo = data.capitulo.trim();
@@ -1212,6 +1218,8 @@ export async function enviarComentarioLectura(data: {
     : null;
 
   const imagenBase64 = data.imagenBase64?.trim() ?? '';
+  // La etiqueta solo tiene sentido en comentarios con categoría.
+  const etiqueta = tipo !== 'COMMENT' ? limpiarTextoCorto(data.etiqueta, 40) || null : null;
 
   if (!libro || !capitulo || !usuario || (!comentario && !imagenBase64)) {
     return { ok: false, mensaje: 'Faltan datos' };
@@ -1264,6 +1272,7 @@ export async function enviarComentarioLectura(data: {
       color: tipo !== 'COMMENT' ? color : null,
       imageUrl: imagen?.url ?? null,
       imagePublicId: imagen?.publicId ?? null,
+      typeLabel: etiqueta,
     },
     select: {
       id: true,
@@ -1271,6 +1280,7 @@ export async function enviarComentarioLectura(data: {
       type: true,
       color: true,
       imageUrl: true,
+      typeLabel: true,
       edited: true,
       createdAt: true,
       user: { select: { name: true, avatarUrl: true } },
@@ -1314,6 +1324,7 @@ export async function enviarComentarioLectura(data: {
       tipo: created.type,
       color: created.color ?? '',
       imagenUrl: created.imageUrl ?? '',
+      etiqueta: created.typeLabel ?? '',
       likes: 0,
       reacciones: contarReacciones([]),
       miReaccion: null,

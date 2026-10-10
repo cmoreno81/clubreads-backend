@@ -170,6 +170,7 @@ export async function handleGuardarComentarioLectura(
     tipo: String(body.tipo || 'COMMENT'),
     color: String(body.color || ''),
     imagenBase64: typeof body.imagen === 'string' ? body.imagen : undefined,
+    etiqueta: typeof body.etiqueta === 'string' ? body.etiqueta : undefined,
   });
 
   logger.info({

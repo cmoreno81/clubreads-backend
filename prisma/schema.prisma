@@ -358,6 +358,10 @@ model BookMergeAudit {
 model User {
   id String @id @default(cuid())
 
+  /// Nombres y emojis personalizados de las 5 categorías de comentario
+  /// (Momento fav., Teoría, Cita, Personaje, Impacto). Null = los de siempre.
+  commentCategories Json?
+
   name  String @unique
   email String @unique
 
@@ -1082,6 +1086,11 @@ model Comment {
   /// Foto adjunta al comentario (Cloudinary). Solo en comentarios de primer nivel.
   imageUrl      String?
   imagePublicId String?
+
+  /// Nombre de la categoría tal y como la tenía la autora al comentar
+  /// («🎭 Villanos»). Es una copia del momento: si luego la renombra, los
+  /// comentarios antiguos conservan el nombre con el que se escribieron.
+  typeLabel String?
 
   parentId String?
   parent   Comment?  @relation("CommentTree", fields: [parentId], references: [id])

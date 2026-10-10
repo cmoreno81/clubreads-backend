@@ -375,3 +375,14 @@ export async function handleGetSeriesVolumesForBook(req: Request, res: Response)
   const data = await getSeriesVolumesForBook(bookId, requestUserName(req));
   return res.json(data);
 }
+
+export async function handleGetCategoriasComentario(req: Request, res: Response) {
+  const { getCategoriasComentario } = await import('../services/comment-categories.service.js');
+  return res.json(await getCategoriasComentario(req.auth!.userId));
+}
+
+export async function handleGuardarCategoriasComentario(req: Request, res: Response) {
+  const { guardarCategoriasComentario } = await import('../services/comment-categories.service.js');
+  const body = req.body ?? {};
+  return res.json(await guardarCategoriasComentario(req.auth!.userId, body.categorias ?? null));
+}
