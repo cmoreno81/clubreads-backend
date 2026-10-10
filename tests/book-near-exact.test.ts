@@ -24,6 +24,15 @@ test('reconoce el título bilingüe como el título en español', () => {
   assert.ok(variantes.includes('the hunger games'));
 });
 
+test('dos obras en un mismo volumen no se toman por una traducción', () => {
+  const variantes = importTitleVariants('Crepúsculo / Vida y muerte (Crepúsculo)');
+  assert.ok(!variantes.includes('crepusculo'));
+  assert.deepEqual(extraTitleKeys('crepusculo / vida y muerte'), []);
+  // Español / inglés en cualquier orden sí.
+  assert.deepEqual(extraTitleKeys('crepusculo / twilight of the gods'), ['crepusculo', 'twilight of the gods']);
+  assert.deepEqual(extraTitleKeys('the hunger games / los juegos del hambre'), ['the hunger games', 'los juegos del hambre']);
+});
+
 test('reconoce «Título N - Título» como el título solo', () => {
   assert.ok(importTitleVariants('Los Juegos del Hambre 1 - Los Juegos del Hambre').includes('los juegos del hambre'));
   assert.ok(importTitleVariants('Divergente 1 - Divergente').includes('divergente'));

@@ -274,12 +274,24 @@ export function parseImportRows(value: unknown): GoodreadsRow[] {
  *    y «Zodiac Academy 1: El despertar» son lo mismo.
  * No quitan subtítulos ni volúmenes, así que no confunden dos tomos de una saga.
  */
+const PALABRAS_INGLESAS = new Set([
+  'the', 'of', 'and', 'in', 'to', 'for', 'with', 'my', 'your', 'her', 'his',
+  'our', 'is', 'are', 'was', 'a', 'an', 'at', 'on', 'from', 'into',
+]);
+
+function pareceInglés(titulo: string) {
+  return titulo.split(/\s+/).some((palabra) => PALABRAS_INGLESAS.has(palabra));
+}
+
 export function extraTitleKeys(canonical: string): string[] {
   const keys: string[] = [];
-  if (canonical.includes(' / ')) {
-    for (const part of canonical.split(' / ')) {
-      if (part.trim().length >= 4) keys.push(part.trim());
-    }
+  // Solo se trata como «el mismo título en dos idiomas» si una mitad parece
+  // inglesa y la otra no. «Crepúsculo / Vida y muerte» son DOS obras en un
+  // mismo volumen, no una traducción, y no debe confundirse con «Crepúsculo».
+  const mitades = canonical.split(' / ').map((part) => part.trim());
+  if (mitades.length === 2 && mitades.every((part) => part.length >= 4)) {
+    const ingles = mitades.map(pareceInglés);
+    if (ingles[0] !== ingles[1]) keys.push(...mitades);
   }
   const repeated = /^(.+?)\s+\d+\s*[-–]\s+(.+)$/.exec(canonical);
   if (repeated && repeated[1]!.trim() === repeated[2]!.trim()) {
