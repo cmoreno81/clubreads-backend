@@ -1,8 +1,9 @@
 import { randomInt } from 'node:crypto';
-import { AuthCodePurpose, ClubType } from '@prisma/client';
+import { AuthCodePurpose, ClubType, Prisma } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
-import { backgroundError } from '../logging/logger.js';
+import { backgroundError, logger } from '../logging/logger.js';
+import { borrarImagenCloudinary } from './cloudinary.service.js';
 import {
   createAccessToken,
   generateRefreshToken,
@@ -711,7 +712,19 @@ export async function eliminarCuenta(userId: string, password: string) {
   const clubIdsToDelete = ownedClubs.map((c) => c.id);
   const placeholder = `eliminada-${user.id}`;
 
+  // Los comentarios se conservan sin nombre, pero las fotos que la usuaria
+  // adjuntó son contenido personal: se retiran de los comentarios y de
+  // Cloudinary al eliminar la cuenta.
+  const fotos = await prisma.comment.findMany({
+    where: { userId, imagePublicId: { not: null } },
+    select: { imagePublicId: true },
+  });
+
   await prisma.$transaction([
+    prisma.comment.updateMany({
+      where: { userId, OR: [{ imageUrl: { not: null } }, { imagePublicId: { not: null } }] },
+      data: { imageUrl: null, imagePublicId: null },
+    }),
     ...(clubIdsToDelete.length
       ? [prisma.club.deleteMany({ where: { id: { in: clubIdsToDelete } } })]
       : []),
@@ -730,6 +743,7 @@ export async function eliminarCuenta(userId: string, password: string) {
         avatarUrl: null,
         bio: null,
         readerPersonality: null,
+        commentCategories: Prisma.DbNull,
         activeClubId: null,
         notificationsDisabled: [],
         profileVisibility: 'PRIVADO',
@@ -739,6 +753,13 @@ export async function eliminarCuenta(userId: string, password: string) {
       },
     }),
   ]);
+
+  for (const { imagePublicId } of fotos) {
+    if (!imagePublicId) continue;
+    void borrarImagenCloudinary(imagePublicId).catch((error) =>
+      logger.warn({ err: error, userId }, 'account_comment_image_delete_failed'),
+    );
+  }
 
   return { ok: true };
 }

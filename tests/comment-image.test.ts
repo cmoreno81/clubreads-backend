@@ -48,3 +48,12 @@ test('la foto se sube a Cloudinary, se devuelve en los listados y se borra con e
   assert.match(cloud, /folder: 'clubreads\/comments'/);
   assert.match(cloud, /crop: 'limit'/);
 });
+
+test('al eliminar la cuenta se retiran las fotos de sus comentarios y sus temas personalizados', async () => {
+  const auth = await readFile(new URL('../src/services/auth.service.ts', import.meta.url), 'utf8');
+  const eliminar = auth.slice(auth.indexOf('export async function eliminarCuenta'));
+  assert.match(eliminar, /imagePublicId: \{ not: null \}/);
+  assert.match(eliminar, /data: \{ imageUrl: null, imagePublicId: null \}/);
+  assert.match(eliminar, /commentCategories: Prisma\.DbNull/);
+  assert.match(eliminar, /borrarImagenCloudinary\(imagePublicId\)/);
+});
