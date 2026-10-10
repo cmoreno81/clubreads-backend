@@ -25,6 +25,7 @@ import {
   getCurrentClubContext,
   getClubmateClubNames,
 } from './club-context.service.js';
+import { findNearExactBook } from './goodreads-import.service.js';
 import {
   findBookByIdentity,
   findSimilarBooks,
@@ -1971,11 +1972,19 @@ export async function crearLibro(data: any) {
    * Comprobamos primero si el libro ya existe.
    * No creamos ni modificamos género o saga todavía.
    */
-  const existingBook = await findBookByIdentity(prisma, {
-    title,
-    authorName: suppliedAuthorName,
-    isbn: suppliedIsbn,
-  });
+  // Además del título exacto, se reconoce el mismo libro escrito de otra forma
+  // («Los juegos del hambre / The Hunger Games», «Divergente 1 - Divergente»…)
+  // para no crear una ficha duplicada.
+  const existingBook =
+    (await findBookByIdentity(prisma, {
+      title,
+      authorName: suppliedAuthorName,
+      isbn: suppliedIsbn,
+    })) ??
+    (await findNearExactBook(prisma, {
+      title,
+      authorName: suppliedAuthorName,
+    }));
 
   /*
    * Si el cliente no ha confirmado explícitamente que quiere crear un libro nuevo,

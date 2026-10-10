@@ -266,6 +266,33 @@ export function parseImportRows(value: unknown): GoodreadsRow[] {
   return parsed;
 }
 
+/**
+ * Formas alternativas del MISMO título que aparecen en catálogos y tiendas:
+ *  - bilingüe: «Los juegos del hambre / The Hunger Games» → cada mitad;
+ *  - número de saga delante repitiendo el título: «Divergente 1 - Divergente»;
+ *  - «.» o «:» como separador de subtítulo: «Zodiac Academy 1. El despertar»
+ *    y «Zodiac Academy 1: El despertar» son lo mismo.
+ * No quitan subtítulos ni volúmenes, así que no confunden dos tomos de una saga.
+ */
+export function extraTitleKeys(canonical: string): string[] {
+  const keys: string[] = [];
+  if (canonical.includes(' / ')) {
+    for (const part of canonical.split(' / ')) {
+      if (part.trim().length >= 4) keys.push(part.trim());
+    }
+  }
+  const repeated = /^(.+?)\s+\d+\s*[-–]\s+(.+)$/.exec(canonical);
+  if (repeated && repeated[1]!.trim() === repeated[2]!.trim()) {
+    keys.push(repeated[2]!.trim());
+  }
+  const unified = canonical
+    .replace(/\s*[.:]\s+/g, ': ')
+    .replace(/[.:]+$/, '')
+    .trim();
+  if (unified && unified !== canonical) keys.push(unified);
+  return keys;
+}
+
 export function importTitleVariants(value: string) {
   const canonical = canonicalBookTitle(value);
   const withoutSeriesSuffix = canonical
@@ -290,7 +317,8 @@ export function importTitleVariants(value: string) {
   return [
     ...new Set(
       [canonical, withoutSeriesSuffix, withoutTrailingParenthetical,
-       withoutSubtitle.length >= 4 ? withoutSubtitle : null]
+       withoutSubtitle.length >= 4 ? withoutSubtitle : null,
+       ...extraTitleKeys(canonical)]
         .filter((x): x is string => typeof x === 'string' && x.length > 0),
     ),
   ];
@@ -1021,4 +1049,50 @@ export class GoodreadsImportError extends Error {
   ) {
     super(message);
   }
+}
+
+/**
+ * Libro ya existente que es el MISMO que [identity] aunque el título venga
+ * escrito de otra forma (bilingüe, con el número de saga delante, con «.» en
+ * vez de «:»…). Exige misma autora y coincidencia exacta de título tras
+ * normalizar, sin recortar subtítulos, para no unir tomos distintos de una
+ * saga. Devuelve `null` si no hay un candidato claro.
+ */
+export async function findNearExactBook(
+  database: Pick<typeof prisma, 'book'>,
+  identity: { title: string; authorName?: string | null },
+) {
+  const authorName = (identity.authorName ?? '').trim();
+  if (!authorName) return null;
+  const canonical = canonicalBookTitle(identity.title);
+  const wanted = [canonical, ...extraTitleKeys(canonical)];
+  if (wanted.every((key) => key.length < 4)) return null;
+
+  const candidates = await database.book.findMany({
+    where: {
+      deletedAt: null,
+      author: { name: { equals: authorName, mode: 'insensitive' } },
+    },
+    include: { author: true, _count: { select: { library: true } } },
+  });
+
+  let best: { book: (typeof candidates)[number]; rank: number } | null = null;
+  for (const book of candidates) {
+    const keys = new Set([
+      canonicalBookTitle(book.title),
+      ...extraTitleKeys(canonicalBookTitle(book.title)),
+    ]);
+    const rank = wanted.findIndex((key) => keys.has(key));
+    if (rank < 0) continue;
+    if (
+      !best ||
+      rank < best.rank ||
+      (rank === best.rank && book._count.library > best.book._count.library)
+    ) {
+      best = { book, rank };
+    }
+  }
+  if (!best) return null;
+  const { _count: _ignored, ...book } = best.book;
+  return book;
 }
