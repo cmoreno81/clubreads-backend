@@ -57,6 +57,13 @@ export const healthRateLimiter = createLimiter(
   'Demasiadas comprobaciones de estado. Inténtalo de nuevo más tarde.',
 );
 
+/// Formulario público de Talento emergente: pocas fichas por hora y por IP.
+export const talentoRateLimiter = createLimiter(
+  positiveIntegerFromEnv('RATE_LIMIT_TALENTO_WINDOW_MS', 60 * 60_000),
+  positiveIntegerFromEnv('RATE_LIMIT_TALENTO_MAX', 5),
+  'Has enviado demasiadas fichas seguidas. Espera un rato antes de volver a intentarlo.',
+);
+
 const credentialsRateLimiter = createLimiter(
   positiveIntegerFromEnv('RATE_LIMIT_AUTH_WINDOW_MS', 10 * 60_000),
   positiveIntegerFromEnv('RATE_LIMIT_AUTH_MAX', 10),

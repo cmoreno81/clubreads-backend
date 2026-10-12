@@ -128,6 +128,36 @@ export async function subirImagenComentarioDesdeBase64(params: {
   };
 }
 
+export async function subirPortadaTalentoDesdeBase64(params: {
+  imageBase64: string;
+}) {
+  validarConfiguracion();
+
+  const imageBase64 = params.imageBase64.trim();
+  if (!imageBase64.startsWith('data:image/')) {
+    throw new Error('La imagen no es válida');
+  }
+
+  const resultado = await cloudinary.uploader.upload(imageBase64, {
+    folder: 'clubreads/talento-emergente',
+    resource_type: 'image',
+    transformation: [
+      {
+        width: 1200,
+        height: 1800,
+        crop: 'limit',
+        quality: 'auto',
+        fetch_format: 'auto',
+      },
+    ],
+  });
+
+  return {
+    url: resultado.secure_url,
+    publicId: resultado.public_id,
+  };
+}
+
 export async function borrarImagenCloudinary(publicId: string) {
   validarConfiguracion();
   const id = publicId.trim();

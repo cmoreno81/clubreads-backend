@@ -8,7 +8,9 @@ import { prisma } from './prisma.js';
 import {
   apiRateLimiter,
   healthRateLimiter,
+  talentoRateLimiter,
 } from './middleware/rate-limit.middleware.js';
+import { talentoRouter } from './routes/talento.router.js';
 import {
   corsErrorHandler,
   createCorsMiddleware,
@@ -75,6 +77,8 @@ export function createApp() {
   });
 
   app.use(express.json({ limit: '5mb' }));
+  // Formulario público de autoras (sin sesión): antes del router autenticado.
+  app.use('/api/talento', talentoRateLimiter, talentoRouter);
   app.use('/api', apiRateLimiter, apiRouter);
   app.use(globalErrorHandler());
   return app;

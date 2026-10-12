@@ -1869,3 +1869,59 @@ model ReadingKit {
   @@unique([userId, bookId])
   @@index([userId])
 }
+
+//
+// TALENTO EMERGENTE
+//
+
+enum EmergingTalentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Ficha enviada por una autora/autor autopublicado desde el formulario web.
+/// Nace PENDING; se revisa a mano y, al aprobarla, se convierte en un Book.
+model EmergingTalentSubmission {
+  id        String               @id @default(cuid())
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  status    EmergingTalentStatus @default(PENDING)
+
+  title         String
+  authorName    String
+  contactEmail  String
+  /// Perfil público de la autora (Instagram, web…); opcional.
+  authorProfile String?
+
+  genre       String
+  extraGenres String[] @default([])
+  language    String   @default("es")
+  pages       Int?
+  /// 0 = sin picante … 5.
+  spicyLevel  Int      @default(0)
+  tropes      String[] @default([])
+
+  synopsis   String  @db.Text
+  authorNote String? @db.Text
+
+  buyUrl        String
+  coverUrl      String
+  coverPublicId String?
+
+  /// Aceptó las condiciones, confirmó que tiene los derechos y que el
+  /// contenido adulto está bien indicado (versión de las condiciones aceptada).
+  termsVersion String
+  acceptedAt   DateTime @default(now())
+
+  /// Hash (con sal) de la IP, solo para detectar abuso del formulario.
+  ipHash String?
+
+  reviewNote     String?
+  reviewedAt     DateTime?
+  /// Libro del catálogo en el que se convirtió al aprobarla.
+  approvedBookId String?   @unique
+
+  @@index([status, createdAt])
+  @@index([contactEmail])
+}

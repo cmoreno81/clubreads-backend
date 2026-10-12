@@ -11,6 +11,7 @@
     "migrate:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
     "seed:genres": "tsx scripts/seed-genres.ts",
+    "talento:listar": "tsx scripts/talento-listar.ts",
     "import:sheets": "tsx scripts/import-sheets.ts",
     "audit:import": "tsx scripts/audit-import.ts",
     "audit:details": "tsx scripts/audit-details.ts",
