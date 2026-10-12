@@ -361,6 +361,8 @@ export async function syncStoreLinks(
   let updated = 0;
   for (const candidate of matcher.best.values()) {
     const current = existingByKey.get(key(candidate));
+    // Enlaces fijados a mano (source MANUAL): el feed nunca los sustituye.
+    if (current?.source === 'MANUAL') continue;
     if (!current) {
       created++;
       if (!dryRun) {
