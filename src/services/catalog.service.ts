@@ -1,4 +1,4 @@
-import { listaGeneros } from '../utils/generos.utils.js';
+import { datosTalento, listaGeneros } from '../utils/generos.utils.js';
 import {
   Priority,
   ReadingFormat,
@@ -169,6 +169,11 @@ function localBook(book: {
   author: { name: string } | null;
   genre: { name: string };
   extraGenres: string[];
+  emergingTalent: boolean;
+  authorNote: string | null;
+  authorLinkUrl: string | null;
+  authorSpicyLevel: number | null;
+  authorTropes: string[];
   library: Array<{
     userId: string;
     status: ReadingStatus;
@@ -187,6 +192,7 @@ function localBook(book: {
     coverUrl: book.coverUrl ?? '',
     genero: book.genre.name,
     generos: listaGeneros(book),
+    ...datosTalento(book),
     isbn: book.isbn ?? '',
     paginas: book.totalPages,
     anioPublicacion: book.publicationYear,
@@ -325,6 +331,11 @@ export async function getGeneralCatalogPage(
       author: { select: { name: true } },
       genre: { select: { name: true } },
       extraGenres: true,
+      emergingTalent: true,
+      authorNote: true,
+      authorLinkUrl: true,
+      authorSpicyLevel: true,
+      authorTropes: true,
       library: {
         where: { userId: user.id },
         select: {

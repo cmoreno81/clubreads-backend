@@ -31,3 +31,24 @@ export function listaGeneros(book: {
   const principal = book.genre?.name ?? '';
   return [principal, ...(book.extraGenres ?? [])].filter(Boolean);
 }
+
+/// Campos de «Talento emergente» que acompañan a un libro en las respuestas.
+/// Los tres campos son obligatorios en el tipo para que el compilador avise
+/// si una consulta con `select` se olvida de pedirlos.
+export function datosTalento(book: {
+  emergingTalent: boolean;
+  authorNote: string | null;
+  authorLinkUrl: string | null;
+  authorSpicyLevel: number | null;
+  authorTropes: string[];
+}) {
+  return book.emergingTalent
+    ? {
+        talentoEmergente: true,
+        notaAutora: book.authorNote ?? '',
+        enlaceAutora: book.authorLinkUrl ?? '',
+        picanteAutora: book.authorSpicyLevel,
+        troposAutora: book.authorTropes,
+      }
+    : { talentoEmergente: false };
+}

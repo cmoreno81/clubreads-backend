@@ -240,6 +240,17 @@ model Book {
   // por nombre; las estadísticas siguen usando solo el principal.
   extraGenres String[] @default([])
 
+  /// Libro de una autora/autor autopublicado del programa «Talento emergente».
+  emergingTalent Boolean @default(false)
+
+  /// Nota personal de la autora para las lectoras y enlace propio donde
+  /// comprar o leer el libro (solo en libros de Talento emergente).
+  authorNote    String?
+  authorLinkUrl String?
+  /// Nivel de picante (0-5) y tropos que declara la autora.
+  authorSpicyLevel Int?
+  authorTropes     String[] @default([])
+
   isbn String?
 
   normalizedIsbn String?

@@ -1,4 +1,4 @@
-import { listaGeneros } from '../utils/generos.utils.js';
+import { datosTalento, listaGeneros } from '../utils/generos.utils.js';
 import { ProfileVisibility, ReadingStatus } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { getCurrentClubContext, getClubmateClubNames } from './club-context.service.js';
@@ -59,6 +59,11 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
             author: { select: { name: true } },
             genre: { select: { name: true } },
             extraGenres: true,
+            emergingTalent: true,
+            authorNote: true,
+            authorLinkUrl: true,
+            authorSpicyLevel: true,
+            authorTropes: true,
             series: { select: { name: true } },
           },
         },
@@ -92,6 +97,11 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
             author: { select: { name: true } },
             genre: { select: { name: true } },
             extraGenres: true,
+            emergingTalent: true,
+            authorNote: true,
+            authorLinkUrl: true,
+            authorSpicyLevel: true,
+            authorTropes: true,
             series: { select: { name: true } },
             reviews: {
               where: { deletedAt: null },
@@ -119,6 +129,11 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
         author: { select: { name: true } },
         genre: { select: { name: true } },
         extraGenres: true,
+        emergingTalent: true,
+        authorNote: true,
+        authorLinkUrl: true,
+        authorSpicyLevel: true,
+        authorTropes: true,
         series: { select: { name: true } },
       },
     }),
@@ -177,6 +192,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
       generos: listaGeneros(item.book),
+      ...datosTalento(item.book),
       saga: item.book.series?.name ?? '',
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
@@ -215,6 +231,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
       generos: listaGeneros(item.book),
+      ...datosTalento(item.book),
       saga: item.book.series?.name ?? '',
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
@@ -249,6 +266,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
       autor: book.author?.name ?? '',
       genero: book.genre?.name ?? '',
       generos: listaGeneros(book),
+      ...datosTalento(book),
       coverUrl: book.coverUrl ?? '',
       goodreads: book.goodreadsUrl ?? '',
       paginas: book.totalPages,
