@@ -26,7 +26,7 @@ export async function avisarNuevaFichaTalento(ficha: {
         sender: { email: remitente, name: 'ClubReads' },
         to: [{ email: destino }],
         subject: 'Nueva ficha de Talento emergente',
-        textContent: `Ha llegado una ficha nueva por revisar.\n\nLibro: ${ficha.titulo}\nAutora/autor: ${ficha.autora}\nId: ${ficha.id}\n\nPídeme que la revise y la apruebo.`,
+        textContent: `Ha llegado una ficha nueva por revisar.\n\nLibro: ${ficha.titulo}\nAutoría: ${ficha.autora}\nId: ${ficha.id}\n\nPídeme que la revise y la apruebo.`,
         tags: ['talento-emergente'],
       }),
     }),
