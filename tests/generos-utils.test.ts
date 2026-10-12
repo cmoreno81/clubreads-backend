@@ -20,5 +20,5 @@ test('listaGeneros pone el principal primero', () => {
     listaGeneros({ genre: { name: 'Fantasía' }, extraGenres: ['Juvenil'] }),
     ['Fantasía', 'Juvenil'],
   );
-  assert.deepEqual(listaGeneros({ genre: { name: 'Fantasía' } }), ['Fantasía']);
+  assert.deepEqual(listaGeneros({ genre: { name: 'Fantasía' }, extraGenres: null }), ['Fantasía']);
 });

@@ -506,6 +506,7 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
           createdAt: true,
           author: { select: { name: true } },
           genre: { select: { name: true } },
+          extraGenres: true,
           series: { select: { name: true } },
           reviews: {
             where: { deletedAt: null },
@@ -773,6 +774,7 @@ async function _getLibrosFinalizadosTodos(usuario: string) {
           seriesOrder: true,
           author: { select: { name: true } },
           genre: { select: { name: true } },
+          extraGenres: true,
           series: { select: { name: true } },
           reviews: {
             where: { deletedAt: null },
@@ -872,6 +874,7 @@ export async function getLibrosFinalizadosPage(
           createdAt: true,
           author: { select: { name: true } },
           genre: { select: { name: true } },
+          extraGenres: true,
           series: { select: { name: true } },
           reviews: {
             where: { deletedAt: null },

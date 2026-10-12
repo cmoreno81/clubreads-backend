@@ -26,7 +26,7 @@ export function normalizarGenerosExtra(
 /** Principal primero, luego los adicionales: lo que se muestra al usuario. */
 export function listaGeneros(book: {
   genre?: { name: string } | null;
-  extraGenres?: string[] | null;
+  extraGenres: string[] | null;
 }): string[] {
   const principal = book.genre?.name ?? '';
   return [principal, ...(book.extraGenres ?? [])].filter(Boolean);

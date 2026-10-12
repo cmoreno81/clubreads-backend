@@ -58,6 +58,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
             createdAt: true,
             author: { select: { name: true } },
             genre: { select: { name: true } },
+            extraGenres: true,
             series: { select: { name: true } },
           },
         },
@@ -90,6 +91,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
             language: true,
             author: { select: { name: true } },
             genre: { select: { name: true } },
+            extraGenres: true,
             series: { select: { name: true } },
             reviews: {
               where: { deletedAt: null },
@@ -116,6 +118,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
         deletedAt: true,
         author: { select: { name: true } },
         genre: { select: { name: true } },
+        extraGenres: true,
         series: { select: { name: true } },
       },
     }),

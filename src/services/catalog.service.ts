@@ -168,6 +168,7 @@ function localBook(book: {
   totalPages: number | null;
   author: { name: string } | null;
   genre: { name: string };
+  extraGenres: string[];
   library: Array<{
     userId: string;
     status: ReadingStatus;
@@ -323,6 +324,7 @@ export async function getGeneralCatalogPage(
       createdAt: true,
       author: { select: { name: true } },
       genre: { select: { name: true } },
+      extraGenres: true,
       library: {
         where: { userId: user.id },
         select: {
