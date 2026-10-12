@@ -4,11 +4,13 @@ import {
   rechazarFichaTalento,
   retirarSelloTalento,
 } from '../src/services/talento-emergente-aprobacion.service.js';
+import { destacarEstaSemana } from '../src/services/talento-emergente-destacada.service.js';
 
 /// Revisión de fichas de Talento emergente:
 ///   npm run talento:aprobar -- <idFicha>
 ///   npm run talento:rechazar -- <idFicha> "motivo"
 ///   npm run talento:retirar -- <idLibro>
+///   npm run talento:destacar -- <idLibro>   (autora de la semana, esta semana)
 async function main() {
   const [accion, id, ...resto] = process.argv.slice(2);
   if (!accion || !id) {
@@ -31,6 +33,10 @@ async function main() {
   } else if (accion === 'retirar') {
     const r = await retirarSelloTalento(id);
     console.log(r.ok ? 'Sello retirado.' : r.mensaje);
+    if (!r.ok) process.exitCode = 1;
+  } else if (accion === 'destacar') {
+    const r = await destacarEstaSemana(id);
+    console.log(r.ok ? `«${r.titulo}» es la autora de la semana.` : r.mensaje);
     if (!r.ok) process.exitCode = 1;
   } else {
     console.error(`Acción desconocida: ${accion}`);

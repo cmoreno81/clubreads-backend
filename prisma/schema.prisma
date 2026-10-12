@@ -253,6 +253,8 @@ model Book {
   /// Nivel de picante (0-5) y tropos que declara la autora.
   authorSpicyLevel Int?
   authorTropes     String[] @default([])
+  /// Semana (p. ej. «2026-W42») en la que se ha fijado a mano como «Autora de la semana».
+  talentFeaturedWeek String?
 
   isbn String?
 

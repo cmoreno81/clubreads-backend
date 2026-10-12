@@ -15,6 +15,7 @@
     "talento:aprobar": "tsx scripts/talento-revisar.ts aprobar",
     "talento:rechazar": "tsx scripts/talento-revisar.ts rechazar",
     "talento:retirar": "tsx scripts/talento-revisar.ts retirar",
+    "talento:destacar": "tsx scripts/talento-revisar.ts destacar",
     "import:sheets": "tsx scripts/import-sheets.ts",
     "audit:import": "tsx scripts/audit-import.ts",
     "audit:details": "tsx scripts/audit-details.ts",

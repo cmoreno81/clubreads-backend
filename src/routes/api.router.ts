@@ -213,6 +213,7 @@ import {
 } from '../controllers/wishlist.controller.js';
 import { handleGetUpcomingReleases } from '../controllers/upcoming-releases.controller.js';
 import { handleGetNewReleases } from '../controllers/new-releases.controller.js';
+import { handleAutoraDeLaSemana } from '../controllers/talento-emergente.controller.js';
 export const apiRouter = Router();
 
 const PUBLIC_AUTH_ACTIONS = new Set([
@@ -1067,6 +1068,7 @@ apiRouter.get(
 apiRouter.get('/wishlist', requireAuthentication, handleGetWishlist);
 apiRouter.get('/books/upcoming', requireAuthentication, handleGetUpcomingReleases);
 apiRouter.get('/books/new-releases', requireAuthentication, handleGetNewReleases);
+apiRouter.get('/books/autora-de-la-semana', requireAuthentication, handleAutoraDeLaSemana);
 apiRouter.post('/wishlist', requireAuthentication, handleAddWishlistItem);
 apiRouter.patch('/wishlist/:id', requireAuthentication, handleUpdateWishlistItem);
 apiRouter.delete('/wishlist/:id', requireAuthentication, handleDeleteWishlistItem);

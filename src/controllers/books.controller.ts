@@ -34,7 +34,7 @@ export async function handleLibros(req: Request, res: Response) {
 }
 
 export async function handleLibrosGlobal(req: Request, res: Response) {
-  const data = await getLibrosGlobal(requestUserName(req));
+  const data = await getLibrosGlobal(requestUserName(req), req.query.catalogo === '1');
   return res.json(data);
 }
 

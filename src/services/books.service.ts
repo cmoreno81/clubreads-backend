@@ -389,15 +389,15 @@ export async function getLibros(usuario: string) {
 
 // ── Vista ClubReads: todos los usuarios, sin filtro de club ───────────────────
 // Limitada a 600 entradas activas para evitar respuestas excesivas.
-export async function getLibrosGlobal(usuario: string) {
+export async function getLibrosGlobal(usuario: string, incluirCatalogo = false) {
   return cached(
-    `libros-global:${usuario}`,
+    `libros-global:${usuario}:${incluirCatalogo ? 'cat' : ''}`,
     LIBRARY_TTL,
-    () => _getLibrosGlobal(usuario),
+    () => _getLibrosGlobal(usuario, incluirCatalogo),
   );
 }
 
-async function _getLibrosGlobal(usuario: string) {
+async function _getLibrosGlobal(usuario: string, incluirCatalogo = false) {
   const user = await prisma.user.findUnique({
     where: { name: usuario.trim() },
     select: { id: true },
@@ -419,7 +419,51 @@ async function _getLibrosGlobal(usuario: string) {
     orderBy: [{ book: { title: 'asc' } }, { user: { name: 'asc' } }],
   });
 
-  return library.map((item) => {
+  // Libros de Talento emergente que aún no tiene nadie en su biblioteca: se
+  // muestran igualmente (sin lectoras) para que se puedan descubrir. Solo los
+  // pide la app nueva (`catalogo=1`): una app antigua los pintaría como una
+  // lectora sin nombre.
+  const sinLectoras = incluirCatalogo
+    ? await prisma.book.findMany({
+        where: { emergingTalent: true, deletedAt: null, library: { none: {} } },
+        include: { author: true, genre: true, series: true },
+        orderBy: { title: 'asc' },
+      })
+    : [];
+
+  const delCatalogo = sinLectoras.map((book) => ({
+    bookId: book.id,
+    usuario: '',
+    mismoClub: true,
+    enMiClub: false,
+    clubCompartido: '',
+    soloCatalogo: true,
+    libro: book.title,
+    autor: book.author?.name ?? '',
+    genero: book.genre.name,
+    generos: listaGeneros(book),
+    ...datosTalento(book),
+    saga: book.series?.name ?? '',
+    numSaga: book.seriesOrder ?? '',
+    autoconclusivo: book.standalone ? 'Si' : 'No',
+    prioridad: '',
+    formato: '',
+    leyendo: '',
+    estado: 'CATALOGO',
+    valoracion: '',
+    fechaAlta: book.createdAt.toISOString(),
+    startedAt: '',
+    pausedAt: '',
+    pauseReason: '',
+    yaLoTengo: false,
+    goodreads: book.goodreadsUrl ?? '',
+    coverUrl: book.coverUrl ?? '',
+    idioma: book.language ?? '',
+    avatarUrl: '',
+    paginas: book.totalPages,
+  }));
+
+  const delasLectoras = library.map((item) => {
     // Vista ClubReads: mezcla lectoras de todos los clubes. Revelamos
     // nombre y foto de quienes comparten AL MENOS un club con quien
     // pregunta (como una lista de amigas, sea cual sea el club) o de quien
@@ -464,6 +508,8 @@ async function _getLibrosGlobal(usuario: string) {
       paginas: item.book.totalPages,
     };
   });
+
+  return [...delasLectoras, ...delCatalogo];
 }
 
 export async function getLibrosFinalizadosTodosGlobal(usuario: string) {
