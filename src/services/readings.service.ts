@@ -31,6 +31,11 @@ import {
 import { normalizeReadingType } from '../validation/api-enums.js';
 import { activityTimestamp } from '../utils/activity-timestamp.js';
 import { idsBloqueadosPor } from './moderation.service.js';
+import {
+  guardarMetas,
+  listarMetas,
+  normalizarMetas,
+} from './lectura-metas-core.service.js';
 
 /**
  * Filtro de libro para buscar/crear lecturas conjuntas, resuelto por título
@@ -40,7 +45,7 @@ import { idsBloqueadosPor } from './moderation.service.js';
  * la edición desde la que alguien abre "Leer capítulos", todas comparten la
  * misma lectura y conversación por capítulo.
  */
-async function bookFilterForLectura(
+export async function bookFilterForLectura(
   titulo: string,
 ): Promise<Prisma.BookWhereInput> {
   const title = titulo.trim();
@@ -73,7 +78,7 @@ export function shouldShowActiveReading(type: ReadingType, readers: number) {
  * avisaba a todo el club en cada comentario, lo cual era ruido para quien
  * no estaba leyendo ese libro.
  */
-async function participantesDeLectura(
+export async function participantesDeLectura(
   clubId: string,
   bookId: string,
   startedAt: Date,
@@ -427,6 +432,8 @@ export async function crearLectura(data: {
   epilogo: boolean;
   paginas?: number;
   tipo: string;
+  /** Metas opcionales: [{capitulo, fecha: 'YYYY-MM-DD'}]. */
+  metas?: unknown;
 }) {
   const requestedType = tipoFromFlutter(data.tipo);
   const { club, user } = await requireClubMember(data.usuario);
@@ -441,6 +448,8 @@ export async function crearLectura(data: {
   if (paginas !== undefined && (!Number.isInteger(paginas) || paginas <= 0)) {
     return { ok: false, mensaje: 'Número de páginas no válido' };
   }
+  const metasValidas = normalizarMetas(data.metas, capitulos);
+  if (!metasValidas.ok) return { ok: false, mensaje: metasValidas.mensaje };
 
   const book = await prisma.book.findFirst({
     where: { title, deletedAt: null },
@@ -566,6 +575,9 @@ export async function crearLectura(data: {
       });
 
       await tx.conversation.createMany({ data: conversations });
+      if (metasValidas.metas.length > 0) {
+        await guardarMetas(tx, reading.id, metasValidas.metas);
+      }
       return { alreadyExists: false, created: true, readingId: reading.id };
     });
     if (outcome.alreadyExists) {
@@ -628,6 +640,8 @@ export async function editarLectura(data: {
   capitulos: number;
   prologo: boolean;
   epilogo: boolean;
+  /** Si viene (aunque sea vacío) sustituye las metas; si no, no se tocan. */
+  metas?: unknown;
 }) {
   const { club } = await requireClubMember(data.usuario);
   const title = String(data.libro || '').trim();
@@ -636,6 +650,12 @@ export async function editarLectura(data: {
   if (!title) return { ok: false, mensaje: 'Falta el libro' };
   if (!capitulos || capitulos <= 0) {
     return { ok: false, mensaje: 'Número de capítulos no válido' };
+  }
+  const metasValidas = Array.isArray(data.metas)
+    ? normalizarMetas(data.metas, capitulos)
+    : null;
+  if (metasValidas && !metasValidas.ok) {
+    return { ok: false, mensaje: metasValidas.mensaje };
   }
 
   const bookFilter = await bookFilterForLectura(title);
@@ -717,6 +737,9 @@ export async function editarLectura(data: {
         hasEpilogue: data.epilogo,
       },
     });
+    if (metasValidas?.ok) {
+      await guardarMetas(tx, reading.id, metasValidas.metas);
+    }
 
     return { ok: true };
   });
@@ -857,6 +880,7 @@ export async function getConfiguracionLectura(
     capitulosDisponibles: buildChapters(reading, user?.id ?? null),
     coverUrl: reading.book.coverUrl ?? '',
     bookId: reading.book.id,
+    metas: await listarMetas(reading.id),
   };
 }
 

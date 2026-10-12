@@ -66,6 +66,7 @@ import {
   handleConfiguracionLectura,
   handleComentariosLectura,
   handleGuardarComentarioLectura,
+  handleInvitarALectura,
   handleResponderComentario,
   handleToggleLikeComentario,
   handleEditarComentario,
@@ -283,6 +284,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'renombrarCapitulo',
   'vincularEdicionLibro',
   'guardarComentarioLectura',
+  'invitarALectura',
   'guardarCategoriasComentario',
   'responderComentario',
   'toggleLikeComentario',
@@ -790,7 +792,10 @@ export async function handleApi(
         return handleComentariosLectura(req, res);  
 
       case 'guardarComentarioLectura':
-        return handleGuardarComentarioLectura(req, res);  
+        return handleGuardarComentarioLectura(req, res);
+
+      case 'invitarALectura':
+        return handleInvitarALectura(req, res);  
       
       case 'responderComentario':
         return handleResponderComentario(req, res);  

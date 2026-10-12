@@ -1022,9 +1022,36 @@ model Reading {
 
   conversations Conversation[]
 
+  /// Metas opcionales de la lectura conjunta («hasta el capítulo 5, comentamos el sábado»).
+  goals ReadingGoal[]
+
   @@index([clubId, status])
   @@index([clubId, bookId, status])
   @@index([clubId, type, status])
+}
+
+/// Meta de una lectura conjunta: hasta qué capítulo se lee y qué día se comenta.
+/// Es opcional: una lectura sin metas funciona exactamente igual que siempre.
+model ReadingGoal {
+  id String @id @default(cuid())
+
+  readingId String
+  reading   Reading @relation(fields: [readingId], references: [id], onDelete: Cascade)
+
+  /// Último capítulo que se comenta ese día (1..chapters).
+  upToChapter Int
+
+  /// Día de comentar (solo fecha).
+  dueDate DateTime @db.Date
+
+  /// Marcas para no repetir los avisos.
+  remindedDayBeforeAt DateTime?
+  remindedTodayAt     DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([readingId, upToChapter])
+  @@index([dueDate])
 }
 
 model Conversation {
@@ -1344,6 +1371,9 @@ enum NotificationType {
   CLUBVISION_RESULTADOS
   CLUBVISION_POCOS_CANDIDATOS
   LECTURA_NUEVA
+  LECTURA_META_PROXIMA
+  LECTURA_META_HOY
+  LECTURA_INVITACION
   COMENTARIO_LECTURA
   LIBRO_TERMINADO
   LIBRO_EMPEZADO

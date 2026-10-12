@@ -119,6 +119,7 @@ export function startServer() {
     logger.info({ event: 'server_started', port }, 'server started');
     void installUpcomingReleaseSync();
     void installStoreLinkSync();
+    void installReadingGoalReminders();
   });
   installGracefulShutdown(server);
   return server;
@@ -186,6 +187,36 @@ async function installStoreLinkSync() {
         { event: 'store_links_sync_failed', error },
         'store links sync failed',
       );
+    }
+  };
+  const interval = setInterval(() => void tick(), 15 * 60 * 1000);
+  interval.unref();
+}
+
+// Avisos de las metas de las lecturas conjuntas: una pasada al día a las 9:00
+// (hora de Madrid). Todos los avisos son positivos y se marcan al enviarse.
+async function installReadingGoalReminders() {
+  const REMINDER_HOUR = 9;
+  let lastRunDay = '';
+  const tick = async () => {
+    const { enviarAvisosMetas } = await import('./services/lectura-metas.service.js');
+    const { fechaMadrid } = await import('./services/lectura-metas-core.service.js');
+    const now = new Date();
+    const hour = Number(
+      new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        hourCycle: 'h23',
+        timeZone: 'Europe/Madrid',
+      }).format(now),
+    );
+    const day = fechaMadrid(now);
+    if (hour !== REMINDER_HOUR || day === lastRunDay) return;
+    lastRunDay = day;
+    try {
+      const summary = await enviarAvisosMetas(now);
+      logger.info({ event: 'reading_goal_reminders', ...summary }, 'reading goal reminders sent');
+    } catch (error) {
+      logger.error({ event: 'reading_goal_reminders_failed', error }, 'reading goal reminders failed');
     }
   };
   const interval = setInterval(() => void tick(), 15 * 60 * 1000);

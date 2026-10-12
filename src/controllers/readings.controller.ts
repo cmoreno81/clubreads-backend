@@ -77,6 +77,7 @@ export async function handleCrearLectura(req: Request, res: Response) {
     paginas:
       body.paginas === undefined ? undefined : Number(body.paginas),
     tipo: String(body.tipo || 'LIBRE'),
+    metas: body.metas,
   });
 
   return res.json(data);
@@ -90,8 +91,20 @@ export async function handleEditarLectura(req: Request, res: Response) {
     capitulos: Number(body.capitulos || 0),
     prologo: String(body.prologo || '') === '1' || body.prologo === true,
     epilogo: String(body.epilogo || '') === '1' || body.epilogo === true,
+    metas: body.metas,
   });
 
+  return res.json(data);
+}
+
+export async function handleInvitarALectura(req: Request, res: Response) {
+  const body = req.body ?? {};
+  const { invitarALectura } = await import('../services/lectura-metas.service.js');
+  const data = await invitarALectura({
+    usuario: requestUserName(req),
+    libro: String(body.libro || ''),
+    usuarios: Array.isArray(body.usuarios) ? body.usuarios.map(String) : [],
+  });
   return res.json(data);
 }
 
