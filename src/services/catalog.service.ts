@@ -172,6 +172,7 @@ function localBook(book: {
   emergingTalent: boolean;
   authorNote: string | null;
   authorLinkUrl: string | null;
+  authorWebUrl: string | null;
   authorSpicyLevel: number | null;
   authorTropes: string[];
   library: Array<{
@@ -334,6 +335,7 @@ export async function getGeneralCatalogPage(
       emergingTalent: true,
       authorNote: true,
       authorLinkUrl: true,
+      authorWebUrl: true,
       authorSpicyLevel: true,
       authorTropes: true,
       library: {

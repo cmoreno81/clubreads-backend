@@ -247,6 +247,9 @@ model Book {
   /// comprar o leer el libro (solo en libros de Talento emergente).
   authorNote    String?
   authorLinkUrl String?
+  /// Web de la autora y ASIN del libro en Amazon (para el enlace de afiliado).
+  authorWebUrl String?
+  amazonAsin   String?
   /// Nivel de picante (0-5) y tropos que declara la autora.
   authorSpicyLevel Int?
   authorTropes     String[] @default([])
@@ -1916,7 +1919,12 @@ model EmergingTalentSubmission {
   synopsis   String  @db.Text
   authorNote String? @db.Text
 
-  buyUrl        String
+  /// Enlace a la ficha del libro que da la autora (su web, Goodreads…); opcional.
+  buyUrl        String?
+  /// Código ASIN del libro en Amazon, sacado del enlace que da la autora.
+  amazonAsin    String?
+  /// Web de la autora para saber más de ella; opcional.
+  authorWebUrl  String?
   coverUrl      String
   coverPublicId String?
 

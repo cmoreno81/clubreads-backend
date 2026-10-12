@@ -39,6 +39,7 @@ export function datosTalento(book: {
   emergingTalent: boolean;
   authorNote: string | null;
   authorLinkUrl: string | null;
+  authorWebUrl: string | null;
   authorSpicyLevel: number | null;
   authorTropes: string[];
 }) {
@@ -47,6 +48,7 @@ export function datosTalento(book: {
         talentoEmergente: true,
         notaAutora: book.authorNote ?? '',
         enlaceAutora: book.authorLinkUrl ?? '',
+        webAutora: book.authorWebUrl ?? '',
         picanteAutora: book.authorSpicyLevel,
         troposAutora: book.authorTropes,
       }

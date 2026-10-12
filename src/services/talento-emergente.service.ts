@@ -4,12 +4,13 @@ import { z } from 'zod';
 import { prisma } from '../prisma.js';
 import { logger } from '../logging/logger.js';
 import { MAX_GENEROS } from '../utils/generos.utils.js';
+import { extraerAsin } from '../utils/amazon.utils.js';
 import { subirPortadaTalentoDesdeBase64 } from './cloudinary.service.js';
 import { avisarNuevaFichaTalento } from './talento-emergente-aviso.service.js';
 
 /// Versión del texto de condiciones que ve la autora en el formulario web.
 /// Si cambian las condiciones, súbela: queda guardada en cada ficha.
-export const TERMINOS_TALENTO_VERSION = '2026-10-12';
+export const TERMINOS_TALENTO_VERSION = '2026-10-13';
 
 /// Géneros que ofrece el formulario (mismos nombres que usa la app).
 export const GENEROS_TALENTO = [
@@ -64,7 +65,13 @@ export const fichaTalentoSchema = z.object({
   tropos: z.array(texto(1, 40)).max(8).default([]),
   sinopsis: texto(40, 2500),
   nota: z.string().trim().max(700).optional().default(''),
-  enlace: urlHttps,
+  /// Ficha del libro (su web, Goodreads…). Opcional si da el de Amazon.
+  enlace: z.union([z.literal(''), urlHttps]).optional().default(''),
+  /// Enlace del libro en Amazon: de él se saca el ASIN y se usa con el enlace
+  /// de afiliado de ClubReads (el código de afiliada de la autora, si lo
+  /// trae, se descarta).
+  amazon: z.union([z.literal(''), urlHttps]).optional().default(''),
+  sitioWeb: z.union([z.literal(''), urlHttps]).optional().default(''),
   portada: z
     .string()
     .startsWith('data:image/')
@@ -74,6 +81,21 @@ export const fichaTalentoSchema = z.object({
   condiciones: z.literal(true),
   /// Trampa para bots: el formulario lo deja vacío y oculto.
   web: z.string().max(0).optional().default(''),
+}).superRefine((ficha, ctx) => {
+  if (!ficha.enlace && !ficha.amazon) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['enlace'],
+      message: 'Indica el enlace a la ficha de tu libro o el de Amazon.',
+    });
+  }
+  if (ficha.amazon && !extraerAsin(ficha.amazon)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['amazon'],
+      message: 'Pega el enlace completo del libro en Amazon (el que contiene /dp/).',
+    });
+  }
 });
 
 export type FichaTalentoEntrada = z.infer<typeof fichaTalentoSchema>;
@@ -183,7 +205,9 @@ export async function recibirFichaTalento(
       tropes: normalizarTropos(ficha.tropos),
       synopsis: ficha.sinopsis,
       authorNote: ficha.nota || null,
-      buyUrl: ficha.enlace,
+      buyUrl: ficha.enlace || null,
+      amazonAsin: ficha.amazon ? extraerAsin(ficha.amazon) : null,
+      authorWebUrl: ficha.sitioWeb || null,
       coverUrl: portada.url,
       coverPublicId: portada.publicId,
       termsVersion: TERMINOS_TALENTO_VERSION,

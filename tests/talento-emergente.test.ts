@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 
 import { prisma } from '../src/prisma.js';
+import { extraerAsin, formatoDeAsin } from '../src/utils/amazon.utils.js';
 import {
   fichaTalentoSchema,
   normalizarTropos,
@@ -112,4 +113,39 @@ test('la ruta pública va antes del router autenticado y la migración crea la t
   const sql = readFileSync(`prisma/migrations/${carpeta}/migration.sql`, 'utf8');
   assert.match(sql, /CREATE TABLE "EmergingTalentSubmission"/);
   assert.match(sql, /EmergingTalentStatus/);
+});
+
+test('el ASIN sale de enlaces largos de Amazon y se rechazan los demás', () => {
+  assert.equal(extraerAsin('https://www.amazon.es/Entre-dos-tormentas/dp/B0ABCDE123/ref=sr_1_1?tag=otra-21'), 'B0ABCDE123');
+  assert.equal(extraerAsin('https://www.amazon.com/gp/product/8400000000'), '8400000000');
+  assert.equal(extraerAsin('https://amzn.to/3abcd'), null);
+  assert.equal(extraerAsin('https://www.casadellibro.com/dp/B0ABCDE123'), null);
+  assert.equal(extraerAsin('http://www.amazon.es/dp/B0ABCDE123'), null);
+  assert.equal(formatoDeAsin('B0ABCDE123'), 'ebook');
+  assert.equal(formatoDeAsin('8400000000'), 'papel');
+});
+
+test('hace falta el enlace a la ficha o el de Amazon, y el de Amazon debe tener ASIN', () => {
+  const base = { ...valida(), enlace: '' };
+  const sinNinguno = fichaTalentoSchema.safeParse(base);
+  assert.equal(sinNinguno.success, false);
+  assert.equal(fichaTalentoSchema.safeParse({ ...base, amazon: 'https://www.amazon.es/dp/B0ABCDE123?tag=suya-21' }).success, true);
+  const mal = fichaTalentoSchema.safeParse({ ...base, amazon: 'https://www.amazon.es/libros' });
+  assert.equal(mal.success, false);
+  assert.equal(fichaTalentoSchema.safeParse({ ...valida(), sitioWeb: 'http://insegura.es' }).success, false);
+});
+
+test('al guardar la ficha se queda solo el ASIN (sin el código de afiliada de la autora) y la web', async () => {
+  const creadas = fakePrisma();
+  const r = await recibirFichaTalento(
+    { ...valida(), enlace: '', amazon: 'https://www.amazon.es/x/dp/B0ABCDE123?tag=suya-21', sitioWeb: 'https://lucia.example' },
+    '1.2.3.4',
+    subir,
+  );
+  assert.equal(r.ok, true);
+  const dato = creadas[0]!;
+  assert.equal(dato.amazonAsin, 'B0ABCDE123');
+  assert.equal(dato.buyUrl, null);
+  assert.equal(dato.authorWebUrl, 'https://lucia.example');
+  assert.equal(JSON.stringify(dato).includes('suya-21'), false);
 });

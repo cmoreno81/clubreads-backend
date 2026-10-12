@@ -37,6 +37,8 @@ export async function aprobarFichaTalento(
     emergingTalent: true,
     authorNote: ficha.authorNote,
     authorLinkUrl: ficha.buyUrl,
+    authorWebUrl: ficha.authorWebUrl,
+    amazonAsin: ficha.amazonAsin,
     authorSpicyLevel: ficha.spicyLevel,
     authorTropes: ficha.tropes,
   };
@@ -129,6 +131,8 @@ export async function retirarSelloTalento(
       emergingTalent: false,
       authorNote: null,
       authorLinkUrl: null,
+      authorWebUrl: null,
+      amazonAsin: null,
       authorSpicyLevel: null,
       authorTropes: [],
     },

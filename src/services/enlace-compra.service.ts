@@ -1,5 +1,6 @@
 import { StoreFormat } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { formatoDeAsin } from '../utils/amazon.utils.js';
 
 // Programa de afiliados "Casa del Libro ES" en Awin. Ninguno de los dos
 // números es secreto (viajan en cada enlace de afiliado); se pueden cambiar
@@ -32,6 +33,15 @@ export function construirEnlaceAmazon(params: {
     `${params.titulo} ${params.autora ?? ''}`.trim().replace(/\s+/g, ' '),
   );
   url.searchParams.set('i', params.formato === 'ebook' ? 'digital-text' : 'stripbooks');
+  url.searchParams.set('tag', process.env.AMAZON_ASSOCIATE_TAG!.trim());
+  return url.toString();
+}
+
+/// Ficha exacta del libro en Amazon (ASIN dado por la autora) con el enlace de
+/// afiliado de ClubReads. Cualquier código de afiliada de la autora se
+/// descarta porque solo se guarda el ASIN.
+export function construirEnlaceAmazonPorAsin(asin: string) {
+  const url = new URL(`https://www.amazon.es/dp/${asin}`);
   url.searchParams.set('tag', process.env.AMAZON_ASSOCIATE_TAG!.trim());
   return url.toString();
 }
@@ -114,6 +124,7 @@ const SELECT_ENLACE = {
   isbn: true,
   language: true,
   deletedAt: true,
+  amazonAsin: true,
   author: { select: { name: true } },
   storeLinks: {
     where: { store: 'CASA_DEL_LIBRO' },
@@ -133,6 +144,7 @@ type LibroEnlace = {
   title: string;
   isbn: string | null;
   language: string | null;
+  amazonAsin: string | null;
   author: { name: string } | null;
   storeLinks: { format: StoreFormat; url: string; language: string }[];
   sources: { sourceUrl: string }[];
@@ -209,9 +221,15 @@ function resolverEnlace(
   // Libro; Amazon va únicamente en `tiendas`, que leen las apps nuevas.
   const tiendas = [casaDelLibro];
   if (amazonActivo()) {
+    // Libros de Talento emergente: la autora da el ASIN exacto. Ese formato
+    // lleva a su ficha en Amazon; el otro cae a la búsqueda por título.
+    const formatoAsin = book.amazonAsin ? formatoDeAsin(book.amazonAsin) : null;
     const amazon = (formato: 'papel' | 'ebook') =>
-      construirEnlaceAmazon({ titulo: book.title, autora: book.author?.name, formato });
-    const preferido = principal === StoreFormat.EBOOK ? 'ebook' : 'papel';
+      book.amazonAsin && formato === formatoAsin
+        ? construirEnlaceAmazonPorAsin(book.amazonAsin)
+        : construirEnlaceAmazon({ titulo: book.title, autora: book.author?.name, formato });
+    const preferido =
+      formatoAsin ?? (principal === StoreFormat.EBOOK ? 'ebook' : 'papel');
     const tiendaAmazon = {
       tienda: 'Amazon',
       url: amazon(preferido),

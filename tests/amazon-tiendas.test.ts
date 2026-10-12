@@ -91,3 +91,25 @@ test('el enlace de Amazon busca por título y autora, en la categoría del forma
   }
   assert.equal(amazonActivo(), false);
 });
+
+test('un libro de Talento emergente con ASIN lleva a su ficha en Amazon con la etiqueta de ClubReads', async () => {
+  const kindle = { ...soloAmazon, amazonAsin: 'B0TEST1234' };
+  const r = await pedir(kindle, 'clubreads-21');
+  const amazon = r.tiendas[0];
+  assert.equal(amazon.tienda, 'Amazon');
+  assert.equal(amazon.formato, 'ebook');
+  assert.equal(amazon.url, 'https://www.amazon.es/dp/B0TEST1234?tag=clubreads-21');
+  // El otro formato cae a la búsqueda por título y autora.
+  const papel = amazon.formatos.find((f: any) => f.formato === 'papel');
+  assert.match(papel.url, /amazon\.es\/s\?/);
+  assert.match(papel.url, /tag=clubreads-21/);
+
+  const enPapel = await pedir({ ...soloAmazon, amazonAsin: '8400000000' }, 'clubreads-21');
+  assert.equal(enPapel.tiendas[0].formato, 'papel');
+  assert.match(enPapel.tiendas[0].url, /\/dp\/8400000000\?tag=clubreads-21$/);
+});
+
+test('con ASIN pero Amazon apagado no se muestra nada de Amazon', async () => {
+  const r = await pedir({ ...soloAmazon, amazonAsin: 'B0TEST1234' }, undefined);
+  assert.equal(r.tiendas.some((t: any) => t.tienda === 'Amazon'), false);
+});
