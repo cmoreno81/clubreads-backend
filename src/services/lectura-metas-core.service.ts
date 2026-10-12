@@ -120,3 +120,73 @@ export function sumarDias(fecha: string, dias: number) {
   d.setUTCDate(d.getUTCDate() + dias);
   return d.toISOString().slice(0, 10);
 }
+
+export type PosicionConversacion =
+  | { tipo: 'prologo' }
+  | { tipo: 'capitulo'; n: number }
+  | { tipo: 'cierre' };
+
+/// Qué es cada conversación según su orden. Se calcula por posición y no por
+/// título porque los capítulos se pueden renombrar.
+export function posicionDeConversacion(
+  order: number,
+  hasPrologue: boolean,
+  capitulos: number,
+): PosicionConversacion {
+  const primerCapitulo = hasPrologue ? 1 : 0;
+  if (hasPrologue && order === 0) return { tipo: 'prologo' };
+  const n = order - primerCapitulo + 1;
+  if (n >= 1 && n <= capitulos) return { tipo: 'capitulo', n };
+  return { tipo: 'cierre' };
+}
+
+export type BloqueoMetas =
+  | { bloqueado: false }
+  | { bloqueado: true; desbloqueaEl: string };
+
+/// En las lecturas con metas, los capítulos que quedan por delante de la meta
+/// en curso se cierran para que nadie se adelante. La meta en curso es la
+/// primera cuya fecha aún no ha pasado; al pasar su día se abre la siguiente.
+/// Sin metas, o con todas ya cumplidas, todo está abierto.
+export function bloqueoPorMetas(
+  metas: MetaEntrada[],
+  hoy: string,
+  capitulos: number,
+  posicion: PosicionConversacion,
+): BloqueoMetas {
+  if (metas.length === 0 || posicion.tipo === 'prologo') {
+    return { bloqueado: false };
+  }
+  const ordenadas = [...metas].sort((a, b) => a.capitulo - b.capitulo);
+  const actual = ordenadas.find((m) => m.fecha >= hoy);
+  if (!actual) return { bloqueado: false };
+
+  const n = posicion.tipo === 'capitulo' ? posicion.n : capitulos;
+  const cerrado =
+    posicion.tipo === 'capitulo'
+      ? n > actual.capitulo
+      : actual.capitulo < capitulos;
+  if (!cerrado) return { bloqueado: false };
+
+  // Se abre el día siguiente a la fecha de la meta anterior a la que lo cubre.
+  const indice = ordenadas.findIndex((m) => m.capitulo >= n);
+  const previa =
+    indice === -1 ? ordenadas[ordenadas.length - 1] : ordenadas[indice - 1];
+  const base = previa ?? actual;
+  return { bloqueado: true, desbloqueaEl: sumarDias(base.fecha, 1) };
+}
+
+const MESES = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
+  'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+/// «2026-10-21» → «21 de octubre».
+export function fechaLegibleEs(fecha: string) {
+  const [, mes, dia] = fecha.split('-').map(Number);
+  return `${dia} de ${MESES[(mes ?? 1) - 1]}`;
+}
+
+export function mensajeCapituloCerrado(desbloqueaEl: string) {
+  return `Este capítulo se abre el ${fechaLegibleEs(desbloqueaEl)}, cuando pase la meta anterior. ¡Así nadie se adelanta!`;
+}

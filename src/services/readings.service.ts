@@ -32,9 +32,14 @@ import { normalizeReadingType } from '../validation/api-enums.js';
 import { activityTimestamp } from '../utils/activity-timestamp.js';
 import { idsBloqueadosPor } from './moderation.service.js';
 import {
+  bloqueoPorMetas,
+  fechaMadrid,
   guardarMetas,
   listarMetas,
+  mensajeCapituloCerrado,
   normalizarMetas,
+  posicionDeConversacion,
+  type MetaEntrada,
 } from './lectura-metas-core.service.js';
 
 /**
@@ -97,6 +102,21 @@ export async function participantesDeLectura(
   return rows.map((row) => row.userId);
 }
 
+/// ¿Está cerrada esta conversación por las metas de su lectura? Solo aplica a
+/// lecturas con metas; las demás no tienen nada cerrado.
+async function bloqueoDeConversacion(
+  reading: { id: string; hasPrologue: boolean; chapters: number },
+  order: number,
+) {
+  const metas = await listarMetas(reading.id);
+  return bloqueoPorMetas(
+    metas,
+    fechaMadrid(new Date()),
+    reading.chapters,
+    posicionDeConversacion(order, reading.hasPrologue, reading.chapters),
+  );
+}
+
 function buildChapters(
   reading: {
     conversations: {
@@ -122,10 +142,26 @@ function buildChapters(
     }[];
   },
   userId: string | null,
+  metas: MetaEntrada[] = [],
+  ajustes: { hasPrologue: boolean; chapters: number } = {
+    hasPrologue: false,
+    chapters: 0,
+  },
 ) {
+  const hoy = fechaMadrid(new Date());
   return reading.conversations
     .sort((a, b) => a.order - b.order)
     .map((conversation) => {
+      const bloqueo = bloqueoPorMetas(
+        metas,
+        hoy,
+        ajustes.chapters,
+        posicionDeConversacion(
+          conversation.order,
+          ajustes.hasPrologue,
+          ajustes.chapters,
+        ),
+      );
       let comentarios = 0;
       let respuestas = 0;
       let likes = 0;
@@ -178,6 +214,8 @@ function buildChapters(
 
       return {
         nombre: conversation.title,
+        bloqueado: bloqueo.bloqueado,
+        ...(bloqueo.bloqueado ? { desbloqueaEl: bloqueo.desbloqueaEl } : {}),
         comentarios,
         respuestas,
         likes,
@@ -873,14 +911,19 @@ export async function getConfiguracionLectura(
     };
   }
 
+  const metas = await listarMetas(reading.id);
+
   return {
     capitulos: reading.chapters,
     prologo: reading.hasPrologue,
     epilogo: reading.hasEpilogue,
-    capitulosDisponibles: buildChapters(reading, user?.id ?? null),
+    capitulosDisponibles: buildChapters(reading, user?.id ?? null, metas, {
+      hasPrologue: reading.hasPrologue,
+      chapters: reading.chapters,
+    }),
     coverUrl: reading.book.coverUrl ?? '',
     bookId: reading.book.id,
-    metas: await listarMetas(reading.id),
+    metas,
   };
 }
 
@@ -974,6 +1017,7 @@ export async function getComentariosLectura(
       },
     },
     include: {
+      reading: { select: { id: true, hasPrologue: true, chapters: true } },
       comments: {
         where: {
           parentId: null,
@@ -1005,6 +1049,18 @@ export async function getComentariosLectura(
       ok: true,
       capitulo,
       comentarios: [],
+    };
+  }
+
+  const cierre = await bloqueoDeConversacion(conversation.reading, conversation.order);
+  if (cierre.bloqueado) {
+    return {
+      ok: true,
+      capitulo,
+      comentarios: [],
+      bloqueado: true,
+      desbloqueaEl: cierre.desbloqueaEl,
+      mensaje: mensajeCapituloCerrado(cierre.desbloqueaEl),
     };
   }
   let usuarioId = '';
@@ -1089,9 +1145,26 @@ export async function getComentariosLecturaPage(
         status: ReadingSessionStatus.ACTIVE,
       },
     },
-    select: { id: true },
+    select: {
+      id: true,
+      order: true,
+      reading: { select: { id: true, hasPrologue: true, chapters: true } },
+    },
   });
   if (!conversation) return { items: [], nextCursor: null, hasMore: false, cutoffDate: null };
+
+  const cierre = await bloqueoDeConversacion(conversation.reading, conversation.order);
+  if (cierre.bloqueado) {
+    return {
+      items: [],
+      nextCursor: null,
+      hasMore: false,
+      cutoffDate: null,
+      bloqueado: true,
+      desbloqueaEl: cierre.desbloqueaEl,
+      mensaje: mensajeCapituloCerrado(cierre.desbloqueaEl),
+    };
+  }
 
   const user = await prisma.user.findUnique({
     where: { name: usuarioActual.trim() },
@@ -1262,10 +1335,25 @@ export async function enviarComentarioLectura(data: {
         book: await bookFilterForLectura(libro),
       },
     },
-    include: { reading: { select: { id: true, bookId: true, startedAt: true } } },
+    include: {
+      reading: {
+        select: {
+          id: true,
+          bookId: true,
+          startedAt: true,
+          hasPrologue: true,
+          chapters: true,
+        },
+      },
+    },
   });
 
   if (!conversation) return { ok: false, mensaje: 'Capítulo no encontrado' };
+
+  const cierre = await bloqueoDeConversacion(conversation.reading, conversation.order);
+  if (cierre.bloqueado) {
+    return { ok: false, mensaje: mensajeCapituloCerrado(cierre.desbloqueaEl) };
+  }
 
   // El primer comentario en "Reflexión final" abre el debate del final del
   // libro — se avisa de forma distinta (más vistosa) que un comentario
@@ -1386,6 +1474,23 @@ export async function responderComentarioLectura(data: {
   });
 
   if (!parent) return { ok: false, mensaje: 'Comentario no encontrado' };
+
+  const conversacionDelPadre = await prisma.conversation.findUnique({
+    where: { id: parent.conversationId },
+    select: {
+      order: true,
+      reading: { select: { id: true, hasPrologue: true, chapters: true } },
+    },
+  });
+  if (conversacionDelPadre) {
+    const cierre = await bloqueoDeConversacion(
+      conversacionDelPadre.reading,
+      conversacionDelPadre.order,
+    );
+    if (cierre.bloqueado) {
+      return { ok: false, mensaje: mensajeCapituloCerrado(cierre.desbloqueaEl) };
+    }
+  }
 
   await prisma.comment.create({
     data: {

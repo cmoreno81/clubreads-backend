@@ -128,7 +128,7 @@ test('crearLectura y editarLectura aceptan metas opcionales y la configuración 
   const svc = readFileSync(new URL('../src/services/readings.service.ts', import.meta.url), 'utf8');
   assert.match(svc, /metas\?: unknown/);
   assert.match(svc, /guardarMetas\(tx, reading\.id, metasValidas\.metas\)/);
-  assert.match(svc, /metas: await listarMetas\(reading\.id\)/);
+  assert.match(svc, /const metas = await listarMetas\(reading\.id\)/);
   // Editar sin enviar «metas» no las toca.
   assert.match(svc, /Array\.isArray\(data\.metas\)/);
 });
