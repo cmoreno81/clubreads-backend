@@ -236,6 +236,10 @@ model Book {
 
   standalone Boolean @default(true)
 
+  // Géneros adicionales (máx. 2) además del principal `genre`. Se guardan
+  // por nombre; las estadísticas siguen usando solo el principal.
+  extraGenres String[] @default([])
+
   isbn String?
 
   normalizedIsbn String?

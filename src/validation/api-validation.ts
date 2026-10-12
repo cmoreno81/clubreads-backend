@@ -95,6 +95,7 @@ const emailBody = body({ email: emailSchema });
 const codePasswordBody = body({ email: emailSchema, codigo: z.string().trim().min(4).max(12), password: z.string().min(8).max(200) });
 const bookMutationFields = {
   autor: shortTextSchema.optional(), genero: shortTextSchema.optional(),
+  generosExtra: z.array(z.string().max(80)).max(2).optional(),
   saga: z.string().max(200).optional(), coverUrl: urlSchema.optional(), portada: urlSchema.optional(), portadaUrl: urlSchema.optional(),
   prioridad: prioritySchema.optional(), formato: formatSchema.optional(), estado: statusSchema.optional(), paginas: pageSchema.optional(),
   valoracion: ratingSchema.optional(), reflexion: longTextSchema.optional(), resena: longTextSchema.optional(),
@@ -169,7 +170,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   guardarCategoriasComentario: body({ categorias: z.union([z.null(), z.array(z.object({ emoji: z.string().max(40).optional(), nombre: z.string().max(80) })).length(5)]) }),
   guardarKitLectura: body({ bookId: identifierSchema, kit: z.record(z.string(), z.unknown()) }),
   actualizarFormatoLibro: body({ bookId: identifierSchema, formato: formatSchema }),
-  actualizarGeneroLibro: body({ bookId: identifierSchema, genero: shortTextSchema }),
+  actualizarGeneroLibro: body({ bookId: identifierSchema, genero: shortTextSchema, generosExtra: z.array(z.string().max(80)).max(2).optional() }),
   actualizarPreferenciasLibro: body({ libro: identifierSchema, prioridad: prioritySchema, formato: formatSchema.optional() }),
   quitarLibroPendientes: bookBody, iniciarLectura: bookBody,
   actualizarEstado: body({ libro: identifierSchema, estado: statusSchema, valoracion: ratingSchema.optional(), picante: spicySchema.optional(), reflexion: longTextSchema.optional(), motivoPausa: textSchema.optional(), fechaInicio: optionalDateSchema, fechaFin: optionalDateSchema, formato: formatSchema.optional() }).refine((v) => datesAreOrdered(v.fechaInicio, v.fechaFin), { path: ['fechaFin'], message: 'La fecha final no puede ser anterior a la inicial' }),

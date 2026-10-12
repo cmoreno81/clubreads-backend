@@ -1,3 +1,4 @@
+import { listaGeneros, normalizarGenerosExtra } from '../utils/generos.utils.js';
 import {
   Prisma,
   Priority,
@@ -440,6 +441,7 @@ async function _getLibrosGlobal(usuario: string) {
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
+      generos: listaGeneros(item.book),
       saga: item.book.series?.name ?? '',
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
@@ -535,6 +537,7 @@ async function _getLibrosFinalizadosTodosGlobal(usuario: string) {
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
+      generos: listaGeneros(item.book),
       saga: item.book.series?.name ?? '',
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
@@ -617,6 +620,7 @@ async function _getLibros(usuario: string) {
     libro: item.book.title,
     autor: item.book.author?.name ?? '',
     genero: item.book.genre.name,
+      generos: listaGeneros(item.book),
     saga: item.book.series?.name ?? '',
     numSaga: item.book.seriesOrder ?? '',
     autoconclusivo: item.book.standalone ? 'Si' : 'No',
@@ -702,6 +706,7 @@ export async function getLibrosFinalizados(usuario: string) {
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
+      generos: listaGeneros(item.book),
       saga: item.book.series?.name ?? '',
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
@@ -804,6 +809,7 @@ async function _getLibrosFinalizadosTodos(usuario: string) {
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
+      generos: listaGeneros(item.book),
       saga: item.book.series?.name ?? '',
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
@@ -891,6 +897,7 @@ export async function getLibrosFinalizadosPage(
         libro: item.book.title,
         autor: item.book.author?.name ?? '',
         genero: item.book.genre.name,
+      generos: listaGeneros(item.book),
         saga: item.book.series?.name ?? '',
         numSaga: item.book.seriesOrder ?? '',
         autoconclusivo: item.book.standalone ? 'Si' : 'No',
@@ -1082,7 +1089,11 @@ export async function actualizarIdiomaLibro(bookId: string, idioma: string) {
  * el formulario completo. Es un dato de catálogo, no de biblioteca personal:
  * afecta a todo el mundo que tenga ese libro.
  */
-export async function actualizarGeneroLibro(bookId: string, genero: string) {
+export async function actualizarGeneroLibro(
+  bookId: string,
+  genero: string,
+  generosExtra?: unknown,
+) {
   const id = String(bookId || '').trim();
   const genreName = String(genero || '').trim();
 
@@ -1096,11 +1107,18 @@ export async function actualizarGeneroLibro(bookId: string, genero: string) {
   const resolvedId = await resolveCanonicalBookId(prisma, id);
   const book = await prisma.book.findFirst({
     where: { id: resolvedId, deletedAt: null },
-    select: { id: true },
+    select: { id: true, extraGenres: true },
   });
   if (!book) {
     return { ok: false, mensaje: 'Libro no encontrado' };
   }
+
+  // Sin `generosExtra` (apps antiguas, corrección rápida desde la tarjeta) se
+  // conservan los que ya tenía el libro.
+  const extraGenres = normalizarGenerosExtra(
+    generosExtra === undefined ? book.extraGenres : generosExtra,
+    genreName,
+  );
 
   const genre = await prisma.genre.upsert({
     where: { name: genreName },
@@ -1110,12 +1128,12 @@ export async function actualizarGeneroLibro(bookId: string, genero: string) {
 
   await prisma.book.update({
     where: { id: book.id },
-    data: { genreId: genre.id },
+    data: { genreId: genre.id, extraGenres },
   });
 
   invalidateAllLibraryCaches();
 
-  return { ok: true, genero: genreName };
+  return { ok: true, genero: genreName, generos: [genreName, ...extraGenres] };
 }
 
 /**
@@ -2214,6 +2232,7 @@ logger.info({
           title,
           authorId: automaticAuthor?.id ?? null,
           genreId: genre.id,
+          extraGenres: normalizarGenerosExtra(data.generosExtra, genreName),
           seriesId: series?.id ?? null,
           seriesOrder: seriesOrder || null,
           standalone,
@@ -2566,6 +2585,7 @@ if (duplicado) {
   // tiene aún en su biblioteca) lo dejaba en "Sin género" y le borraba la
   // saga a todo el mundo.
   const generoFueEnviado = Object.prototype.hasOwnProperty.call(data, 'genero');
+  const generosExtraEnviado = Object.prototype.hasOwnProperty.call(data, 'generosExtra');
   const sagaCampoEnviado =
     Object.prototype.hasOwnProperty.call(data, 'saga') ||
     Object.prototype.hasOwnProperty.call(data, 'numSaga') ||
@@ -2638,6 +2658,13 @@ const editResult = await prisma.$transaction(async (tx) => {
     title,
     authorId: suppliedAuthor?.id ?? actual.authorId,
     genreId,
+    ...(generosExtraEnviado || generoFueEnviado
+      ? {
+          extraGenres: generosExtraEnviado
+            ? normalizarGenerosExtra(data.generosExtra, genreName)
+            : normalizarGenerosExtra(actual.extraGenres, genreName),
+        }
+      : {}),
     standalone,
 
     seriesId: !sagaCampoEnviado

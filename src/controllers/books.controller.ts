@@ -222,6 +222,7 @@ export async function handleActualizarGeneroLibro(req: Request, res: Response) {
   const data = await actualizarGeneroLibro(
     String(body.bookId ?? ''),
     String(body.genero ?? ''),
+    body.generosExtra,
   );
   return res.json(data);
 }

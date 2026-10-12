@@ -1,3 +1,4 @@
+import { listaGeneros } from '../utils/generos.utils.js';
 import {
   Priority,
   ReadingFormat,
@@ -184,6 +185,7 @@ function localBook(book: {
     autores: book.author ? [book.author.name] : [],
     coverUrl: book.coverUrl ?? '',
     genero: book.genre.name,
+    generos: listaGeneros(book),
     isbn: book.isbn ?? '',
     paginas: book.totalPages,
     anioPublicacion: book.publicationYear,

@@ -1,3 +1,4 @@
+import { listaGeneros } from '../utils/generos.utils.js';
 import { ProfileVisibility, ReadingStatus } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { getCurrentClubContext, getClubmateClubNames } from './club-context.service.js';
@@ -172,6 +173,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
+      generos: listaGeneros(item.book),
       saga: item.book.series?.name ?? '',
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
@@ -209,6 +211,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
       libro: item.book.title,
       autor: item.book.author?.name ?? '',
       genero: item.book.genre.name,
+      generos: listaGeneros(item.book),
       saga: item.book.series?.name ?? '',
       numSaga: item.book.seriesOrder ?? '',
       autoconclusivo: item.book.standalone ? 'Si' : 'No',
@@ -242,6 +245,7 @@ export async function getLibroPorId(bookId: string, usuario: string, global = fa
       titulo: book.title,
       autor: book.author?.name ?? '',
       genero: book.genre?.name ?? '',
+      generos: listaGeneros(book),
       coverUrl: book.coverUrl ?? '',
       goodreads: book.goodreadsUrl ?? '',
       paginas: book.totalPages,
