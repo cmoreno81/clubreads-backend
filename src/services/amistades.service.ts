@@ -1,4 +1,4 @@
-import { FriendshipStatus, ProfileVisibility } from '@prisma/client';
+import { ClubType, FriendshipStatus, ProfileVisibility } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
 import { backgroundError } from '../logging/logger.js';
@@ -31,6 +31,24 @@ async function bloqueadasConmigo(userId: string): Promise<Set<string>> {
   return new Set(filas.map((f) => (f.blockerId === userId ? f.blockedId : f.blockerId)));
 }
 
+/// Personas con las que ya compartes algún club de verdad (los de tipo SOCIAL; el espacio
+/// personal y las lecturas entre dos no cuentan): id de la persona → nombre de un club en común.
+export async function clubesEnComun(userId: string): Promise<Map<string, string>> {
+  const mios = await prisma.clubMember.findMany({
+    where: { userId, club: { tipo: ClubType.SOCIAL } },
+    select: { clubId: true },
+  });
+  if (mios.length === 0) return new Map();
+  const otras = await prisma.clubMember.findMany({
+    where: { clubId: { in: mios.map((m) => m.clubId) }, userId: { not: userId } },
+    select: { userId: true, club: { select: { name: true } } },
+    orderBy: { clubId: 'asc' },
+  });
+  const mapa = new Map<string, string>();
+  for (const o of otras) if (!mapa.has(o.userId)) mapa.set(o.userId, o.club.name);
+  return mapa;
+}
+
 export async function asegurarCodigoAmistad(userId: string): Promise<string> {
   const actual = await prisma.user.findUnique({
     where: { id: userId },
@@ -55,7 +73,7 @@ export async function asegurarCodigoAmistad(userId: string): Promise<string> {
 }
 
 export async function getAmistades(userId: string) {
-  const [filas, bloqueadas, codigo, privacidad] = await Promise.all([
+  const [filas, bloqueadas, codigo, privacidad, enComun] = await Promise.all([
     prisma.friendship.findMany({
       where: { OR: [{ requesterId: userId }, { addresseeId: userId }] },
       include: {
@@ -67,6 +85,7 @@ export async function getAmistades(userId: string) {
     bloqueadasConmigo(userId),
     asegurarCodigoAmistad(userId),
     getPrivacidadAmistades(userId),
+    clubesEnComun(userId),
   ]);
 
   const persona = (fila: (typeof filas)[number]) =>
@@ -76,6 +95,7 @@ export async function getAmistades(userId: string) {
     nombre: persona(fila).name,
     avatarUrl: persona(fila).avatarUrl ?? '',
     fecha: (fila.respondedAt ?? fila.createdAt).toISOString(),
+    clubEnComun: enComun.get(persona(fila).id) ?? '',
   });
 
   return {
@@ -85,7 +105,12 @@ export async function getAmistades(userId: string) {
     amistades: visibles
       .filter((f) => f.status === FriendshipStatus.ACCEPTED)
       .map(dato)
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+      // Primero quienes no son de tu club (con ellas es con quien más aporta ser amistad).
+      .sort(
+        (a, b) =>
+          Number(Boolean(a.clubEnComun)) - Number(Boolean(b.clubEnComun)) ||
+          a.nombre.localeCompare(b.nombre, 'es'),
+      ),
     recibidas: visibles
       .filter((f) => f.status === FriendshipStatus.PENDING && f.addresseeId === userId)
       .map(dato),
@@ -127,6 +152,7 @@ export async function buscarPersonas(userId: string, consulta: string) {
     })
     .slice(0, MAX_RESULTADOS_BUSQUEDA);
 
+  const enComun = await clubesEnComun(userId);
   const relaciones = ordenadas.length
     ? await prisma.friendship.findMany({
         where: {
@@ -148,6 +174,7 @@ export async function buscarPersonas(userId: string, consulta: string) {
       nombre: p.name,
       avatarUrl: p.avatarUrl ?? '',
       estado: estadoDeAmistad(userId, porPersona.get(p.id)),
+      clubEnComun: enComun.get(p.id) ?? '',
     })),
   };
 }

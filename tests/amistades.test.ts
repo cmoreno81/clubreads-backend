@@ -48,6 +48,8 @@ function montar(opciones: {
   usuarios: Array<{ id: string; name: string; friendCode?: string | null; profileVisibility?: string; avatarUrl?: string | null }>;
   amistades?: Fila[];
   bloqueos?: Array<{ blockerId: string; blockedId: string }>;
+  /// Membresías de clubes SOCIAL (para «club en común»).
+  clubes?: Array<{ clubId: string; clubName: string; userId: string }>;
 }) {
   const filas = opciones.amistades ?? [];
   const consultas: unknown[] = [];
@@ -55,6 +57,15 @@ function montar(opciones: {
     Object.defineProperty(prisma, modelo, { configurable: true, value: valor });
   const poseedora = (f: Fila, userId: string) => f.requesterId === userId || f.addresseeId === userId;
   const igual = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const clubes = opciones.clubes ?? [];
+  sobre('clubMember', {
+    findMany: async ({ where }: any) =>
+      where.clubId
+        ? clubes
+            .filter((c) => where.clubId.in.includes(c.clubId) && c.userId !== where.userId.not)
+            .map((c) => ({ userId: c.userId, club: { name: c.clubName } }))
+        : clubes.filter((c) => c.userId === where.userId).map((c) => ({ clubId: c.clubId })),
+  });
   sobre('user', {
     findUnique: async ({ where }: any) =>
       opciones.usuarios.find((u) => (where.id ? u.id === where.id : u.friendCode === where.friendCode)) ?? null,
@@ -224,4 +235,27 @@ test('las rutas, la migración y el bloqueo están conectados', () => {
   assert.match(sql, /CREATE TABLE "Friendship"/);
   assert.match(sql, /AMISTAD_SOLICITUD/);
   assert.match(readFileSync('src/services/moderation.service.ts', 'utf8'), /friendship\.deleteMany/);
+});
+
+test('«club en común»: la búsqueda lo avisa y la lista de amistades pone primero a quienes no son de tu club', async () => {
+  const ana = { id: 'u4', name: 'Ana' };
+  montar({
+    usuarios: [yo, lucia, ana],
+    amistades: [
+      { id: 'f1', requesterId: 'u1', addresseeId: 'u2', status: 'ACCEPTED', createdAt: new Date(), respondedAt: new Date() },
+      { id: 'f2', requesterId: 'u1', addresseeId: 'u4', status: 'ACCEPTED', createdAt: new Date(), respondedAt: new Date() },
+    ],
+    // Ana (u4) y yo compartimos «Club Lunar»; Lucía (u2) no.
+    clubes: [
+      { clubId: 'c1', clubName: 'Club Lunar', userId: 'u1' },
+      { clubId: 'c1', clubName: 'Club Lunar', userId: 'u4' },
+    ],
+  });
+  const lista = (await getAmistades('u1')) as any;
+  assert.deepEqual(lista.amistades.map((a: any) => [a.nombre, a.clubEnComun]), [
+    ['Lucía', ''],
+    ['Ana', 'Club Lunar'],
+  ]);
+  const busqueda = (await buscarPersonas('u1', 'ana')) as any;
+  assert.equal(busqueda.personas[0].clubEnComun, 'Club Lunar');
 });
