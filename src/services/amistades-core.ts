@@ -9,6 +9,9 @@ export const MAX_SOLICITUDES_POR_DIA = 20;
 export const MAX_BUSQUEDAS_POR_MINUTO = 30;
 export const MIN_LETRAS_BUSQUEDA = 3;
 export const MAX_RESULTADOS_BUSQUEDA = 15;
+export const MAX_RECOMENDADAS_POR_LLAMADA = 20;
+export const MAX_RECOMENDACIONES_POR_DIA = 40;
+export const MAX_LETRAS_MENSAJE_RECOMENDACION = 140;
 
 export function generarCodigoAmistad(aleatorio: (max: number) => number = randomInt) {
   let codigo = '';
@@ -61,4 +64,14 @@ export function crearLimitador(max: number, ventanaMs = 60_000) {
     usos.set(clave, recientes);
     return true;
   };
+}
+
+/// Mensaje personal opcional de una recomendación: una línea, sin espacios
+/// de más y con tope de longitud. Devuelve '' si no hay nada que enseñar.
+export function limpiarMensajeRecomendacion(entrada: unknown): string {
+  return String(entrada ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_LETRAS_MENSAJE_RECOMENDACION)
+    .trim();
 }

@@ -222,6 +222,7 @@ import {
   handleGuardarPrivacidadAmistades,
   handlePerfilAmistad,
   handleQuitarAmistad,
+  handleRecomendarLibro,
   handleResponderAmistad,
   handleSolicitarAmistad,
 } from '../controllers/amistades.controller.js';
@@ -316,6 +317,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'cancelarSolicitudAmistad',
   'quitarAmistad',
   'guardarPrivacidadAmistades',
+  'recomendarLibro',
   'reportarContenido',
   'guardarPersonalidadLectora',
   'toggleFavorito',
@@ -946,6 +948,9 @@ export async function handleApi(
 
       case 'guardarPrivacidadAmistades':
         return handleGuardarPrivacidadAmistades(req, res);
+
+      case 'recomendarLibro':
+        return handleRecomendarLibro(req, res);
 
       case 'bloquearUsuario':
         if (!req.auth) return requireAuthentication(req, res, () => {});

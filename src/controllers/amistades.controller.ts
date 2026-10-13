@@ -5,6 +5,7 @@ import {
   getPerfilAmistad,
   guardarPrivacidadAmistades,
 } from '../services/amistades-ver.service.js';
+import { recomendarLibro } from '../services/amistades-recomendar.service.js';
 import {
   buscarPersonas,
   cancelarSolicitudAmistad,
@@ -63,6 +64,17 @@ export async function handleGuardarPrivacidadAmistades(req: Request, res: Respon
       leyendo: req.body?.leyendo === true,
       biblioteca: req.body?.biblioteca === true,
       resenas: req.body?.resenas === true,
+    }),
+  );
+}
+
+export async function handleRecomendarLibro(req: Request, res: Response) {
+  return res.json(
+    await recomendarLibro(req.auth!.userId, {
+      bookId: texto(req, 'bookId'),
+      nombres: Array.isArray(req.body?.usuarios) ? req.body.usuarios.map(String) : [],
+      mensaje: req.body?.mensaje,
+      juntas: req.body?.juntas === true,
     }),
   );
 }

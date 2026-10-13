@@ -692,6 +692,37 @@ export async function notifyAmistadAceptada({
   });
 }
 
+/** Avisa a una amistad de que le recomiendan un libro (o la invitan a leerlo juntas). */
+export async function notifyLibroRecomendado({
+  aUserId,
+  deNombre,
+  deUserId,
+  bookId,
+  bookTitle,
+  mensajePersonal,
+  juntas,
+}: {
+  aUserId: string;
+  deNombre: string;
+  deUserId: string;
+  bookId: string;
+  bookTitle: string;
+  mensajePersonal?: string;
+  juntas: boolean;
+}) {
+  const base = juntas
+    ? `${deNombre} te propone leer «${bookTitle}» a la vez`
+    : `${deNombre} te recomienda «${bookTitle}»`;
+  await createNotification({
+    userId: aUserId,
+    tipo: NotificationType.LIBRO_RECOMENDADO,
+    titulo: juntas ? '💌 ¿Lo leemos a la vez?' : '📚 Una recomendación para ti',
+    mensaje: mensajePersonal ? `${base}: «${mensajePersonal}»` : base,
+    bookId,
+    extra: { de: deUserId, nombre: deNombre, bookTitle, juntas },
+  });
+}
+
 // ─────────────────────────────────────────────
 // Leer y gestionar notificaciones
 // ─────────────────────────────────────────────
