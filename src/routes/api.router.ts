@@ -230,6 +230,7 @@ import {
   handleRecomendarLibro,
   handleReservarRegalo,
   handleResponderLecturaAmistad,
+  handleSalirLecturaAmistad,
   handleResponderAmistad,
   handleSolicitarAmistad,
 } from '../controllers/amistades.controller.js';
@@ -329,6 +330,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'reservarRegalo',
   'crearLecturaConAmistad',
   'responderLecturaAmistad',
+  'salirLecturaAmistad',
   'borrarComentarioProgreso',
   'reportarContenido',
   'guardarPersonalidadLectora',
@@ -969,6 +971,9 @@ export async function handleApi(
 
       case 'crearLecturaConAmistad':
         return handleCrearLecturaConAmistad(req, res);
+
+      case 'salirLecturaAmistad':
+        return handleSalirLecturaAmistad(req, res);
 
       case 'lecturasAmistades':
         return handleLecturasAmistades(req, res);

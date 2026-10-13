@@ -14,6 +14,7 @@ import {
   crearLecturaConAmistad,
   getLecturasAmistades,
   responderLecturaAmistad,
+  salirLecturaAmistad,
 } from '../services/lecturas-amistades.service.js';
 import { reservarRegalo } from '../services/amistades-regalos.service.js';
 import { recomendarLibro } from '../services/amistades-recomendar.service.js';
@@ -124,4 +125,10 @@ export async function handleResponderLecturaAmistad(req: Request, res: Response)
 
 export async function handleReservarRegalo(req: Request, res: Response) {
   return res.json(await reservarRegalo(req.auth!.userId, texto(req, 'itemId'), req.body?.reservar !== false));
+}
+
+export async function handleSalirLecturaAmistad(req: Request, res: Response) {
+  return res.json(
+    await salirLecturaAmistad(req.auth!.userId, texto(req, 'clubId'), req.body?.eliminar === true),
+  );
 }

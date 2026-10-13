@@ -804,6 +804,27 @@ export async function notifyLecturaAmistadAceptada({
   });
 }
 
+/** Avisa a quien compartía una lectura a la vez de que la otra persona la ha eliminado. */
+export async function notifyLecturaAmistadEliminada({
+  aUserId,
+  deNombre,
+  deUserId,
+  bookTitle,
+}: {
+  aUserId: string;
+  deNombre: string;
+  deUserId: string;
+  bookTitle: string;
+}) {
+  await createNotification({
+    userId: aUserId,
+    tipo: NotificationType.LECTURA_AMISTAD_ELIMINADA,
+    titulo: '📖 Lectura a la vez eliminada',
+    mensaje: `${deNombre} ha eliminado la lectura de «${bookTitle}» que compartíais`,
+    extra: { de: deUserId, nombre: deNombre, bookTitle },
+  });
+}
+
 // ─────────────────────────────────────────────
 // Leer y gestionar notificaciones
 // ─────────────────────────────────────────────

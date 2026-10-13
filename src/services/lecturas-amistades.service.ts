@@ -11,6 +11,7 @@ import { prisma } from '../prisma.js';
 import { backgroundError } from '../logging/logger.js';
 import {
   notifyLecturaAmistadAceptada,
+  notifyLecturaAmistadEliminada,
   notifyLecturaAmistadInvitacion,
 } from './notifications.service.js';
 import {
@@ -69,9 +70,8 @@ export async function crearLecturaConAmistad(
   });
   if (existente) return { ok: true, clubId: existente.clubId, libro: libro.title, yaExistia: true };
 
-  const abiertas = await prisma.clubMember.count({
-    where: { userId, club: { tipo: ClubType.AMISTADES } },
-  });
+  // El tope cuenta solo las que siguen en curso: las terminadas no ocupan sitio.
+  const abiertas = (await cargarLecturas(userId)).filter((l) => !l.terminada).length;
   if (abiertas >= MAX_LECTURAS_AMISTADES_ABIERTAS) {
     return {
       ok: false,
@@ -115,35 +115,104 @@ export async function crearLecturaConAmistad(
   return { ok: true, clubId: club.id, libro: libro.title, yaExistia: false };
 }
 
-/// Invitaciones recibidas y lecturas conjuntas con amistades (también las que esperan respuesta).
+type FilaLectura = {
+  clubId: string;
+  bookId: string;
+  libro: string;
+  con: string;
+  avatarUrl: string;
+  /// La otra persona aún no ha respondido a la invitación.
+  esperando: boolean;
+  /// La otra persona ya no está en la lectura (salió).
+  salio: boolean;
+  /// Quien la abrió (puede eliminarla para las dos).
+  esDuena: boolean;
+  /// Todas las personas que siguen en ella han terminado el libro desde que empezó.
+  terminada: boolean;
+};
+
+/// Las lecturas a la vez de una persona, con su estado. La conversación nunca se borra al
+/// terminar: «terminada» solo sirve para ordenarlas y no contar para el tope de abiertas.
+async function cargarLecturas(userId: string): Promise<FilaLectura[]> {
+  const mias = await prisma.clubMember.findMany({
+    where: { userId, club: { tipo: ClubType.AMISTADES } },
+    select: {
+      clubId: true,
+      role: true,
+      club: {
+        select: {
+          members: { select: { userId: true } },
+          friendReadingInvites: {
+            select: {
+              bookId: true,
+              bookTitle: true,
+              status: true,
+              fromUserId: true,
+              toUserId: true,
+              createdAt: true,
+              from: { select: { name: true, avatarUrl: true } },
+              to: { select: { name: true, avatarUrl: true } },
+            },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+
+  const base = mias.flatMap((m) => {
+    const inv = m.club.friendReadingInvites[0];
+    if (!inv || inv.status === FriendReadingInviteStatus.DECLINED) return [];
+    const yoFrom = inv.fromUserId === userId;
+    const otraId = yoFrom ? inv.toUserId : inv.fromUserId;
+    const otra = yoFrom ? inv.to : inv.from;
+    const esperando = inv.status === FriendReadingInviteStatus.PENDING;
+    const miembros = m.club.members.map((x) => x.userId);
+    return [
+      {
+        clubId: m.clubId,
+        bookId: inv.bookId,
+        libro: inv.bookTitle,
+        con: otra.name,
+        avatarUrl: otra.avatarUrl ?? '',
+        esperando,
+        salio: !esperando && !miembros.includes(otraId),
+        esDuena: m.role === ClubRole.OWNER,
+        desde: inv.createdAt,
+        participantes: miembros,
+      },
+    ];
+  });
+  if (base.length === 0) return [];
+
+  const terminados = await prisma.readingCompletion.findMany({
+    where: {
+      OR: base.map((l) => ({
+        bookId: l.bookId,
+        userId: { in: l.participantes },
+        finishedAt: { gte: l.desde },
+      })),
+    },
+    select: { userId: true, bookId: true },
+  });
+  const hechos = new Set(terminados.map((t) => `${t.bookId}:${t.userId}`));
+
+  return base.map(({ desde: _desde, participantes, ...l }) => ({
+    ...l,
+    terminada:
+      !l.esperando && participantes.length > 0 && participantes.every((u) => hechos.has(`${l.bookId}:${u}`)),
+  }));
+}
+
+/// Invitaciones recibidas y lecturas conjuntas con amistades, con su estado (en curso o terminada).
 export async function getLecturasAmistades(userId: string) {
-  const [recibidas, mias] = await Promise.all([
+  const [recibidas, lecturas] = await Promise.all([
     prisma.friendReadingInvite.findMany({
       where: { toUserId: userId, status: FriendReadingInviteStatus.PENDING },
       include: { from: { select: { name: true, avatarUrl: true } } },
       orderBy: { createdAt: 'desc' },
     }),
-    prisma.clubMember.findMany({
-      where: { userId, club: { tipo: ClubType.AMISTADES } },
-      select: {
-        clubId: true,
-        club: {
-          select: {
-            friendReadingInvites: {
-              select: {
-                bookId: true,
-                bookTitle: true,
-                status: true,
-                fromUserId: true,
-                from: { select: { name: true, avatarUrl: true } },
-                to: { select: { name: true, avatarUrl: true } },
-              },
-              take: 1,
-            },
-          },
-        },
-      },
-    }),
+    cargarLecturas(userId),
   ]);
 
   return {
@@ -155,22 +224,70 @@ export async function getLecturasAmistades(userId: string) {
       de: i.from.name,
       avatarUrl: i.from.avatarUrl ?? '',
     })),
-    lecturas: mias.flatMap((m) => {
-      const inv = m.club.friendReadingInvites[0];
-      if (!inv || inv.status === FriendReadingInviteStatus.DECLINED) return [];
-      const otra = inv.fromUserId === userId ? inv.to : inv.from;
-      return [
-        {
-          clubId: m.clubId,
-          bookId: inv.bookId,
-          libro: inv.bookTitle,
-          con: otra.name,
-          avatarUrl: otra.avatarUrl ?? '',
-          esperando: inv.status === FriendReadingInviteStatus.PENDING,
-        },
-      ];
-    }),
+    lecturas,
   };
+}
+
+/// Sale de una lectura a la vez (la conversación sigue para la otra persona) o, si [eliminar],
+/// la borra para las dos (solo quien la abrió). Si no queda nadie, el espacio desaparece.
+export async function salirLecturaAmistad(userId: string, clubId: string, eliminar: boolean) {
+  const membresia = await prisma.clubMember.findUnique({
+    where: { clubId_userId: { clubId: String(clubId ?? '').trim(), userId } },
+    select: {
+      role: true,
+      club: {
+        select: {
+          id: true,
+          tipo: true,
+          members: { select: { userId: true } },
+          friendReadingInvites: { select: { bookTitle: true, status: true }, take: 1 },
+        },
+      },
+      user: { select: { name: true } },
+    },
+  });
+  if (!membresia || membresia.club.tipo !== ClubType.AMISTADES) return { ok: false, mensaje: YA_NO_EXISTE };
+
+  const otros = membresia.club.members.map((m) => m.userId).filter((id) => id !== userId);
+  const inv = membresia.club.friendReadingInvites[0];
+  const borrarClub = (tx: any) =>
+    tx.user
+      .updateMany({ where: { activeClubId: membresia.club.id }, data: { activeClubId: null } })
+      .then(() => tx.club.delete({ where: { id: membresia.club.id } }));
+
+  if (eliminar) {
+    if (membresia.role !== ClubRole.OWNER) {
+      return { ok: false, mensaje: 'Solo quien abrió la lectura puede eliminarla para las dos personas.' };
+    }
+    await prisma.$transaction(async (tx) => borrarClub(tx));
+    for (const otro of otros) {
+      await notifyLecturaAmistadEliminada({
+        aUserId: otro,
+        deNombre: membresia.user.name,
+        deUserId: userId,
+        bookTitle: inv?.bookTitle ?? '',
+      }).catch(backgroundError('friend_reading_removed_notify_failed'));
+    }
+    return { ok: true };
+  }
+
+  if (otros.length === 0) {
+    await prisma.$transaction(async (tx) => borrarClub(tx));
+    return { ok: true };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (membresia.role === ClubRole.OWNER) {
+      await tx.club.update({ where: { id: membresia.club.id }, data: { ownerId: otros[0]! } });
+      await tx.clubMember.update({
+        where: { clubId_userId: { clubId: membresia.club.id, userId: otros[0]! } },
+        data: { role: ClubRole.OWNER },
+      });
+    }
+    await tx.clubMember.delete({ where: { clubId_userId: { clubId: membresia.club.id, userId } } });
+    await tx.user.updateMany({ where: { id: userId, activeClubId: membresia.club.id }, data: { activeClubId: null } });
+  });
+  return { ok: true };
 }
 
 /// Acepta o rechaza una invitación a leer a la vez. Rechazar no avisa a nadie.
