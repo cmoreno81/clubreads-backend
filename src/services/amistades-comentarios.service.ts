@@ -59,7 +59,7 @@ export async function getComentariosProgreso(yo: string, libraryId: string) {
   return {
     ok: true,
     titulo: lectura.book.title,
-    soyDueña,
+    soyDuena: soyDueña,
     comentarios: filas.reverse().map((c) => ({
       id: c.id,
       autor: c.user.name,
