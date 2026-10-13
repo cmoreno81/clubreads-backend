@@ -2,6 +2,7 @@ import { ClubType, FriendshipStatus, ProfileVisibility } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
 import { backgroundError } from '../logging/logger.js';
+import { liberarReservasEntre } from './amistades-regalos.service.js';
 import { getPrivacidadAmistades } from './amistades-ver.service.js';
 import { notifyAmistadAceptada, notifyAmistadSolicitud } from './notifications.service.js';
 import {
@@ -308,6 +309,7 @@ export async function cancelarSolicitudAmistad(userId: string, nombre: string) {
 
 export async function quitarAmistad(userId: string, nombre: string) {
   const objetivo = String(nombre ?? '').trim();
+  const otra = await prisma.user.findUnique({ where: { name: objetivo }, select: { id: true } });
   const { count } = await prisma.friendship.deleteMany({
     where: {
       status: FriendshipStatus.ACCEPTED,
@@ -317,6 +319,7 @@ export async function quitarAmistad(userId: string, nombre: string) {
       ],
     },
   });
+  if (count > 0 && otra) await liberarReservasEntre(userId, otra.id);
   return count > 0 ? { ok: true } : { ok: false, mensaje: 'No sois amistades.' };
 }
 

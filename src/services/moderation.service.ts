@@ -1,3 +1,4 @@
+import { liberarReservasEntre } from './amistades-regalos.service.js';
 import { prisma } from '../prisma.js';
 import { ClubContextError } from './club-context.service.js';
 import { enviarFeedback } from './feedback.service.js';
@@ -33,6 +34,8 @@ export async function bloquearUsuario(blockerId: string, blockedName: string) {
       ],
     },
   });
+
+  await liberarReservasEntre(blockerId, blocked.id);
 
   return { ok: true };
 }

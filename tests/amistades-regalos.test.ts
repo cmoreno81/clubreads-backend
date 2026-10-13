@@ -5,7 +5,7 @@ import test from 'node:test';
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../src/prisma.js';
-import { reservarRegalo } from '../src/services/amistades-regalos.service.js';
+import { liberarReservasEntre, reservarRegalo } from '../src/services/amistades-regalos.service.js';
 
 type Op = {
   duena?: string;
@@ -119,4 +119,25 @@ test('rutas y migración están conectadas, y el perfil enseña quién lo reserv
     readFileSync('prisma/migrations/20261017100000_wishlist_reservations/migration.sql', 'utf8'),
     /CREATE TABLE "WishlistReservation"/,
   );
+});
+
+test('quitar tu reserva siempre se puede, aunque ya no seáis amistades o haya dejado de compartir la lista', async () => {
+  const log = falsear({ reserva: 'yo', comparte: false });
+  assert.equal(((await reservarRegalo('yo', 'w1', false)) as any).ok, true);
+  assert.deepEqual(log.borradas, [{ wishlistItemId: 'w1', reservedById: 'yo' }]);
+});
+
+test('al quitar la amistad o bloquear se liberan las reservas entre las dos, en los dos sentidos', async () => {
+  let consulta: any = null;
+  Object.defineProperty(prisma, 'wishlistReservation', {
+    configurable: true,
+    value: { deleteMany: async (args: any) => { consulta = args; return { count: 2 }; } },
+  });
+  await liberarReservasEntre('a', 'b');
+  assert.deepEqual(consulta.where.OR, [
+    { reservedById: 'a', wishlistItem: { userId: 'b' } },
+    { reservedById: 'b', wishlistItem: { userId: 'a' } },
+  ]);
+  assert.match(readFileSync('src/services/amistades.service.ts', 'utf8'), /liberarReservasEntre\(userId, otra\.id\)/);
+  assert.match(readFileSync('src/services/moderation.service.ts', 'utf8'), /liberarReservasEntre\(blockerId, blocked\.id\)/);
 });

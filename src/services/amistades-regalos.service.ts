@@ -14,15 +14,16 @@ export async function reservarRegalo(yo: string, itemId: string, reservar: boole
   });
   if (!item || item.userId === yo) return { ok: false, mensaje: 'Ese libro ya no está en la lista.' };
 
-  const amistades = await amistadesQueComparten(yo);
-  const duena = amistades.find((a) => a.id === item.userId);
-  if (!duena?.friendsSeeWishlist) return { ok: false, mensaje: 'No puedes ver esa lista de deseos.' };
-
+  // Quitar tu propia reserva siempre se puede, aunque ya no seáis amistades o haya dejado de compartir la lista.
   if (!reservar) {
     if (item.reservation?.reservedById !== yo) return { ok: true }; // nada que deshacer
     await prisma.wishlistReservation.deleteMany({ where: { wishlistItemId: item.id, reservedById: yo } });
     return { ok: true };
   }
+
+  const amistades = await amistadesQueComparten(yo);
+  const duena = amistades.find((a) => a.id === item.userId);
+  if (!duena?.friendsSeeWishlist) return { ok: false, mensaje: 'No puedes ver esa lista de deseos.' };
 
   if (item.purchasedAt) return { ok: false, mensaje: 'Ese libro ya no está en la lista.' };
   if (item.reservation) {
@@ -44,4 +45,18 @@ export async function reservarRegalo(yo: string, itemId: string, reservar: boole
     throw error;
   }
   return { ok: true };
+}
+
+/// Cuando se acaba una amistad (quitarla o bloquear), se liberan las reservas de regalo que
+/// había entre las dos personas, en los dos sentidos. Si no, un libro quedaría «reservado»
+/// para siempre por alguien que ya no puede verlo ni deshacerlo.
+export async function liberarReservasEntre(a: string, b: string) {
+  await prisma.wishlistReservation.deleteMany({
+    where: {
+      OR: [
+        { reservedById: a, wishlistItem: { userId: b } },
+        { reservedById: b, wishlistItem: { userId: a } },
+      ],
+    },
+  });
 }
