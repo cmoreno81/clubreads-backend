@@ -103,16 +103,33 @@ export async function crearLecturaConAmistad(
     return creado;
   });
 
-  await notifyLecturaAmistadInvitacion({
-    aUserId: amistad.id,
-    deNombre: yo.name,
-    deUserId: yo.id,
-    clubId: club.id,
-    bookId: libro.id,
-    bookTitle: libro.title,
-  }).catch(backgroundError('friend_reading_invite_notify_failed'));
-
+  // No se avisa todavía: la invitación sale cuando la lectura está configurada (ver
+  // `enviarInvitacionLectura`), para no invitar a algo que se queda a medias.
   return { ok: true, clubId: club.id, libro: libro.title, yaExistia: false };
+}
+
+/// Envía la invitación a la otra persona una vez configurada la lectura. Solo quien la abrió,
+/// y solo una vez; si aún no hay lectura configurada, no se avisa.
+export async function enviarInvitacionLectura(userId: string, clubId: string) {
+  const invitacion = await prisma.friendReadingInvite.findFirst({
+    where: { clubId: String(clubId ?? '').trim(), fromUserId: userId, status: FriendReadingInviteStatus.PENDING },
+    include: { from: { select: { name: true } } },
+  });
+  if (!invitacion) return { ok: false, mensaje: YA_NO_EXISTE };
+  if (invitacion.notifiedAt) return { ok: true, yaEnviada: true };
+  const lecturas = await prisma.reading.count({ where: { clubId: invitacion.clubId } });
+  if (lecturas === 0) return { ok: false, mensaje: 'Configura primero la lectura para poder invitar.' };
+
+  await prisma.friendReadingInvite.update({ where: { id: invitacion.id }, data: { notifiedAt: new Date() } });
+  await notifyLecturaAmistadInvitacion({
+    aUserId: invitacion.toUserId,
+    deNombre: invitacion.from.name,
+    deUserId: userId,
+    clubId: invitacion.clubId,
+    bookId: invitacion.bookId,
+    bookTitle: invitacion.bookTitle,
+  }).catch(backgroundError('friend_reading_invite_notify_failed'));
+  return { ok: true, yaEnviada: false };
 }
 
 type FilaLectura = {
@@ -208,7 +225,8 @@ async function cargarLecturas(userId: string): Promise<FilaLectura[]> {
 export async function getLecturasAmistades(userId: string) {
   const [recibidas, lecturas] = await Promise.all([
     prisma.friendReadingInvite.findMany({
-      where: { toUserId: userId, status: FriendReadingInviteStatus.PENDING },
+      // Solo las ya enviadas: una lectura sin configurar todavía no es una invitación.
+      where: { toUserId: userId, status: FriendReadingInviteStatus.PENDING, notifiedAt: { not: null } },
       include: { from: { select: { name: true, avatarUrl: true } } },
       orderBy: { createdAt: 'desc' },
     }),

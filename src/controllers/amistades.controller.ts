@@ -12,6 +12,7 @@ import {
 } from '../services/amistades-comentarios.service.js';
 import {
   crearLecturaConAmistad,
+  enviarInvitacionLectura,
   getLecturasAmistades,
   responderLecturaAmistad,
   salirLecturaAmistad,
@@ -131,4 +132,8 @@ export async function handleSalirLecturaAmistad(req: Request, res: Response) {
   return res.json(
     await salirLecturaAmistad(req.auth!.userId, texto(req, 'clubId'), req.body?.eliminar === true),
   );
+}
+
+export async function handleEnviarInvitacionLectura(req: Request, res: Response) {
+  return res.json(await enviarInvitacionLectura(req.auth!.userId, texto(req, 'clubId')));
 }

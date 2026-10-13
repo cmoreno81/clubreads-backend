@@ -226,6 +226,7 @@ import {
   handleComentarProgreso,
   handleComentariosProgreso,
   handleCrearLecturaConAmistad,
+  handleEnviarInvitacionLectura,
   handleLecturasAmistades,
   handleRecomendarLibro,
   handleReservarRegalo,
@@ -329,6 +330,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'comentarProgreso',
   'reservarRegalo',
   'crearLecturaConAmistad',
+  'enviarInvitacionLectura',
   'responderLecturaAmistad',
   'salirLecturaAmistad',
   'borrarComentarioProgreso',
@@ -974,6 +976,9 @@ export async function handleApi(
 
       case 'salirLecturaAmistad':
         return handleSalirLecturaAmistad(req, res);
+
+      case 'enviarInvitacionLectura':
+        return handleEnviarInvitacionLectura(req, res);
 
       case 'lecturasAmistades':
         return handleLecturasAmistades(req, res);

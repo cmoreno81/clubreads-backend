@@ -833,6 +833,9 @@ model FriendReadingInvite {
   createdAt   DateTime  @default(now())
   respondedAt DateTime?
 
+  /// Cuándo se avisó a la otra persona. Se avisa solo cuando la lectura ya está configurada.
+  notifiedAt DateTime?
+
   @@unique([clubId, toUserId])
   @@index([toUserId, status])
   @@index([fromUserId])

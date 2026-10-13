@@ -8,6 +8,7 @@ import {
   getLecturasAmistades,
   responderLecturaAmistad,
   salirLecturaAmistad,
+  enviarInvitacionLectura,
 } from '../src/services/lecturas-amistades.service.js';
 
 type Op = {
@@ -19,6 +20,7 @@ type Op = {
   mias?: any[];
   hechos?: Array<{ userId: string; bookId: string }>;
   membresia?: any;
+  notificada?: boolean;
 };
 
 /// Filas de «mis lecturas con amistades» como las devuelve la consulta de membresías.
@@ -50,7 +52,7 @@ function fila(o: { clubId: string; bookId?: string; libro?: string; role?: strin
 }
 
 function falsear(op: Op = {}) {
-  const log: Record<string, any[]> = { club: [], invite: [], miembro: [], notificacion: [], borrado: [], estado: [], salidas: [] };
+  const log: Record<string, any[]> = { club: [], invite: [], miembro: [], notificacion: [], borrado: [], estado: [], salidas: [], consultas: [] };
   const def = (m: string, v: unknown) => Object.defineProperty(prisma, m, { configurable: true, value: v });
   const amigas = op.amigas ?? ['Lucía'];
   const base: any = {
@@ -70,12 +72,14 @@ function falsear(op: Op = {}) {
         })),
     },
     friendReadingInvite: {
-      findFirst: async (args: any) =>
-        args.where.toUserId === 'yo' || args.where.clubId
-          ? { id: 'i1', clubId: 'c1', fromUserId: 'u0', bookId: 'b1', bookTitle: 'Yesteryear', from: { id: 'u0' }, to: { name: 'Cris' } }
+      findFirst: async (args: any) => {
+        log.consultas.push(args.where);
+        return args.where.toUserId === 'yo' || args.where.clubId
+          ? { id: 'i1', clubId: 'c1', fromUserId: 'u0', toUserId: 'yo', bookId: 'b1', bookTitle: 'Yesteryear', notifiedAt: op.notificada ? new Date() : null, from: { id: 'u0', name: 'Lucía' }, to: { name: 'Cris' } }
           : op.existente
             ? { clubId: 'cx' }
-            : null,
+            : null;
+      },
       create: async ({ data }: any) => { log.invite.push(data); return data; },
       update: async ({ data }: any) => { log.estado.push(data.status); return {}; },
       findMany: async () => [
@@ -113,8 +117,8 @@ test('crear una lectura con una amistad monta un club de pareja, la invitación 
   assert.equal(log.club[0].visibility, 'PRIVATE');
   assert.ok(!('inviteCode' in log.club[0]));
   assert.equal(log.invite[0].toUserId, 'u0');
-  assert.equal(log.notificacion[0].tipo, 'LECTURA_AMISTAD_INVITACION');
-  assert.match(log.notificacion[0].mensaje, /Cris te propone leer «Yesteryear» a la vez/);
+  // Aún no se avisa: la invitación sale cuando la lectura está configurada.
+  assert.equal(log.notificacion.length, 0);
 });
 
 test('no se crea con quien no es amistad, ni con libro inexistente, ni pasado de tope; si ya existe, se vuelve a ella', async () => {
@@ -226,10 +230,12 @@ test('eliminar para las dos: solo quien la abrió, y la otra persona recibe un a
 
 test('rutas, migración y cierre de invitaciones del club están conectados', () => {
   const router = readFileSync('src/routes/api.router.ts', 'utf8');
-  for (const a of ['crearLecturaConAmistad', 'lecturasAmistades', 'responderLecturaAmistad', 'salirLecturaAmistad']) {
+  for (const a of ['crearLecturaConAmistad', 'enviarInvitacionLectura', 'lecturasAmistades', 'responderLecturaAmistad', 'salirLecturaAmistad']) {
     assert.match(router, new RegExp(`case '${a}'`));
   }
-  assert.match(router, /'crearLecturaConAmistad',\s*'responderLecturaAmistad'/);
+  for (const a of ['crearLecturaConAmistad', 'enviarInvitacionLectura', 'responderLecturaAmistad']) {
+    assert.match(router, new RegExp(`'${a}',`));
+  }
   assert.match(readFileSync('src/services/clubs.service.ts', 'utf8'), /FRIEND_READING_IS_CLOSED/);
   assert.match(
     readFileSync('prisma/migrations/20261016160000_friend_readings/migration.sql', 'utf8'),
@@ -246,4 +252,30 @@ test('las lecturas con amistades no salen en «Tus clubes» ni en la lista de cl
 test('la configuración de la lectura dice si es entre amistades (para no ofrecer invitar al club)', () => {
   const src = readFileSync('src/services/readings.service.ts', 'utf8');
   assert.equal((src.match(/esAmistades: club\.tipo === ClubType\.AMISTADES/g) ?? []).length, 2);
+});
+
+test('la invitación sale solo cuando la lectura está configurada, una sola vez y solo de quien la abrió', async () => {
+  // Sin lectura configurada: no se avisa.
+  let log = falsear({ lecturas: 0 });
+  assert.equal(((await enviarInvitacionLectura('yo', 'c1')) as any).ok, false);
+  assert.equal(log.notificacion.length, 0);
+
+  // Configurada: se avisa, con el nombre de quien invita.
+  log = falsear({ lecturas: 1 });
+  assert.equal(((await enviarInvitacionLectura('yo', 'c1')) as any).ok, true);
+  assert.equal(log.notificacion[0].tipo, 'LECTURA_AMISTAD_INVITACION');
+  assert.equal(log.notificacion[0].userId, 'yo');
+  assert.match(log.notificacion[0].mensaje, /Lucía te propone leer «Yesteryear» a la vez/);
+  assert.equal(log.consultas[0].fromUserId, 'yo'); // solo quien la abrió
+
+  // Ya avisada: no se repite.
+  log = falsear({ lecturas: 1, notificada: true });
+  const r: any = await enviarInvitacionLectura('yo', 'c1');
+  assert.equal(r.yaEnviada, true);
+  assert.equal(log.notificacion.length, 0);
+});
+
+test('una lectura sin configurar/avisada no aparece como invitación recibida', () => {
+  const src = readFileSync('src/services/lecturas-amistades.service.ts', 'utf8');
+  assert.match(src, /notifiedAt: \{ not: null \}/);
 });
