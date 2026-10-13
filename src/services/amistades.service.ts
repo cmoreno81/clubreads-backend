@@ -199,7 +199,7 @@ export async function solicitarAmistad(
     },
   });
   if (existente?.status === FriendshipStatus.ACCEPTED) {
-    return { ok: true, estado: 'AMIGA', nombre: destino.name, mensaje: 'Ya sois amistades.' };
+    return { ok: true, estado: 'AMIGA', nombre: destino.name, mensaje: 'Ya sois amigos.' };
   }
   if (existente && existente.requesterId === userId) {
     return { ok: true, estado: 'ENVIADA', nombre: destino.name, mensaje: 'La solicitud ya estaba enviada.' };
@@ -213,7 +213,7 @@ export async function solicitarAmistad(
     void notifyAmistadAceptada({ aUserId: destino.id, deNombre: yo.name, deUserId: yo.id }).catch(
       backgroundError('friendship_accept_notify_failed'),
     );
-    return { ok: true, estado: 'AMIGA', nombre: destino.name, aceptada: true, mensaje: '¡Ya sois amistades! 🎉' };
+    return { ok: true, estado: 'AMIGA', nombre: destino.name, aceptada: true, mensaje: '¡Ya sois amigos! 🎉' };
   }
 
   const hace24h = new Date(Date.now() - 24 * 60 * 60 * 1000);

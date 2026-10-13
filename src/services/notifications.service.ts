@@ -686,7 +686,7 @@ export async function notifyAmistadAceptada({
   await createNotification({
     userId: aUserId,
     tipo: NotificationType.AMISTAD_ACEPTADA,
-    titulo: '🎉 Ya sois amistades',
+    titulo: '🎉 ¡Ya sois amigos!',
     mensaje: `${deNombre} ha aceptado tu solicitud`,
     extra: { de: deUserId, nombre: deNombre },
   });
