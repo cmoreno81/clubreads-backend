@@ -1,5 +1,6 @@
 import {
   ClubRole,
+  ClubType,
   Prisma,
   ReadingSessionStatus,
   ReadingType,
@@ -908,6 +909,7 @@ export async function getConfiguracionLectura(
       capitulosDisponibles: [],
       coverUrl: '',
       bookId: '',
+      esAmistades: club.tipo === ClubType.AMISTADES,
     };
   }
 
@@ -924,6 +926,8 @@ export async function getConfiguracionLectura(
     coverUrl: reading.book.coverUrl ?? '',
     bookId: reading.book.id,
     metas,
+    // Las lecturas entre amistades son de dos: no se invita a nadie más.
+    esAmistades: club.tipo === ClubType.AMISTADES,
   };
 }
 

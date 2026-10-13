@@ -146,3 +146,8 @@ test('las lecturas con amistades no salen en «Tus clubes» ni en la lista de cl
     assert.match(readFileSync(f, 'utf8'), /tipo: \{ not: ClubType\.AMISTADES \}/);
   }
 });
+
+test('la configuración de la lectura dice si es entre amistades (para no ofrecer invitar al club)', () => {
+  const src = readFileSync('src/services/readings.service.ts', 'utf8');
+  assert.equal((src.match(/esAmistades: club\.tipo === ClubType\.AMISTADES/g) ?? []).length, 2);
+});
