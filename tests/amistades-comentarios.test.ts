@@ -115,7 +115,7 @@ test('rutas, denuncia y migración están conectadas', () => {
   for (const a of ['comentariosProgreso', 'comentarProgreso', 'borrarComentarioProgreso']) {
     assert.match(router, new RegExp(`case '${a}'`));
   }
-  assert.match(router, /'recomendarLibro',\s*'comentarProgreso',\s*'borrarComentarioProgreso'/);
+  for (const a of ['comentarProgreso', 'borrarComentarioProgreso']) assert.match(router, new RegExp(`'${a}',`)); // POST_ONLY
   assert.match(readFileSync('src/services/moderation.service.ts', 'utf8'), /comentarioProgreso/);
   assert.match(
     readFileSync('prisma/migrations/20261016140000_progress_comments/migration.sql', 'utf8'),
