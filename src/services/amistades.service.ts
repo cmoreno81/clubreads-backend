@@ -2,6 +2,7 @@ import { FriendshipStatus, ProfileVisibility } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
 import { backgroundError } from '../logging/logger.js';
+import { getPrivacidadAmistades } from './amistades-ver.service.js';
 import { notifyAmistadAceptada, notifyAmistadSolicitud } from './notifications.service.js';
 import {
   MAX_BUSQUEDAS_POR_MINUTO,
@@ -54,7 +55,7 @@ export async function asegurarCodigoAmistad(userId: string): Promise<string> {
 }
 
 export async function getAmistades(userId: string) {
-  const [filas, bloqueadas, codigo] = await Promise.all([
+  const [filas, bloqueadas, codigo, privacidad] = await Promise.all([
     prisma.friendship.findMany({
       where: { OR: [{ requesterId: userId }, { addresseeId: userId }] },
       include: {
@@ -65,6 +66,7 @@ export async function getAmistades(userId: string) {
     }),
     bloqueadasConmigo(userId),
     asegurarCodigoAmistad(userId),
+    getPrivacidadAmistades(userId),
   ]);
 
   const persona = (fila: (typeof filas)[number]) =>
@@ -79,6 +81,7 @@ export async function getAmistades(userId: string) {
   return {
     ok: true,
     miCodigo: formatearCodigoAmistad(codigo),
+    privacidad,
     amistades: visibles
       .filter((f) => f.status === FriendshipStatus.ACCEPTED)
       .map(dato)

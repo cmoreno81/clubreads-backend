@@ -1,6 +1,11 @@
 import type { Request, Response } from 'express';
 
 import {
+  getActividadAmistades,
+  getPerfilAmistad,
+  guardarPrivacidadAmistades,
+} from '../services/amistades-ver.service.js';
+import {
   buscarPersonas,
   cancelarSolicitudAmistad,
   getAmistades,
@@ -42,4 +47,22 @@ export async function handleCancelarSolicitudAmistad(req: Request, res: Response
 
 export async function handleQuitarAmistad(req: Request, res: Response) {
   return res.json(await quitarAmistad(req.auth!.userId, texto(req, 'nombre')));
+}
+
+export async function handlePerfilAmistad(req: Request, res: Response) {
+  return res.json(await getPerfilAmistad(req.auth!.userId, String(req.query.nombre ?? '')));
+}
+
+export async function handleActividadAmistades(req: Request, res: Response) {
+  return res.json(await getActividadAmistades(req.auth!.userId));
+}
+
+export async function handleGuardarPrivacidadAmistades(req: Request, res: Response) {
+  return res.json(
+    await guardarPrivacidadAmistades(req.auth!.userId, {
+      leyendo: req.body?.leyendo === true,
+      biblioteca: req.body?.biblioteca === true,
+      resenas: req.body?.resenas === true,
+    }),
+  );
 }

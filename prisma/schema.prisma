@@ -417,6 +417,11 @@ model User {
   /// Código para compartir y que te añadan como amistad sin buscarte por nombre.
   friendCode String? @unique
 
+  /// Qué ven las amistades de esta persona (todo activado por defecto).
+  friendsSeeReading Boolean @default(true)
+  friendsSeeLibrary Boolean @default(true)
+  friendsSeeReviews Boolean @default(true)
+
   friendshipsSent     Friendship[] @relation("FriendRequester")
   friendshipsReceived Friendship[] @relation("FriendAddressee")
 

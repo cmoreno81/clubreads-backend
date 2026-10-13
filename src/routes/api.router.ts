@@ -215,9 +215,12 @@ import { handleGetUpcomingReleases } from '../controllers/upcoming-releases.cont
 import { handleGetNewReleases } from '../controllers/new-releases.controller.js';
 import { handleAutoraDeLaSemana } from '../controllers/talento-emergente.controller.js';
 import {
+  handleActividadAmistades,
   handleAmistades,
   handleBuscarPersonas,
   handleCancelarSolicitudAmistad,
+  handleGuardarPrivacidadAmistades,
+  handlePerfilAmistad,
   handleQuitarAmistad,
   handleResponderAmistad,
   handleSolicitarAmistad,
@@ -312,6 +315,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'responderAmistad',
   'cancelarSolicitudAmistad',
   'quitarAmistad',
+  'guardarPrivacidadAmistades',
   'reportarContenido',
   'guardarPersonalidadLectora',
   'toggleFavorito',
@@ -933,6 +937,15 @@ export async function handleApi(
 
       case 'quitarAmistad':
         return handleQuitarAmistad(req, res);
+
+      case 'perfilAmistad':
+        return handlePerfilAmistad(req, res);
+
+      case 'actividadAmistades':
+        return handleActividadAmistades(req, res);
+
+      case 'guardarPrivacidadAmistades':
+        return handleGuardarPrivacidadAmistades(req, res);
 
       case 'bloquearUsuario':
         if (!req.auth) return requireAuthentication(req, res, () => {});

@@ -8,6 +8,8 @@ import {
   ReadingStatus,
 } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { contarReaccionesProgreso } from '../utils/reacciones.utils.js';
+import { idsAmistadesQueMuestranLectura } from './amistades-ver.service.js';
 import {
   notifyLibroEmpezado,
   notifyLibroTerminado,
@@ -82,17 +84,28 @@ export async function toggleProgressReaction(
   libraryId: string,
   reactionValue: string,
 ) {
-  const { club, user } = await getCurrentClubContext(usuario.trim());
+  // Se puede reaccionar al progreso de quien comparte tu club activo o de una
+  // amistad que enseña lo que lee (también si no tienes club).
+  const user = await prisma.user.findUnique({
+    where: { name: usuario.trim() },
+    select: { id: true, activeClubId: true },
+  });
   if (!user) return { ok: false, mensaje: 'Usuaria no encontrada' };
   const reaction = Object.values(ReactionType).includes(
     reactionValue as ReactionType,
   )
     ? (reactionValue as ReactionType)
     : ReactionType.LIKE;
+  const amistades = await idsAmistadesQueMuestranLectura(user.id);
   const target = await prisma.library.findFirst({
     where: {
       id: libraryId.trim(),
-      user: { clubMemberships: { some: { clubId: club.id } } },
+      OR: [
+        ...(user.activeClubId
+          ? [{ user: { clubMemberships: { some: { clubId: user.activeClubId } } } }]
+          : []),
+        { userId: { in: amistades } },
+      ],
     },
     select: { id: true },
   });
@@ -125,17 +138,6 @@ export async function toggleProgressReaction(
     miReaccion:
       reactions.find((item) => item.userId === user.id)?.reaction ?? null,
   };
-}
-
-function contarReaccionesProgreso(
-  reactions: Array<{ reaction: ReactionType }>,
-) {
-  return Object.fromEntries(
-    Object.values(ReactionType).map((reaction) => [
-      reaction,
-      reactions.filter((item) => item.reaction === reaction).length,
-    ]),
-  );
 }
 
 function priorityToFlutter(priority: string) {
