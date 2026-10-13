@@ -16,6 +16,7 @@ export const MAX_LETRAS_COMENTARIO_PROGRESO = 300;
 /// Personas en una lectura conjunta entre amistades (por ahora, parejas).
 export const MAX_PERSONAS_LECTURA_AMISTADES = 2;
 export const MAX_LECTURAS_AMISTADES_ABIERTAS = 5;
+export const MAX_REGALOS_RESERVADOS = 50;
 export const MAX_COMENTARIOS_PROGRESO_POR_MINUTO = 8;
 export const MAX_COMENTARIOS_PROGRESO_POR_DIA = 60;
 export const MAX_COMENTARIOS_PROGRESO_VISIBLES = 50;

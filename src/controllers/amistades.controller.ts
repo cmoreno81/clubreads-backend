@@ -15,6 +15,7 @@ import {
   getLecturasAmistades,
   responderLecturaAmistad,
 } from '../services/lecturas-amistades.service.js';
+import { reservarRegalo } from '../services/amistades-regalos.service.js';
 import { recomendarLibro } from '../services/amistades-recomendar.service.js';
 import {
   buscarPersonas,
@@ -119,4 +120,8 @@ export async function handleResponderLecturaAmistad(req: Request, res: Response)
   return res.json(
     await responderLecturaAmistad(req.auth!.userId, texto(req, 'clubId'), req.body?.aceptar === true),
   );
+}
+
+export async function handleReservarRegalo(req: Request, res: Response) {
+  return res.json(await reservarRegalo(req.auth!.userId, texto(req, 'itemId'), req.body?.reservar !== false));
 }

@@ -218,7 +218,11 @@ export async function getPerfilAmistad(yo: string, nombre: string) {
     compartido.deseos
       ? prisma.wishlistItem.findMany({
           where: { userId: amiga.id, purchasedAt: null },
-          select: { id: true, bookId: true, title: true, author: true, coverUrl: true, format: true, priority: true },
+          select: {
+            id: true, bookId: true, title: true, author: true, coverUrl: true, format: true, priority: true,
+            // Solo para amistades: quién lo ha reservado. La dueña de la lista nunca lo ve.
+            reservation: { select: { reservedById: true } },
+          },
           orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
           take: MAX_DESEOS,
         })
@@ -245,6 +249,9 @@ export async function getPerfilAmistad(yo: string, nombre: string) {
     totalPendientes: totales ? totales[0] : null,
     totalTerminados: totales ? totales[1] : null,
     deseos: deseos.map((d) => ({
+      id: d.id,
+      reservado: Boolean(d.reservation),
+      reservadoPorMi: d.reservation?.reservedById === yo,
       bookId: d.bookId ?? '',
       titulo: d.title,
       autor: d.author ?? '',

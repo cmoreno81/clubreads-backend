@@ -79,7 +79,7 @@ test('el perfil de una amistad enseña su lista de deseos sin datos privados, y 
   const con: any = await getPerfilAmistad('yo', 'lucía');
   assert.equal(con.compartido.deseos, true);
   assert.deepEqual(con.deseos, [
-    { bookId: '', titulo: 'Libro regalo', autor: 'Autora', coverUrl: '', formato: 'PHYSICAL', prioridad: 'HIGH' },
+    { id: 'w1', reservado: false, reservadoPorMi: false, bookId: '', titulo: 'Libro regalo', autor: 'Autora', coverUrl: '', formato: 'PHYSICAL', prioridad: 'HIGH' },
   ]);
   assert.equal(consultaDeseos.where.purchasedAt, null);
   assert.ok(!('price' in consultaDeseos.select) && !('note' in consultaDeseos.select));

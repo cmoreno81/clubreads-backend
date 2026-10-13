@@ -409,6 +409,7 @@ model User {
   likes              Like[]
   progressReactions  ProgressReaction[]
   progressComments   ProgressComment[]
+  wishlistReservations WishlistReservation[] @relation("WishlistReservedBy")
   friendReadingInvitesSent     FriendReadingInvite[] @relation("FriendReadingFrom")
   friendReadingInvitesReceived FriendReadingInvite[] @relation("FriendReadingTo")
 
@@ -1687,10 +1688,29 @@ model WishlistItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Reserva de regalo de una amistad. NUNCA se enseña a quien es dueña de la lista.
+  reservation WishlistReservation?
+
   @@index([userId])
   @@index([userId, releaseDate])
   @@index([userId, purchasedAt])
   @@index([bookId])
+}
+
+/// «Yo lo regalo»: una amistad reserva un libro de la lista de deseos de otra para que
+/// nadie más lo regale. La dueña de la lista no ve esto (es una sorpresa).
+model WishlistReservation {
+  id String @id @default(cuid())
+
+  wishlistItemId String       @unique
+  wishlistItem   WishlistItem @relation(fields: [wishlistItemId], references: [id], onDelete: Cascade)
+
+  reservedById String
+  reservedBy   User   @relation("WishlistReservedBy", fields: [reservedById], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([reservedById])
 }
 
 //
