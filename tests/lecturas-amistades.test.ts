@@ -140,3 +140,9 @@ test('rutas, migración y cierre de invitaciones del club están conectados', ()
     /ADD VALUE IF NOT EXISTS 'AMISTADES'/,
   );
 });
+
+test('las lecturas con amistades no salen en «Tus clubes» ni en la lista de clubes', () => {
+  for (const f of ['src/services/general-dashboard.service.ts', 'src/services/clubs.service.ts']) {
+    assert.match(readFileSync(f, 'utf8'), /tipo: \{ not: ClubType\.AMISTADES \}/);
+  }
+});

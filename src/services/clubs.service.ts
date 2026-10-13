@@ -36,6 +36,8 @@ export async function listMyClubs(userId: string) {
     select: {
       activeClubId: true,
       clubMemberships: {
+        // Las lecturas con amistades se gestionan desde Amistades, no desde la lista de clubes.
+        where: { club: { tipo: { not: ClubType.AMISTADES } } },
         orderBy: { joinedAt: 'asc' },
         include: {
           club: {

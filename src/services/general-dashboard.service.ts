@@ -247,6 +247,8 @@ export async function getGeneralDashboard(userId: string) {
         where: { id: userId },
         include: {
           clubMemberships: {
+            // Las lecturas con amistades viven en Amistades, no en «Tus clubes».
+            where: { club: { tipo: { not: ClubType.AMISTADES } } },
             orderBy: { joinedAt: 'asc' },
             include: {
               club: {
