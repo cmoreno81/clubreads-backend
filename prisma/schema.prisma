@@ -421,6 +421,8 @@ model User {
   friendsSeeReading Boolean @default(true)
   friendsSeeLibrary Boolean @default(true)
   friendsSeeReviews Boolean @default(true)
+  /// Lista de deseos (para saber qué regalar): solo título, autoría, portada, formato y prioridad.
+  friendsSeeWishlist Boolean @default(true)
 
   friendshipsSent     Friendship[] @relation("FriendRequester")
   friendshipsReceived Friendship[] @relation("FriendAddressee")

@@ -64,6 +64,7 @@ export async function handleGuardarPrivacidadAmistades(req: Request, res: Respon
       leyendo: req.body?.leyendo === true,
       biblioteca: req.body?.biblioteca === true,
       resenas: req.body?.resenas === true,
+      deseos: typeof req.body?.deseos === 'boolean' ? req.body.deseos : undefined,
     }),
   );
 }

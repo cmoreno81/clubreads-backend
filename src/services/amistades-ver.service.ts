@@ -7,10 +7,12 @@ export type PrivacidadAmistades = {
   leyendo: boolean;
   biblioteca: boolean;
   resenas: boolean;
+  deseos: boolean;
 };
 
 const DIAS_ACTIVIDAD = 30;
 const MAX_ACTIVIDAD = 30;
+const MAX_DESEOS = 40;
 
 /// Personas bloqueadas en cualquier sentido (no se ven entre sí aunque
 /// hubiera una amistad vieja).
@@ -31,6 +33,7 @@ const SELECCION_AMISTAD = {
   friendsSeeReading: true,
   friendsSeeLibrary: true,
   friendsSeeReviews: true,
+  friendsSeeWishlist: true,
 } as const;
 
 /// Las amistades aceptadas de una persona, con lo que cada una comparte.
@@ -53,27 +56,34 @@ export async function amistadesQueComparten(userId: string) {
     .filter((p) => !bloqueadas.has(p.id));
 }
 
-export async function guardarPrivacidadAmistades(userId: string, datos: PrivacidadAmistades) {
+/// `deseos` es opcional: las versiones antiguas de la app no lo envían y entonces se conserva lo que había.
+export async function guardarPrivacidadAmistades(
+  userId: string,
+  datos: Omit<PrivacidadAmistades, 'deseos'> & { deseos?: boolean },
+) {
+  const deseos = datos.deseos ?? (await getPrivacidadAmistades(userId)).deseos;
   await prisma.user.update({
     where: { id: userId },
     data: {
       friendsSeeReading: datos.leyendo,
       friendsSeeLibrary: datos.biblioteca,
       friendsSeeReviews: datos.resenas,
+      friendsSeeWishlist: deseos,
     },
   });
-  return { ok: true, privacidad: datos };
+  return { ok: true, privacidad: { leyendo: datos.leyendo, biblioteca: datos.biblioteca, resenas: datos.resenas, deseos } };
 }
 
 export async function getPrivacidadAmistades(userId: string): Promise<PrivacidadAmistades> {
   const u = await prisma.user.findUnique({
     where: { id: userId },
-    select: { friendsSeeReading: true, friendsSeeLibrary: true, friendsSeeReviews: true },
+    select: { friendsSeeReading: true, friendsSeeLibrary: true, friendsSeeReviews: true, friendsSeeWishlist: true },
   });
   return {
     leyendo: u?.friendsSeeReading ?? true,
     biblioteca: u?.friendsSeeLibrary ?? true,
     resenas: u?.friendsSeeReviews ?? true,
+    deseos: u?.friendsSeeWishlist ?? true,
   };
 }
 
@@ -162,9 +172,10 @@ export async function getPerfilAmistad(yo: string, nombre: string) {
     leyendo: amiga.friendsSeeReading,
     biblioteca: amiga.friendsSeeLibrary,
     resenas: amiga.friendsSeeReviews,
+    deseos: amiga.friendsSeeWishlist,
   };
 
-  const [leyendo, terminados, pendientes, totales, resenas] = await Promise.all([
+  const [leyendo, terminados, pendientes, totales, resenas, deseos] = await Promise.all([
     compartido.leyendo
       ? prisma.library.findMany({
           where: { userId: amiga.id, status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] }, book: { deletedAt: null } },
@@ -203,6 +214,15 @@ export async function getPerfilAmistad(yo: string, nombre: string) {
           take: 10,
         })
       : Promise.resolve([]),
+    // Solo lo que sirve para regalar: sin precio, notas ni fechas de compra.
+    compartido.deseos
+      ? prisma.wishlistItem.findMany({
+          where: { userId: amiga.id, purchasedAt: null },
+          select: { id: true, bookId: true, title: true, author: true, coverUrl: true, format: true, priority: true },
+          orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
+          take: MAX_DESEOS,
+        })
+      : Promise.resolve([]),
   ]);
 
   const reacciones = await reaccionesDe(leyendo.map((l) => l.id), yo);
@@ -224,6 +244,14 @@ export async function getPerfilAmistad(yo: string, nombre: string) {
     pendientes: pendientes.map((p) => ({ bookId: p.book.id, titulo: p.book.title, coverUrl: p.book.coverUrl ?? '' })),
     totalPendientes: totales ? totales[0] : null,
     totalTerminados: totales ? totales[1] : null,
+    deseos: deseos.map((d) => ({
+      bookId: d.bookId ?? '',
+      titulo: d.title,
+      autor: d.author ?? '',
+      coverUrl: d.coverUrl ?? '',
+      formato: d.format,
+      prioridad: d.priority,
+    })),
     resenas: resenas.map((r) => ({
       bookId: r.book.id,
       titulo: r.book.title,
