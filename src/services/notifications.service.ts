@@ -752,6 +752,58 @@ export async function notifyProgresoComentario({
   });
 }
 
+/** Avisa a una amistad de que la invitan a una lectura conjunta. */
+export async function notifyLecturaAmistadInvitacion({
+  aUserId,
+  deNombre,
+  deUserId,
+  clubId,
+  bookId,
+  bookTitle,
+}: {
+  aUserId: string;
+  deNombre: string;
+  deUserId: string;
+  clubId: string;
+  bookId: string;
+  bookTitle: string;
+}) {
+  await createNotification({
+    userId: aUserId,
+    tipo: NotificationType.LECTURA_AMISTAD_INVITACION,
+    titulo: '💌 Te invitan a leer a la vez',
+    mensaje: `${deNombre} te propone leer «${bookTitle}» a la vez`,
+    bookId,
+    extra: { de: deUserId, nombre: deNombre, clubId, bookTitle },
+  });
+}
+
+/** Avisa a quien invitó de que su amistad ha aceptado la lectura. */
+export async function notifyLecturaAmistadAceptada({
+  aUserId,
+  deNombre,
+  deUserId,
+  clubId,
+  bookId,
+  bookTitle,
+}: {
+  aUserId: string;
+  deNombre: string;
+  deUserId: string;
+  clubId: string;
+  bookId: string;
+  bookTitle: string;
+}) {
+  await createNotification({
+    userId: aUserId,
+    tipo: NotificationType.LECTURA_AMISTAD_ACEPTADA,
+    titulo: '📖 ¡Empezáis a leer a la vez!',
+    mensaje: `${deNombre} ha aceptado leer «${bookTitle}» contigo`,
+    bookId,
+    extra: { de: deUserId, nombre: deNombre, clubId, bookTitle },
+  });
+}
+
 // ─────────────────────────────────────────────
 // Leer y gestionar notificaciones
 // ─────────────────────────────────────────────

@@ -10,6 +10,11 @@ import {
   comentarProgreso,
   getComentariosProgreso,
 } from '../services/amistades-comentarios.service.js';
+import {
+  crearLecturaConAmistad,
+  getLecturasAmistades,
+  responderLecturaAmistad,
+} from '../services/lecturas-amistades.service.js';
 import { recomendarLibro } from '../services/amistades-recomendar.service.js';
 import {
   buscarPersonas,
@@ -95,4 +100,23 @@ export async function handleComentarProgreso(req: Request, res: Response) {
 
 export async function handleBorrarComentarioProgreso(req: Request, res: Response) {
   return res.json(await borrarComentarioProgreso(req.auth!.userId, texto(req, 'id')));
+}
+
+export async function handleCrearLecturaConAmistad(req: Request, res: Response) {
+  return res.json(
+    await crearLecturaConAmistad(req.auth!.userId, {
+      bookId: texto(req, 'bookId'),
+      nombre: texto(req, 'nombre'),
+    }),
+  );
+}
+
+export async function handleLecturasAmistades(req: Request, res: Response) {
+  return res.json(await getLecturasAmistades(req.auth!.userId));
+}
+
+export async function handleResponderLecturaAmistad(req: Request, res: Response) {
+  return res.json(
+    await responderLecturaAmistad(req.auth!.userId, texto(req, 'clubId'), req.body?.aceptar === true),
+  );
 }

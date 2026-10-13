@@ -82,6 +82,13 @@ enum ClubVisibility {
 enum ClubType {
   SOCIAL // club normal con varios miembros
   PERSONAL // espacio lector individual (sin funciones sociales)
+  AMISTADES // lectura conjunta privada entre amistades (una pareja y un libro)
+}
+
+enum FriendReadingInviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
 }
 
 enum ClubRole {
@@ -402,6 +409,8 @@ model User {
   likes              Like[]
   progressReactions  ProgressReaction[]
   progressComments   ProgressComment[]
+  friendReadingInvitesSent     FriendReadingInvite[] @relation("FriendReadingFrom")
+  friendReadingInvitesReceived FriendReadingInvite[] @relation("FriendReadingTo")
 
   conversationReads ConversationRead[]
 
@@ -612,6 +621,7 @@ model Club {
   readingProposals           ClubReadingProposal[]
   rankingResults             ClubRankingSeasonResult[]
   joinRequests               ClubJoinRequest[]
+  friendReadingInvites       FriendReadingInvite[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -798,6 +808,33 @@ model ProgressReaction {
 
   @@unique([libraryId, userId])
   @@index([userId])
+}
+
+/// Invitación a una lectura conjunta entre amistades. La lectura vive en un club
+/// privado de tipo AMISTADES (una pareja), así que reutiliza capítulos, comentarios y metas.
+model FriendReadingInvite {
+  id String @id @default(cuid())
+
+  clubId String
+  club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  fromUserId String
+  from       User   @relation("FriendReadingFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+
+  toUserId String
+  to       User   @relation("FriendReadingTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  bookId    String
+  bookTitle String
+
+  status FriendReadingInviteStatus @default(PENDING)
+
+  createdAt   DateTime  @default(now())
+  respondedAt DateTime?
+
+  @@unique([clubId, toUserId])
+  @@index([toUserId, status])
+  @@index([fromUserId])
 }
 
 /// Comentario de una amistad (o de quien lee) en el progreso de una lectura.
@@ -1433,6 +1470,8 @@ enum NotificationType {
   AMISTAD_ACEPTADA
   LIBRO_RECOMENDADO
   PROGRESO_COMENTARIO
+  LECTURA_AMISTAD_INVITACION
+  LECTURA_AMISTAD_ACEPTADA
   COMENTARIO_LECTURA
   LIBRO_TERMINADO
   LIBRO_EMPEZADO

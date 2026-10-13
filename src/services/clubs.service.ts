@@ -242,6 +242,13 @@ export async function getInvite(userId: string, clubIdValue: string) {
       'INSUFFICIENT_CLUB_ROLE',
     );
   }
+  if (membership.club.tipo === ClubType.AMISTADES) {
+    throw new ClubContextError(
+      'Las lecturas con amistades no admiten más personas',
+      400,
+      'FRIEND_READING_IS_CLOSED',
+    );
+  }
   const code = membership.club.inviteCode ?? inviteCode();
   if (!membership.club.inviteCode) {
     await prisma.club.update({
