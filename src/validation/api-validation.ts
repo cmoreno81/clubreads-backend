@@ -101,6 +101,13 @@ const bookMutationFields = {
   valoracion: ratingSchema.optional(), reflexion: longTextSchema.optional(), resena: longTextSchema.optional(),
   idioma: bookLanguageSchema.optional(),
 };
+/// Al EDITAR un libro la app reenvía la portada que ya tiene. Si esa portada está guardada como imagen
+/// incrustada («data:image/…», fichas antiguas), es enorme y no pasa la validación de URL: en vez de
+/// rechazar la edición entera, se ignora y la ficha conserva su portada. Una URL escrita mal sigue fallando.
+const ignorarPortadaIncrustada = z.preprocess(
+  (valor) => (typeof valor === 'string' && valor.trim().startsWith('data:') ? undefined : valor),
+  urlSchema.optional(),
+);
 const goodreadsRowSchema = z.object({
   sourceRowId: z.string().max(500).optional(), rowId: z.string().max(500).optional(), id: z.string().max(500).optional(),
   title: z.string().min(1).max(500), author: z.string().max(500).optional(), isbn: z.string().max(32).optional(),
@@ -163,7 +170,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   editarClub: body({ clubId: identifierSchema, nombre: shortTextSchema.optional(), descripcion: textSchema.optional(), avatarUrl: avatarUrlSchema.optional() }),
   transferirPropiedadClub: body({ clubId: identifierSchema, nuevoOwnerId: identifierSchema }),
   crearLibro: body({ libro: shortTextSchema.optional(), titulo: shortTextSchema.optional(), title: shortTextSchema.optional(), author: shortTextSchema.optional(), isbn: z.string().max(32).optional(), totalPages: pageSchema.optional(), confirmarNuevo: z.boolean().optional(), ...bookMutationFields }).refine((v) => Boolean(v.libro || v.titulo || v.title), { path: ['titulo'], message: 'Título obligatorio' }),
-  editarLibro: body({ bookId: identifierSchema.optional(), id: identifierSchema.optional(), ...bookMutationFields }).refine((v) => Boolean(v.bookId || v.id), { path: ['bookId'], message: 'Identificador obligatorio' }),
+  editarLibro: body({ bookId: identifierSchema.optional(), id: identifierSchema.optional(), ...bookMutationFields, coverUrl: ignorarPortadaIncrustada, portada: ignorarPortadaIncrustada, portadaUrl: ignorarPortadaIncrustada }).refine((v) => Boolean(v.bookId || v.id), { path: ['bookId'], message: 'Identificador obligatorio' }),
   anadirLibroExistente: body({ libro: identifierSchema, prioridad: prioritySchema, formato: formatSchema.optional(), idioma: bookLanguageSchema.optional() }),
   actualizarIdiomaLibro: body({ bookId: identifierSchema, idioma: bookLanguageSchema }),
   buscarPersonas: body({ q: z.string().trim().min(1).max(60) }),
