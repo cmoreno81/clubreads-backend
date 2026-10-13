@@ -5,6 +5,11 @@ import {
   getPerfilAmistad,
   guardarPrivacidadAmistades,
 } from '../services/amistades-ver.service.js';
+import {
+  borrarComentarioProgreso,
+  comentarProgreso,
+  getComentariosProgreso,
+} from '../services/amistades-comentarios.service.js';
 import { recomendarLibro } from '../services/amistades-recomendar.service.js';
 import {
   buscarPersonas,
@@ -78,4 +83,16 @@ export async function handleRecomendarLibro(req: Request, res: Response) {
       juntas: req.body?.juntas === true,
     }),
   );
+}
+
+export async function handleComentariosProgreso(req: Request, res: Response) {
+  return res.json(await getComentariosProgreso(req.auth!.userId, String(req.query.libraryId ?? '')));
+}
+
+export async function handleComentarProgreso(req: Request, res: Response) {
+  return res.json(await comentarProgreso(req.auth!.userId, texto(req, 'libraryId'), req.body?.texto));
+}
+
+export async function handleBorrarComentarioProgreso(req: Request, res: Response) {
+  return res.json(await borrarComentarioProgreso(req.auth!.userId, texto(req, 'id')));
 }

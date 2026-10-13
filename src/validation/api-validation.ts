@@ -172,6 +172,8 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   cancelarSolicitudAmistad: body({ nombre: shortTextSchema }),
   quitarAmistad: body({ nombre: shortTextSchema }),
   perfilAmistad: body({ nombre: shortTextSchema }),
+  comentarProgreso: body({ libraryId: identifierSchema, texto: z.string().trim().min(1).max(1000) }),
+  borrarComentarioProgreso: body({ id: identifierSchema }),
   recomendarLibro: body({ bookId: identifierSchema, usuarios: z.array(shortTextSchema).min(1).max(20), mensaje: z.string().max(400).optional(), juntas: z.boolean().optional() }),
   guardarPrivacidadAmistades: body({ leyendo: z.boolean(), biblioteca: z.boolean(), resenas: z.boolean(), deseos: z.boolean().optional() }),
   invitarALectura: body({ libro: identifierSchema, usuarios: z.array(identifierSchema).min(1).max(50) }),

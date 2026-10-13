@@ -401,6 +401,7 @@ model User {
   reviews            Review[]
   likes              Like[]
   progressReactions  ProgressReaction[]
+  progressComments   ProgressComment[]
 
   conversationReads ConversationRead[]
 
@@ -769,6 +770,7 @@ model Library {
   progressNote      String?            @db.Text
   progressUpdatedAt DateTime?
   progressReactions ProgressReaction[]
+  progressComments  ProgressComment[]
 
   createdAt DateTime @default(now())
 
@@ -796,6 +798,26 @@ model ProgressReaction {
 
   @@unique([libraryId, userId])
   @@index([userId])
+}
+
+/// Comentario de una amistad (o de quien lee) en el progreso de una lectura.
+/// Se puede borrar (autoría o dueña de la lectura), denunciar y se oculta si hay bloqueo.
+model ProgressComment {
+  id String @id @default(cuid())
+
+  libraryId String
+  library   Library @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  text String @db.Text
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@index([libraryId, createdAt])
+  @@index([userId, createdAt])
 }
 
 model ReadingCompletion {
@@ -1410,6 +1432,7 @@ enum NotificationType {
   AMISTAD_SOLICITUD
   AMISTAD_ACEPTADA
   LIBRO_RECOMENDADO
+  PROGRESO_COMENTARIO
   COMENTARIO_LECTURA
   LIBRO_TERMINADO
   LIBRO_EMPEZADO

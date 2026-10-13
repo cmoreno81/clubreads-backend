@@ -82,9 +82,17 @@ export async function idsBloqueadosPor(userId: string): Promise<string[]> {
 // Reportar contenido (comentario o reseña)
 // ─────────────────────────────────────────────
 
-type ReportTargetType = 'comentario' | 'resena';
+type ReportTargetType = 'comentario' | 'resena' | 'comentarioProgreso';
 
 async function cargarObjetivo(targetType: ReportTargetType, targetId: string) {
+  if (targetType === 'comentarioProgreso') {
+    const comment = await prisma.progressComment.findFirst({
+      where: { id: targetId, deletedAt: null },
+      select: { text: true, user: { select: { name: true } } },
+    });
+    if (!comment) return null;
+    return { autor: comment.user.name, texto: comment.text };
+  }
   if (targetType === 'comentario') {
     const comment = await prisma.comment.findUnique({
       where: { id: targetId },
@@ -118,7 +126,12 @@ export async function reportarContenido(
     throw new ClubContextError('El contenido reportado ya no existe', 404, 'CONTENT_NOT_FOUND');
   }
 
-  const tipoLabel = targetType === 'comentario' ? 'Comentario' : 'Reseña';
+  const tipoLabel =
+    targetType === 'comentario'
+      ? 'Comentario'
+      : targetType === 'comentarioProgreso'
+        ? 'Comentario de progreso'
+        : 'Reseña';
   const descripcion = [
     `Autora del contenido: ${objetivo.autor}`,
     `Motivo del reporte: ${motivo.trim() || '(sin especificar)'}`,

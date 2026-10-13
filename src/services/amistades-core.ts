@@ -12,6 +12,10 @@ export const MAX_RESULTADOS_BUSQUEDA = 15;
 export const MAX_RECOMENDADAS_POR_LLAMADA = 20;
 export const MAX_RECOMENDACIONES_POR_DIA = 40;
 export const MAX_LETRAS_MENSAJE_RECOMENDACION = 140;
+export const MAX_LETRAS_COMENTARIO_PROGRESO = 300;
+export const MAX_COMENTARIOS_PROGRESO_POR_MINUTO = 8;
+export const MAX_COMENTARIOS_PROGRESO_POR_DIA = 60;
+export const MAX_COMENTARIOS_PROGRESO_VISIBLES = 50;
 
 export function generarCodigoAmistad(aleatorio: (max: number) => number = randomInt) {
   let codigo = '';
@@ -73,5 +77,16 @@ export function limpiarMensajeRecomendacion(entrada: unknown): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, MAX_LETRAS_MENSAJE_RECOMENDACION)
+    .trim();
+}
+
+/// Comentario en el progreso de una lectura: una sola línea larga, sin espacios
+/// de más y con tope. Devuelve '' si no queda nada que publicar.
+export function limpiarComentarioProgreso(entrada: unknown): string {
+  return String(entrada ?? '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .trim()
+    .slice(0, MAX_LETRAS_COMENTARIO_PROGRESO)
     .trim();
 }

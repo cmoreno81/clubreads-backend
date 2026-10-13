@@ -723,6 +723,35 @@ export async function notifyLibroRecomendado({
   });
 }
 
+/** Avisa a quien lee de que una amistad ha comentado su progreso. */
+export async function notifyProgresoComentario({
+  aUserId,
+  deNombre,
+  deUserId,
+  libraryId,
+  bookId,
+  bookTitle,
+  texto,
+}: {
+  aUserId: string;
+  deNombre: string;
+  deUserId: string;
+  libraryId: string;
+  bookId: string;
+  bookTitle: string;
+  texto: string;
+}) {
+  const resumen = texto.length > 90 ? `${texto.slice(0, 87)}…` : texto;
+  await createNotification({
+    userId: aUserId,
+    tipo: NotificationType.PROGRESO_COMENTARIO,
+    titulo: '💬 Comentan tu lectura',
+    mensaje: `${deNombre} sobre «${bookTitle}»: ${resumen}`,
+    bookId,
+    extra: { de: deUserId, nombre: deNombre, libraryId, bookTitle },
+  });
+}
+
 // ─────────────────────────────────────────────
 // Leer y gestionar notificaciones
 // ─────────────────────────────────────────────

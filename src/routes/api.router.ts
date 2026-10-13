@@ -222,6 +222,9 @@ import {
   handleGuardarPrivacidadAmistades,
   handlePerfilAmistad,
   handleQuitarAmistad,
+  handleBorrarComentarioProgreso,
+  handleComentarProgreso,
+  handleComentariosProgreso,
   handleRecomendarLibro,
   handleResponderAmistad,
   handleSolicitarAmistad,
@@ -318,6 +321,8 @@ export const POST_ONLY_ACTIONS = new Set([
   'quitarAmistad',
   'guardarPrivacidadAmistades',
   'recomendarLibro',
+  'comentarProgreso',
+  'borrarComentarioProgreso',
   'reportarContenido',
   'guardarPersonalidadLectora',
   'toggleFavorito',
@@ -951,6 +956,15 @@ export async function handleApi(
 
       case 'recomendarLibro':
         return handleRecomendarLibro(req, res);
+
+      case 'comentariosProgreso':
+        return handleComentariosProgreso(req, res);
+
+      case 'comentarProgreso':
+        return handleComentarProgreso(req, res);
+
+      case 'borrarComentarioProgreso':
+        return handleBorrarComentarioProgreso(req, res);
 
       case 'bloquearUsuario':
         if (!req.auth) return requireAuthentication(req, res, () => {});

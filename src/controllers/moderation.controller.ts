@@ -24,7 +24,9 @@ export async function handleListarBloqueadas(req: Request, res: Response) {
 }
 
 export async function handleReportarContenido(req: Request, res: Response) {
-  const targetType = value(req, 'tipo') === 'resena' ? 'resena' : 'comentario';
+  const tipo = value(req, 'tipo');
+  const targetType =
+    tipo === 'resena' ? 'resena' : tipo === 'comentarioProgreso' ? 'comentarioProgreso' : 'comentario';
   return res.json(
     await reportarContenido(req.auth!.userId, targetType, value(req, 'id'), value(req, 'motivo')),
   );
