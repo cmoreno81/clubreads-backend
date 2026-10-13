@@ -36,8 +36,10 @@ test('dos obras en un mismo volumen no se toman por una traducción', () => {
 test('reconoce «Título N - Título» como el título solo', () => {
   assert.ok(importTitleVariants('Los Juegos del Hambre 1 - Los Juegos del Hambre').includes('los juegos del hambre'));
   assert.ok(importTitleVariants('Divergente 1 - Divergente').includes('divergente'));
-  // Un subtítulo distinto no se recorta: «Saga 2 - Otra cosa» no es «Otra cosa».
-  assert.deepEqual(extraTitleKeys('saga 2 - otra cosa'), []);
+  // «Serie 2 - Título»: lo que va tras el guion es el título del tomo («Los Juegos del Hambre 2 -
+  // En llamas» es «En llamas»). Solo se une con un libro de la MISMA autoría y título idéntico.
+  assert.deepEqual(extraTitleKeys('saga 2 - otra cosa'), ['otra cosa']);
+  assert.ok(importTitleVariants('Los Juegos del Hambre 2 - En llamas').includes('en llamas'));
 });
 
 test('«.» y «:» como separador de subtítulo son equivalentes', () => {

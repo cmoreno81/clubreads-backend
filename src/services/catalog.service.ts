@@ -588,6 +588,12 @@ async function resolveCatalogBook(
     authorName: authors[0] || 'Autor desconocido',
     isbn,
   });
+  // Mismo libro con el título escrito de otra forma («Serie 2 - Título», «Título / Title»…):
+  // con la misma autoría se reutiliza la ficha que ya existe en vez de crear un duplicado.
+  if (!book && title && authors[0]) {
+    const { findNearExactBook } = await import('./goodreads-import.service.js');
+    book = await findNearExactBook(prisma, { title, authorName: authors[0] });
+  }
 
   if (!book && source !== 'CLUBREADS') {
     const genreName = String(data.genero ?? '').trim() || 'Sin género';
@@ -597,7 +603,14 @@ async function resolveCatalogBook(
     book = await prisma.$transaction(async (tx) => {
       const identity = { title, authorName, isbn };
       await lockBookIdentity(tx, identity);
-      const existing = await findBookByIdentity(tx, identity);
+      const existing =
+        (await findBookByIdentity(tx, identity)) ??
+        (authors[0]
+          ? await (await import('./goodreads-import.service.js')).findNearExactBook(tx, {
+              title,
+              authorName: authors[0],
+            })
+          : null);
       if (existing) return existing;
       const [genre, author] = await Promise.all([
         tx.genre.upsert({ where: { name: genreName }, update: {}, create: { name: genreName } }),

@@ -142,11 +142,15 @@ export function isUniqueBookIdentityError(error: unknown) {
  * Ej: "Hasta que caiga la luna (La Caída Lunar 1)" → "hasta que caiga la luna"
  */
 export function baseTitleNormalized(title: string): string {
-  const stripped = title
+  // «Serie 2 - Título» (Bookmory, Google…): lo que identifica el libro es el título que va tras
+  // el guion, no el nombre de la serie, que arrastraría a todos los tomos.
+  const conPrefijo = /^(.+?)\s+\d{1,2}\s*[-–—]\s+(.+)$/.exec(title.trim());
+  const titulo = conPrefijo && conPrefijo[2]!.trim().length >= 3 ? conPrefijo[2]!.trim() : title;
+  const stripped = titulo
     .replace(/\s*[\(\[（【].*?[\)\]）】]\s*/g, '')   // quita (…) y [...]
     .replace(/\s*:.*$/, '')                            // quita todo tras ':'
     .trim();
-  return normalizeBookIdentityText(stripped || title);
+  return normalizeBookIdentityText(stripped || titulo);
 }
 
 /**

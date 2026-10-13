@@ -293,9 +293,12 @@ export function extraTitleKeys(canonical: string): string[] {
     const ingles = mitades.map(pareceInglés);
     if (ingles[0] !== ingles[1]) keys.push(...mitades);
   }
-  const repeated = /^(.+?)\s+\d+\s*[-–]\s+(.+)$/.exec(canonical);
-  if (repeated && repeated[1]!.trim() === repeated[2]!.trim()) {
-    keys.push(repeated[2]!.trim());
+  // «Serie 2 - Título»: el título de verdad es lo que va tras el guion
+  // («Los Juegos del Hambre 2 - En llamas» → «en llamas»; «Divergente 1 - Divergente»
+  // → «divergente»). Se compara con la misma autoría, así que no une obras distintas.
+  const conPrefijoDeSerie = /^(.+?)\s+\d{1,2}\s*[-–—]\s+(.+)$/.exec(canonical);
+  if (conPrefijoDeSerie && conPrefijoDeSerie[2]!.trim().length >= 3) {
+    keys.push(conPrefijoDeSerie[2]!.trim());
   }
   const unified = canonical
     .replace(/\s*[.:]\s+/g, ': ')
