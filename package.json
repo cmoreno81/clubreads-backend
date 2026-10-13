@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx src/server.ts",
     "build": "prisma generate && tsc",
-    "test": "node --import tsx --test --test-concurrency=1 tests/*.test.ts",
+    "test": "DATABASE_URL=postgresql://test@127.0.0.1:1/sin_base node --import tsx --test --test-concurrency=1 tests/*.test.ts",
     "start": "prisma migrate deploy && node dist/server.js",
     "migrate:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
