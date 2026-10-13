@@ -654,6 +654,44 @@ export async function notifySolicitudResuelta({
   });
 }
 
+/** Avisa a alguien de que le han enviado una solicitud de amistad. */
+export async function notifyAmistadSolicitud({
+  aUserId,
+  deNombre,
+  deUserId,
+}: {
+  aUserId: string;
+  deNombre: string;
+  deUserId: string;
+}) {
+  await createNotification({
+    userId: aUserId,
+    tipo: NotificationType.AMISTAD_SOLICITUD,
+    titulo: '👋 Nueva solicitud de amistad',
+    mensaje: `${deNombre} quiere ser tu amistad en ClubReads`,
+    extra: { de: deUserId, nombre: deNombre },
+  });
+}
+
+/** Avisa a quien envió la solicitud de que se ha aceptado. */
+export async function notifyAmistadAceptada({
+  aUserId,
+  deNombre,
+  deUserId,
+}: {
+  aUserId: string;
+  deNombre: string;
+  deUserId: string;
+}) {
+  await createNotification({
+    userId: aUserId,
+    tipo: NotificationType.AMISTAD_ACEPTADA,
+    titulo: '🎉 Ya sois amistades',
+    mensaje: `${deNombre} ha aceptado tu solicitud`,
+    extra: { de: deUserId, nombre: deNombre },
+  });
+}
+
 // ─────────────────────────────────────────────
 // Leer y gestionar notificaciones
 // ─────────────────────────────────────────────

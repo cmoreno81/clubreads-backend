@@ -414,6 +414,12 @@ model User {
   importRowReceipts  ImportRowReceipt[]
   achievementUnlocks AchievementUnlock[]
 
+  /// Código para compartir y que te añadan como amistad sin buscarte por nombre.
+  friendCode String? @unique
+
+  friendshipsSent     Friendship[] @relation("FriendRequester")
+  friendshipsReceived Friendship[] @relation("FriendAddressee")
+
   activeClubId String?
 
   activeClub Club? @relation("ActiveClub", fields: [activeClubId], references: [id], onDelete: SetNull)
@@ -1394,6 +1400,8 @@ enum NotificationType {
   LECTURA_META_PROXIMA
   LECTURA_META_HOY
   LECTURA_INVITACION
+  AMISTAD_SOLICITUD
+  AMISTAD_ACEPTADA
   COMENTARIO_LECTURA
   LIBRO_TERMINADO
   LIBRO_EMPEZADO
@@ -1945,4 +1953,34 @@ model EmergingTalentSubmission {
 
   @@index([status, createdAt])
   @@index([contactEmail])
+}
+
+//
+// AMISTADES
+//
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+}
+
+/// Una amistad entre dos personas: la solicita `requester` y, cuando
+/// `addressee` la acepta, pasa a ACCEPTED. Una pareja solo tiene una fila.
+model Friendship {
+  id String @id @default(cuid())
+
+  requesterId String
+  requester   User   @relation("FriendRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+
+  addresseeId String
+  addressee   User   @relation("FriendAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  status FriendshipStatus @default(PENDING)
+
+  createdAt   DateTime  @default(now())
+  respondedAt DateTime?
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+  @@index([requesterId, status])
 }

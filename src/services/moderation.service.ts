@@ -24,6 +24,16 @@ export async function bloquearUsuario(blockerId: string, blockedName: string) {
     create: { blockerId, blockedId: blocked.id },
   });
 
+  // Bloquear también deshace la amistad o la solicitud que hubiera entre ambas.
+  await prisma.friendship.deleteMany({
+    where: {
+      OR: [
+        { requesterId: blockerId, addresseeId: blocked.id },
+        { requesterId: blocked.id, addresseeId: blockerId },
+      ],
+    },
+  });
+
   return { ok: true };
 }
 

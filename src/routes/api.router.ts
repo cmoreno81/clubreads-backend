@@ -214,6 +214,14 @@ import {
 import { handleGetUpcomingReleases } from '../controllers/upcoming-releases.controller.js';
 import { handleGetNewReleases } from '../controllers/new-releases.controller.js';
 import { handleAutoraDeLaSemana } from '../controllers/talento-emergente.controller.js';
+import {
+  handleAmistades,
+  handleBuscarPersonas,
+  handleCancelarSolicitudAmistad,
+  handleQuitarAmistad,
+  handleResponderAmistad,
+  handleSolicitarAmistad,
+} from '../controllers/amistades.controller.js';
 export const apiRouter = Router();
 
 const PUBLIC_AUTH_ACTIONS = new Set([
@@ -300,6 +308,10 @@ export const POST_ONLY_ACTIONS = new Set([
   'enviarFeedback',
   'bloquearUsuario',
   'desbloquearUsuario',
+  'solicitarAmistad',
+  'responderAmistad',
+  'cancelarSolicitudAmistad',
+  'quitarAmistad',
   'reportarContenido',
   'guardarPersonalidadLectora',
   'toggleFavorito',
@@ -903,6 +915,24 @@ export async function handleApi(
 
       case 'enviarFeedback':
         return handleEnviarFeedback(req, res);
+
+      case 'amistades':
+        return handleAmistades(req, res);
+
+      case 'buscarPersonas':
+        return handleBuscarPersonas(req, res);
+
+      case 'solicitarAmistad':
+        return handleSolicitarAmistad(req, res);
+
+      case 'responderAmistad':
+        return handleResponderAmistad(req, res);
+
+      case 'cancelarSolicitudAmistad':
+        return handleCancelarSolicitudAmistad(req, res);
+
+      case 'quitarAmistad':
+        return handleQuitarAmistad(req, res);
 
       case 'bloquearUsuario':
         if (!req.auth) return requireAuthentication(req, res, () => {});

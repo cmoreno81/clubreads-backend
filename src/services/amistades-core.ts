@@ -1,0 +1,64 @@
+import { randomInt } from 'node:crypto';
+
+/// Sin I, O, 0 ni 1 para que el código se lea y se escriba sin dudas.
+export const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export const LONGITUD_CODIGO = 8;
+
+export const MAX_SOLICITUDES_PENDIENTES = 30;
+export const MAX_SOLICITUDES_POR_DIA = 20;
+export const MAX_BUSQUEDAS_POR_MINUTO = 30;
+export const MIN_LETRAS_BUSQUEDA = 3;
+export const MAX_RESULTADOS_BUSQUEDA = 15;
+
+export function generarCodigoAmistad(aleatorio: (max: number) => number = randomInt) {
+  let codigo = '';
+  for (let i = 0; i < LONGITUD_CODIGO; i++) {
+    codigo += ALFABETO_CODIGO[aleatorio(ALFABETO_CODIGO.length)]!;
+  }
+  return codigo;
+}
+
+/// Lo que escribe quien recibe el código («abcd-efgh», con espacios…) a su
+/// forma guardada. Devuelve null si no puede ser un código válido.
+export function normalizarCodigoAmistad(entrada: unknown): string | null {
+  const limpio = String(entrada ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+  if (limpio.length !== LONGITUD_CODIGO) return null;
+  for (const letra of limpio) {
+    if (!ALFABETO_CODIGO.includes(letra)) return null;
+  }
+  return limpio;
+}
+
+/// «ABCDEFGH» → «ABCD-EFGH» para enseñarlo.
+export function formatearCodigoAmistad(codigo: string) {
+  return `${codigo.slice(0, 4)}-${codigo.slice(4)}`;
+}
+
+export type EstadoAmistad = 'NINGUNA' | 'ENVIADA' | 'RECIBIDA' | 'AMIGA';
+
+/// Estado de la relación entre yo y otra persona, a partir de la fila (si la hay).
+export function estadoDeAmistad(
+  yo: string,
+  fila: { requesterId: string; status: 'PENDING' | 'ACCEPTED' } | undefined | null,
+): EstadoAmistad {
+  if (!fila) return 'NINGUNA';
+  if (fila.status === 'ACCEPTED') return 'AMIGA';
+  return fila.requesterId === yo ? 'ENVIADA' : 'RECIBIDA';
+}
+
+/// Limitador sencillo en memoria: como mucho `max` usos por minuto y persona.
+export function crearLimitador(max: number, ventanaMs = 60_000) {
+  const usos = new Map<string, number[]>();
+  return (clave: string, ahora = Date.now()) => {
+    const recientes = (usos.get(clave) ?? []).filter((t) => ahora - t < ventanaMs);
+    if (recientes.length >= max) {
+      usos.set(clave, recientes);
+      return false;
+    }
+    recientes.push(ahora);
+    usos.set(clave, recientes);
+    return true;
+  };
+}
