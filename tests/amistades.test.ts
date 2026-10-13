@@ -57,6 +57,8 @@ function montar(opciones: {
     Object.defineProperty(prisma, modelo, { configurable: true, value: valor });
   const poseedora = (f: Fila, userId: string) => f.requesterId === userId || f.addresseeId === userId;
   const igual = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  // Los avisos van a segundo plano: se simulan para que el test no toque ninguna base de datos.
+  sobre('notification', { create: async (args: any) => args.data });
   const clubes = opciones.clubes ?? [];
   sobre('clubMember', {
     findMany: async ({ where }: any) =>
