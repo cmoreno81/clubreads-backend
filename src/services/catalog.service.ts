@@ -141,14 +141,19 @@ export function canonicalBookTitle(value: string) {
     .replace(/\s+/g, ' ');
 }
 
-function identityKeys(book: {
-  isbn: string;
-  titulo: string;
-  autores: string[];
-}) {
+/// Claves con las que se reconoce el mismo libro en una lista: ISBN y «título equivalente + autoría».
+/// Con `titulosEquivalentes` («Serie 2 - Título» = «Título», «Título / Title»…) un resultado externo
+/// con otro formato de título queda emparejado con el que ya está en ClubReads.
+export function identityKeys(
+  book: { isbn: string; titulo: string; autores: string[] },
+  titulosEquivalentes: (tituloCanonico: string) => string[] = () => [],
+) {
+  const canonico = canonicalBookTitle(book.titulo);
+  const autor = normalize(book.autores[0] ?? '').replace(/\./g, '');
+  const titulos = [canonico, ...titulosEquivalentes(canonico)].filter((t) => t.length >= 4);
   return [
     book.isbn ? `isbn:${book.isbn.replace(/[^0-9Xx]/g, '')}` : '',
-    `work:${canonicalBookTitle(book.titulo)}:${normalize(book.autores[0] ?? '').replace(/\./g, '')}`,
+    ...titulos.map((t) => `work:${t}:${autor}`),
   ].filter(Boolean);
 }
 
@@ -199,6 +204,8 @@ function localBook(book: {
     anioPublicacion: book.publicationYear,
     goodreadsUrl,
     enMiBiblioteca: Boolean(own),
+    // Cuánta gente lo tiene ya en ClubReads (para destacarlo en la búsqueda).
+    lectores: book.library.length,
     estado: statusToFlutter(own?.status),
     fechaInicio: own?.startedAt?.toISOString() ?? null,
     fechaFin: own?.finishedAt?.toISOString() ?? null,
@@ -422,18 +429,19 @@ export async function searchGeneralCatalog(userName: string, rawQuery: string) {
     external = await searchOpenLibrary(query);
   }
 
+  const { extraTitleKeys } = await import('./goodreads-import.service.js');
   const localItems = local
     .map((book) => localBook(book, user.id))
     .sort((left, right) => Number(right.enMiBiblioteca) - Number(left.enMiBiblioteca));
   const existingKeys = new Set<string>();
   const uniqueLocal = localItems.filter((book) => {
-    const keys = identityKeys(book);
+    const keys = identityKeys(book, extraTitleKeys);
     if (keys.some((key) => existingKeys.has(key))) return false;
     keys.forEach((key) => existingKeys.add(key));
     return true;
   });
   const uniqueExternal = external.filter((book) => {
-    const keys = identityKeys(book);
+    const keys = identityKeys(book, extraTitleKeys);
     if (keys.some((key) => existingKeys.has(key))) return false;
     keys.forEach((key) => existingKeys.add(key));
     return true;
