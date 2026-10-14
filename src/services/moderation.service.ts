@@ -139,6 +139,8 @@ export async function reportarContenido(
         ? 'Comentario de progreso'
         : 'Reseña';
   const descripcion = [
+    // Con el tipo y el ID se puede retirar el contenido (scripts/moderar-contenido.ts).
+    `Tipo: ${targetType} · ID: ${targetId}`,
     `Autora del contenido: ${objetivo.autor}`,
     `Motivo del reporte: ${motivo.trim() || '(sin especificar)'}`,
     '',
