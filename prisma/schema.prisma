@@ -336,6 +336,11 @@ model Book {
   @@index([publicationDate])
   @@index([language])
   @@index([workId])
+  // El catálogo pagina por deletedAt + createdAt (cursor descendente, ver
+  // getGeneralCatalogPage). Sin este índice, cada página obliga a Postgres a
+  // ordenar la tabla entera — cada vez más lento según el catálogo crece con
+  // la sincronización del feed de Casa del Libro.
+  @@index([deletedAt, createdAt])
 }
 
 /// Procedencia de los metadatos editoriales de un libro. No duplica el catálogo.
