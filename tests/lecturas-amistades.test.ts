@@ -135,7 +135,7 @@ test('no se crea con quien no es amistad, ni con libro inexistente, ni pasado de
   assert.equal(log.club.length, 0);
 });
 
-test('aceptar mete a la pareja en el club y avisa; rechazar sin lectura retira el club', async () => {
+test('aceptar mete a la pareja en el club y avisa; rechazar retira el club (con o sin lectura configurada)', async () => {
   let log = falsear();
   const ok: any = await responderLecturaAmistad('yo', 'c1', true);
   assert.equal(ok.ok, true);
@@ -154,9 +154,10 @@ test('aceptar mete a la pareja en el club y avisa; rechazar sin lectura retira e
   assert.deepEqual(log.borrado, ['c1']);
   assert.equal(log.notificacion.length, 0);
 
+  // Aunque la lectura ya esté configurada, al rechazar el espacio se retira entero.
   log = falsear({ lecturas: 1 });
   await responderLecturaAmistad('yo', 'c1', false);
-  assert.deepEqual(log.borrado, []);
+  assert.deepEqual(log.borrado, ['c1']);
 });
 
 test('la lista junta invitaciones recibidas y lecturas con su estado: esperando, en curso y terminada', async () => {

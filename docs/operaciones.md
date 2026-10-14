@@ -140,6 +140,15 @@ git push origin main
 - Fallan 16 tests antiguos del servidor y 19 de la app. Son comprobaciones obsoletas de antes: lo normal es que sigan siendo esos mismos. Si sale un número mayor, es nuevo.
 - Un cambio de textos de avisos o de lógica del servidor llega a TODAS las apps al desplegar. Un cambio de la app solo llega con una versión nueva.
 
+**Prueba completa de «Amigos» (sobre una base de pruebas LOCAL, nunca producción)**
+
+```bash
+cd /Users/cristinamoreno/Developer/clublectura_api/ClubLecturaBackend
+DATABASE_URL="postgresql://postgres@localhost:PUERTO/NOMBRE" npx tsx scripts/probar-amigos-e2e.ts
+```
+
+Comprueba de punta a punta solicitudes, privacidad, reseñas con spoilers, reacciones y comentarios, recomendar, lista de deseos y reservas, lecturas a la vez (crear, aceptar, salir, eliminar, bloquear, tope) y avisos: 27 pasos. Se niega a correr si la base no es local. Pide ayuda para montar la base de pruebas la primera vez.
+
 ## 5 · Copias de seguridad
 
 Hoy NO hay copia completa cifrada configurada (faltan la herramienta «age» y sus variables). Lo que sí tenemos:

@@ -321,14 +321,12 @@ export async function responderLecturaAmistad(userId: string, clubId: string, ac
       where: { id: invitacion.id },
       data: { status: FriendReadingInviteStatus.DECLINED, respondedAt: new Date() },
     });
-    // Si aún no se había configurado la lectura, el club vacío se retira.
-    const lecturas = await prisma.reading.count({ where: { clubId: invitacion.clubId } });
-    if (lecturas === 0) {
-      await prisma.$transaction(async (tx) => {
-        await tx.user.updateMany({ where: { activeClubId: invitacion.clubId }, data: { activeClubId: null } });
-        await tx.club.delete({ where: { id: invitacion.clubId } });
-      });
-    }
+    // Al rechazar, el espacio se retira entero: la otra persona nunca entró y, sin esa invitación,
+    // quien la hizo ya no tendría forma de verlo (quedaría oculto para siempre).
+    await prisma.$transaction(async (tx) => {
+      await tx.user.updateMany({ where: { activeClubId: invitacion.clubId }, data: { activeClubId: null } });
+      await tx.club.delete({ where: { id: invitacion.clubId } });
+    });
     return { ok: true, aceptada: false };
   }
 
