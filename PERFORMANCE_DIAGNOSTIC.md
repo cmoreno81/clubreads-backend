@@ -1,5 +1,24 @@
 # Diagnóstico Prisma/PostgreSQL de solo lectura
 
+## Actualización 2026-10-14: índice de catálogo reabierto
+
+La evaluación de 2026-08-09 (más abajo) identificó el índice de cursor del
+catálogo (`deletedAt, createdAt`) como "útil pero no urgente", aplazado por
+falta de latencia medida con `Book` en ~1.245 filas. Desde entonces el
+catálogo crece a diario por la sincronización del feed de Casa del Libro
+(`sync-store-links.job.ts`) y ha llegado a ~1.921 filas y subiendo. Una
+usuaria reportó directamente que la carga del catálogo se ha vuelto más
+lenta -- ese es justo el tipo de evidencia ("duración u observación") que
+este documento exigía para reabrir la decisión, aunque no proviene de
+`EXPLAIN (ANALYZE, BUFFERS)` sobre una copia desechable (no disponible en
+este entorno).
+
+Se crea `20261014120000_book_deletedat_createdat_index`
+(`Book_deletedAt_createdAt_idx`), exactamente el índice parcial que ya
+constaba como "prioridad alta" en la tabla de decisiones de agosto. El resto
+de candidatos diferidos en ese análisis (comentarios, notificaciones, perfil,
+Clubvisión...) sigue sin evidencia propia y queda igual de aplazado.
+
 ## Reevaluación para despliegue (criterio estricto)
 
 La revisión posterior exige duración o frecuencia observada, timeout atribuible
