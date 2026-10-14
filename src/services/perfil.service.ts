@@ -257,6 +257,8 @@ const terminados = [
   valoracion: ratingToFlutter(item.rating),
   picante: spicyToFlutter(item.spicyRating),
   resena: item.review ?? '',
+  // Para que el editor de la lectura enseñe el interruptor «contiene spoilers» como está guardado.
+  contieneSpoilers: bibliotecaPorLibro.get(item.bookId)?.book.reviews[0]?.containsSpoilers ?? false,
   formato: formatToFlutter(item.readingFormat),
   coverUrl: item.book.coverUrl ?? '',
   esRelectura: item.isReread,
