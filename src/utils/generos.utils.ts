@@ -60,7 +60,7 @@ export const GENEROS_APP = [
   'Fantasía', 'Romantasy', 'Romance', 'Dark Romance', 'Mafia Romance', 'Paranormal', 'Thriller',
   'Novela negra', 'Dark Academia', 'Drama', 'Clásicos', 'Distopía', 'Novela contemporánea',
   'Novela histórica', 'Ciencia ficción', 'Terror', 'Gótico', 'Cómic', 'No ficción', 'Infantil',
-  'Juvenil', 'Poesía',
+  'Juvenil', 'Poesía', 'Narrativa', 'Grimdark',
 ] as const;
 
 const SIN_GENERO = 'Sin género';
@@ -95,8 +95,9 @@ const REGLAS_EDAD: Array<[RegExp, string]> = [
 
 /**
  * Convierte las categorías de un catálogo externo (Google Books, OpenLibrary) a un género de la app.
- * «Fiction», «General» o «Literary Collections» no dicen nada y quedan como «Sin género»; lo que no
- * se reconoce también, en vez de crear géneros nuevos como «Boys» o «England» en la base de datos.
+ * «Fiction», «General» o «Literary Collections» solo dicen que es ficción: quedan como «Narrativa».
+ * Lo que no se reconoce queda como «Sin género», en vez de crear géneros nuevos como «Boys» o
+ * «England» en la base de datos.
  * Una categoría que ya es un género de la app se respeta aunque cambien las mayúsculas.
  */
 export function generoDesdeCategoriasExternas(categorias: unknown): string {
@@ -114,6 +115,11 @@ export function generoDesdeCategoriasExternas(categorias: unknown): string {
   }
   for (const [regla, genero] of REGLAS_EDAD) {
     if (partes.some((p) => regla.test(p))) return genero;
+  }
+  // «Fiction», «General»…: dicen que es ficción y nada más. Se guarda como «Narrativa» (en vez de
+  // dejarlo sin género) para que luego cada persona lo concrete con otros géneros.
+  if (partes.some((p) => /^(fiction|general|novel|novels|narrativa|ficci[oó]n|literary collections)$/.test(p))) {
+    return 'Narrativa';
   }
   return SIN_GENERO;
 }

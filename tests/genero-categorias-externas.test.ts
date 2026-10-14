@@ -3,8 +3,11 @@ import test from 'node:test';
 
 import { generoDesdeCategoriasExternas as g } from '../src/utils/generos.utils.js';
 
-test('las categorías genéricas no dicen nada: «Sin género»', () => {
-  for (const c of ['Fiction', 'General', 'Literary Collections', 'Narrativa', 'Boys', 'England', 'Anthology', '']) {
+test('«Fiction» y similares quedan como «Narrativa»; lo que no se reconoce, «Sin género»', () => {
+  for (const c of ['Fiction', 'General', 'Literary Collections', 'Novel']) {
+    assert.equal(g([c]), 'Narrativa', c);
+  }
+  for (const c of ['Boys', 'England', 'Anthology', '']) {
     assert.equal(g([c]), 'Sin género', c);
   }
   assert.equal(g([]), 'Sin género');
@@ -39,9 +42,12 @@ test('un género que ya es de la app se respeta aunque cambien las mayúsculas',
   assert.equal(g(['Novela Histórica']), 'Novela histórica');
   assert.equal(g(['dark academia']), 'Dark Academia');
   assert.equal(g(['Fantasía']), 'Fantasía');
+  // «Narrativa» y «Grimdark» son géneros de la app.
+  assert.equal(g(['narrativa']), 'Narrativa');
+  assert.equal(g(['Grimdark']), 'Grimdark');
 });
 
 test('si hay varias categorías se elige la primera con contenido', () => {
   assert.equal(g(['Fiction', 'Fantasy', 'Romance']), 'Romance'); // Romance es más específico que Fantasía en las reglas
-  assert.equal(g(['Fiction', 'General']), 'Sin género');
+  assert.equal(g(['Fiction', 'General']), 'Narrativa');
 });
