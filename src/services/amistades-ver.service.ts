@@ -166,7 +166,7 @@ const SELECCION_LECTURA = {
 export async function getPerfilAmistad(yo: string, nombre: string) {
   const amistades = await amistadesQueComparten(yo);
   const amiga = amistades.find((a) => a.name.toLowerCase() === String(nombre ?? '').trim().toLowerCase());
-  if (!amiga) return { ok: false, mensaje: 'Esa persona no está en tus amistades.' };
+  if (!amiga) return { ok: false, mensaje: 'Esa persona no está en tus amigos.' };
 
   const compartido: PrivacidadAmistades = {
     leyendo: amiga.friendsSeeReading,

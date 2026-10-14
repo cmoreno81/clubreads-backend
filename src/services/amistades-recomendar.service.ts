@@ -47,7 +47,7 @@ export async function recomendarLibro(
   const amistades = filas.map((f) => (f.requesterId === userId ? f.addressee : f.requester));
   const pedidos = new Set(nombres.map((n) => n.toLocaleLowerCase('es')));
   const destino = amistades.filter((a) => pedidos.has(a.name.toLocaleLowerCase('es')));
-  if (destino.length === 0) return { ok: false, mensaje: 'Solo puedes recomendar a tus amistades.' };
+  if (destino.length === 0) return { ok: false, mensaje: 'Solo puedes recomendar a tus amigos.' };
 
   const marcaDe = `"de":"${userId}"`;
   const hoy = new Date(Date.now() - 24 * 60 * 60 * 1000);

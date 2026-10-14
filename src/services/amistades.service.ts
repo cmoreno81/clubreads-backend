@@ -70,7 +70,7 @@ export async function asegurarCodigoAmistad(userId: string): Promise<string> {
       if ((error as { code?: string }).code !== 'P2002') throw error;
     }
   }
-  throw new Error('No se ha podido crear tu código de amistad');
+  throw new Error('No se ha podido crear tu código de amigo');
 }
 
 export async function getAmistades(userId: string) {
@@ -320,7 +320,7 @@ export async function quitarAmistad(userId: string, nombre: string) {
     },
   });
   if (count > 0 && otra) await liberarReservasEntre(userId, otra.id);
-  return count > 0 ? { ok: true } : { ok: false, mensaje: 'No sois amistades.' };
+  return count > 0 ? { ok: true } : { ok: false, mensaje: 'No sois amigos.' };
 }
 
 /// ¿Son amistades estas dos personas? (para las comprobaciones de visibilidad)

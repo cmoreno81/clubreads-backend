@@ -29,7 +29,7 @@ export async function crearLecturaConAmistad(
   data: { bookId: string; nombre: string },
 ) {
   const nombre = String(data.nombre ?? '').trim();
-  if (!nombre) return { ok: false, mensaje: 'Elige con qué amistad quieres leer.' };
+  if (!nombre) return { ok: false, mensaje: 'Elige con qué amigo quieres leer.' };
 
   const [yo, libro] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true } }),
@@ -54,7 +54,7 @@ export async function crearLecturaConAmistad(
   const amistad = filas
     .map((f) => (f.requesterId === userId ? f.addressee : f.requester))
     .find((a) => a.name.toLocaleLowerCase('es') === nombre.toLocaleLowerCase('es'));
-  if (!amistad) return { ok: false, mensaje: 'Solo puedes leer a la vez con tus amistades.' };
+  if (!amistad) return { ok: false, mensaje: 'Solo puedes leer a la vez con tus amigos.' };
 
   // Si ya hay una lectura de este libro entre las dos, se vuelve a ella.
   const existente = await prisma.friendReadingInvite.findFirst({
@@ -75,7 +75,7 @@ export async function crearLecturaConAmistad(
   if (abiertas >= MAX_LECTURAS_AMISTADES_ABIERTAS) {
     return {
       ok: false,
-      mensaje: `Ya tienes ${MAX_LECTURAS_AMISTADES_ABIERTAS} lecturas con amistades abiertas. Termina o sal de alguna para empezar otra.`,
+      mensaje: `Ya tienes ${MAX_LECTURAS_AMISTADES_ABIERTAS} lecturas con amigos abiertas. Termina o sal de alguna para empezar otra.`,
     };
   }
 

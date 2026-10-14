@@ -246,7 +246,7 @@ export async function getInvite(userId: string, clubIdValue: string) {
   }
   if (membership.club.tipo === ClubType.AMISTADES) {
     throw new ClubContextError(
-      'Las lecturas con amistades no admiten más personas',
+      'Las lecturas con amigos no admiten más personas',
       400,
       'FRIEND_READING_IS_CLOSED',
     );

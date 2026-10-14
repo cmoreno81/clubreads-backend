@@ -29,7 +29,7 @@ export async function reservarRegalo(yo: string, itemId: string, reservar: boole
   if (item.reservation) {
     return item.reservation.reservedById === yo
       ? { ok: true }
-      : { ok: false, mensaje: 'Otra amistad ya lo ha reservado 🎁' };
+      : { ok: false, mensaje: 'Otro amigo ya lo ha reservado 🎁' };
   }
   const abiertas = await prisma.wishlistReservation.count({ where: { reservedById: yo } });
   if (abiertas >= MAX_REGALOS_RESERVADOS) {
@@ -40,7 +40,7 @@ export async function reservarRegalo(yo: string, itemId: string, reservar: boole
   } catch (error) {
     // Dos personas a la vez: gana la primera.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      return { ok: false, mensaje: 'Otra amistad ya lo ha reservado 🎁' };
+      return { ok: false, mensaje: 'Otro amigo ya lo ha reservado 🎁' };
     }
     throw error;
   }
