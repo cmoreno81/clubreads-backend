@@ -668,7 +668,7 @@ export async function notifyAmistadSolicitud({
     userId: aUserId,
     tipo: NotificationType.AMISTAD_SOLICITUD,
     titulo: '👋 Nueva solicitud de amistad',
-    mensaje: `${deNombre} quiere ser tu amigo en ClubReads`,
+    mensaje: `${deNombre} te ha enviado una solicitud de amistad`,
     extra: { de: deUserId, nombre: deNombre },
   });
 }
