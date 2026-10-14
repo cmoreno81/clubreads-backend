@@ -69,6 +69,7 @@ export async function handleActualizarFechasLectura(
      * Una cadena vacía sí significa que la nueva APK quiere
      * eliminar la valoración, el picante o la reseña.
      */
+    contieneSpoilers: body.contieneSpoilers,
     valoracion: valoracionRecibida,
     picante: picanteRecibido,
     resena: resenaRecibida,

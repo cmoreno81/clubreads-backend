@@ -91,3 +91,38 @@ test('el perfil de una amistad enseña su lista de deseos sin datos privados, y 
   assert.deepEqual(sin.deseos, []);
   assert.equal(consultaDeseos, null);
 });
+
+test('en el perfil de una amistad, la reseña con spoilers no enseña su texto y la normal sí', async () => {
+  const def = (m: string, v: unknown) => Object.defineProperty(prisma, m, { configurable: true, value: v });
+  def('userBlock', { findMany: async () => [] });
+  def('friendship', {
+    findMany: async () => [
+      {
+        requesterId: 'yo',
+        addresseeId: 'u1',
+        requester: { id: 'yo', name: 'Cris' },
+        addressee: {
+          id: 'u1', name: 'Lucía', avatarUrl: null, bio: null, readerPersonality: null,
+          friendsSeeReading: false, friendsSeeLibrary: false, friendsSeeReviews: true, friendsSeeWishlist: false,
+        },
+      },
+    ],
+  });
+  def('library', { findMany: async () => [], count: async () => 0 });
+  def('readingCompletion', { findMany: async () => [], count: async () => 0 });
+  def('progressReaction', { findMany: async () => [], groupBy: async () => [] });
+  def('wishlistItem', { findMany: async () => [] });
+  const fecha = new Date(2026, 9, 1);
+  def('review', {
+    findMany: async () => [
+      { id: 'r1', rating: 4, review: 'Se muere al final', containsSpoilers: true, createdAt: fecha, book: { id: 'b1', title: 'Con spoilers', coverUrl: null } },
+      { id: 'r2', rating: 5, review: 'Preciosa, os la recomiendo', containsSpoilers: false, createdAt: fecha, book: { id: 'b2', title: 'Normal', coverUrl: null } },
+    ],
+  });
+  const { getPerfilAmistad } = await import('../src/services/amistades-ver.service.js');
+  const perfil: any = await getPerfilAmistad('yo', 'Lucía');
+  const por = Object.fromEntries(perfil.resenas.map((r: any) => [r.titulo, r]));
+  assert.equal(por['Con spoilers'].contieneSpoilers, true);
+  assert.equal(por['Con spoilers'].texto, ''); // nunca el texto
+  assert.equal(por['Normal'].texto, 'Preciosa, os la recomiendo');
+});

@@ -970,6 +970,8 @@ export async function actualizarFechasLectura(params: {
   valoracion?: unknown;
   picante?: unknown;
   resena?: unknown;
+  /** Si la reseña cuenta el final. Si no se envía, se conserva lo que había. */
+  contieneSpoilers?: unknown;
 }) {
   const usuario = params.usuario.trim();
   const libraryId = params.libraryId.trim();
@@ -1228,6 +1230,7 @@ export async function actualizarFechasLectura(params: {
           review: resenaFinal,
           edited: true,
           deletedAt: null,
+          ...(typeof params.contieneSpoilers === 'boolean' ? { containsSpoilers: params.contieneSpoilers } : {}),
         },
         create: {
           userId: user.id,
@@ -1236,6 +1239,7 @@ export async function actualizarFechasLectura(params: {
           spicyRating: spicyFinal ?? null,
           review: resenaFinal,
           edited: true,
+          containsSpoilers: params.contieneSpoilers === true,
         },
       });
     });

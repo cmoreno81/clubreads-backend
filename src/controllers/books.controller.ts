@@ -163,6 +163,7 @@ export async function handleActualizarEstado(req: Request, res: Response) {
     String(body.formato || ''),
     {},
     String(body.picante || ''),
+    typeof body.contieneSpoilers === 'boolean' ? body.contieneSpoilers : undefined,
   );
 
   return res.json(data);
@@ -235,6 +236,7 @@ export async function handleActualizarValoracionLibro(req: Request, res: Respons
     valoracion: body.valoracion,
     picante: body.picante,
     resena: body.resena,
+    contieneSpoilers: body.contieneSpoilers,
   });
   return res.json(data);
 }

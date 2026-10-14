@@ -1274,6 +1274,8 @@ export async function actualizarValoracionLibro(params: {
   valoracion?: unknown;
   picante?: unknown;
   resena?: unknown;
+  /** Si la reseña cuenta el final. Si no se envía, se conserva lo que había. */
+  contieneSpoilers?: unknown;
 }) {
   const usuario = params.usuario.trim();
   const bookId = String(params.bookId || '').trim();
@@ -1334,7 +1336,13 @@ export async function actualizarValoracionLibro(params: {
 
     await tx.review.upsert({
       where: { userId_bookId: { userId: user.id, bookId: resolvedBookId } },
-      update: { rating: rating ?? 0, spicyRating: spicy, review: resena, edited: true },
+      update: {
+        rating: rating ?? 0,
+        spicyRating: spicy,
+        review: resena,
+        edited: true,
+        ...(typeof params.contieneSpoilers === 'boolean' ? { containsSpoilers: params.contieneSpoilers } : {}),
+      },
       create: {
         userId: user.id,
         bookId: resolvedBookId,
@@ -1342,6 +1350,7 @@ export async function actualizarValoracionLibro(params: {
         spicyRating: spicy,
         review: resena,
         edited: true,
+        containsSpoilers: params.contieneSpoilers === true,
       },
     });
   });
@@ -1527,6 +1536,8 @@ export async function actualizarEstado(
     notifyFinished?: typeof notifyLibroTerminado;
   } = {},
   picante?: string,
+  /** Si la reseña (reflexión) cuenta el final: las amistades no la ven entera. Si no se envía, se conserva. */
+  contieneSpoilers?: boolean,
 ) {
   const client = runtime.client ?? prisma;
   const notifyStarted = runtime.notifyStarted ?? notifyLibroEmpezado;
@@ -1825,6 +1836,7 @@ await client.$transaction(async (tx) => {
         rating: finalRating,
         spicyRating: spicy,
         review: reflexion?.trim() || null,
+        ...(contieneSpoilers === undefined ? {} : { containsSpoilers: contieneSpoilers }),
       },
 
       create: {
@@ -1833,6 +1845,7 @@ await client.$transaction(async (tx) => {
         rating: finalRating,
         spicyRating: spicy,
         review: reflexion?.trim() || null,
+        containsSpoilers: contieneSpoilers ?? false,
       },
     });
 
