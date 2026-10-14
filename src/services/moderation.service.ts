@@ -1,4 +1,5 @@
 import { liberarReservasEntre } from './amistades-regalos.service.js';
+import { apartarPorBloqueo } from './lecturas-amistades.service.js';
 import { prisma } from '../prisma.js';
 import { ClubContextError } from './club-context.service.js';
 import { enviarFeedback } from './feedback.service.js';
@@ -36,6 +37,8 @@ export async function bloquearUsuario(blockerId: string, blockedName: string) {
   });
 
   await liberarReservasEntre(blockerId, blocked.id);
+  // La persona bloqueada deja de tener acceso a las lecturas a la vez compartidas.
+  await apartarPorBloqueo(blockerId, blocked.id);
 
   return { ok: true };
 }

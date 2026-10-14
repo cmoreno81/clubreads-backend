@@ -279,3 +279,41 @@ test('una lectura sin configurar/avisada no aparece como invitación recibida', 
   const src = readFileSync('src/services/lecturas-amistades.service.ts', 'utf8');
   assert.match(src, /notifiedAt: \{ not: null \}/);
 });
+
+test('bloquear aparta a la persona bloqueada de las lecturas a la vez; quitar la amistad no toca nada', async () => {
+  const { apartarPorBloqueo } = await import('../src/services/lecturas-amistades.service.js');
+  const log: Record<string, any[]> = { miembrosBorrados: [], clubes: [], borrados: [], roles: [] };
+  const def = (m: string, v: unknown) => Object.defineProperty(prisma, m, { configurable: true, value: v });
+  const invitaciones = [
+    { clubId: 'aceptada-mia', status: 'ACCEPTED', club: { ownerId: 'yo' } },
+    { clubId: 'aceptada-suya', status: 'ACCEPTED', club: { ownerId: 'otra' } },
+    { clubId: 'pendiente', status: 'PENDING', club: { ownerId: 'yo' } },
+  ];
+  const base: any = {
+    friendReadingInvite: { findMany: async () => invitaciones },
+    clubMember: {
+      deleteMany: async ({ where }: any) => { log.miembrosBorrados.push(where); return {}; },
+      updateMany: async ({ where, data }: any) => { log.roles.push({ where, data }); return {}; },
+    },
+    club: {
+      update: async ({ where, data }: any) => { log.clubes.push({ where, data }); return {}; },
+      delete: async ({ where }: any) => { log.borrados.push(where.id); return {}; },
+    },
+    user: { updateMany: async () => ({}) },
+  };
+  for (const [k, v] of Object.entries(base)) def(k, v);
+  def('$transaction', async (fn: any) => fn(base));
+
+  await apartarPorBloqueo('yo', 'otra');
+  // La bloqueada sale de las dos lecturas aceptadas; la pendiente se retira entera.
+  assert.deepEqual(log.miembrosBorrados.map((w) => [w.clubId, w.userId]), [['aceptada-mia', 'otra'], ['aceptada-suya', 'otra']]);
+  assert.deepEqual(log.borrados, ['pendiente']);
+  // Si la bloqueada era la propietaria, la propiedad pasa a quien bloquea.
+  assert.deepEqual(log.clubes, [{ where: { id: 'aceptada-suya' }, data: { ownerId: 'yo' } }]);
+  assert.equal(log.roles[0].data.role, 'OWNER');
+
+  // Quitar la amistad no llama a esto: las lecturas se quedan.
+  const amistades = readFileSync('src/services/amistades.service.ts', 'utf8');
+  assert.doesNotMatch(amistades, /apartarPorBloqueo|friendReadingInvite/);
+  assert.match(readFileSync('src/services/moderation.service.ts', 'utf8'), /apartarPorBloqueo\(blockerId, blocked\.id\)/);
+});

@@ -354,3 +354,42 @@ export async function responderLecturaAmistad(userId: string, clubId: string, ac
 
   return { ok: true, aceptada: true, clubId: invitacion.clubId, libro: invitacion.bookTitle };
 }
+
+/// Al bloquear a alguien: deja de tener acceso a las lecturas a la vez que compartía con quien
+/// bloquea. Sale de ellas (la propiedad pasa a quien bloquea) y quien bloquea conserva la conversación.
+/// Las invitaciones aún sin aceptar entre las dos personas se retiran, para que no puedan aceptarse.
+/// Quitar la amistad, en cambio, no toca nada: las lecturas se quedan.
+export async function apartarPorBloqueo(bloquea: string, bloqueada: string) {
+  const invitaciones = await prisma.friendReadingInvite.findMany({
+    where: {
+      OR: [
+        { fromUserId: bloquea, toUserId: bloqueada },
+        { fromUserId: bloqueada, toUserId: bloquea },
+      ],
+      status: { not: FriendReadingInviteStatus.DECLINED },
+    },
+    select: { clubId: true, status: true, club: { select: { ownerId: true } } },
+  });
+  for (const inv of invitaciones) {
+    await prisma.$transaction(async (tx) => {
+      if (inv.status === FriendReadingInviteStatus.PENDING) {
+        // Sin aceptar: se retira la invitación y el espacio vacío.
+        await tx.user.updateMany({ where: { activeClubId: inv.clubId }, data: { activeClubId: null } });
+        await tx.club.delete({ where: { id: inv.clubId } });
+        return;
+      }
+      if (inv.club.ownerId === bloqueada) {
+        await tx.club.update({ where: { id: inv.clubId }, data: { ownerId: bloquea } });
+        await tx.clubMember.updateMany({
+          where: { clubId: inv.clubId, userId: bloquea },
+          data: { role: ClubRole.OWNER },
+        });
+      }
+      await tx.clubMember.deleteMany({ where: { clubId: inv.clubId, userId: bloqueada } });
+      await tx.user.updateMany({
+        where: { id: bloqueada, activeClubId: inv.clubId },
+        data: { activeClubId: null },
+      });
+    });
+  }
+}
