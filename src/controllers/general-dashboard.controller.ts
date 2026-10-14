@@ -62,6 +62,8 @@ export async function handleLibrosPorAutor(req: Request, res: Response) {
       titulo: book.title,
       coverUrl: book.coverUrl ?? '',
       genero: book.genre?.name ?? '',
+      // Para separar por idioma los libros independientes en la ficha de autoría.
+      idioma: book.language ?? '',
       sagaId: book.seriesId ?? null,
       sagaNombre: book.series?.name ?? null,
       sagaOrden: book.seriesOrder ?? null,
