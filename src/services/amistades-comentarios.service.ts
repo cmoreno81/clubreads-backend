@@ -1,4 +1,7 @@
+import { ReadingStatus } from '@prisma/client';
+
 import { prisma } from '../prisma.js';
+import { contarReaccionesProgreso } from '../utils/reacciones.utils.js';
 import { backgroundError } from '../logging/logger.js';
 import { amistadesQueComparten } from './amistades-ver.service.js';
 import { notifyProgresoComentario } from './notifications.service.js';
@@ -56,10 +59,19 @@ export async function getComentariosProgreso(yo: string, libraryId: string) {
     take: MAX_COMENTARIOS_PROGRESO_VISIBLES,
   });
   const soyDueña = lectura.userId === yo;
+  const reacciones = await prisma.progressReaction.findMany({
+    where: { libraryId: lectura.id, userId: { notIn: [...bloqueadas] } },
+    select: { reaction: true, user: { select: { name: true, avatarUrl: true } } },
+  });
   return {
     ok: true,
     titulo: lectura.book.title,
     soyDuena: soyDueña,
+    reacciones: contarReaccionesProgreso(reacciones),
+    // Quien lee ve quién ha reaccionado; el resto solo ve el recuento.
+    reaccionesDe: soyDueña
+      ? reacciones.map((r) => ({ nombre: r.user.name, avatarUrl: r.user.avatarUrl ?? '', reaccion: r.reaction }))
+      : [],
     comentarios: filas.reverse().map((c) => ({
       id: c.id,
       autor: c.user.name,
@@ -123,4 +135,36 @@ export async function borrarComentarioProgreso(yo: string, id: string) {
   }
   await prisma.progressComment.update({ where: { id: comentario.id }, data: { deletedAt: new Date() } });
   return { ok: true };
+}
+
+/// Lo que han dejado tus amigos en una lectura TUYA (comentarios y reacciones), para enseñártelo
+/// en la ficha del libro. Solo mientras lo estás leyendo.
+export async function getResumenAmigosDeMiLectura(yo: string, bookId: string) {
+  const lectura = await prisma.library.findFirst({
+    where: {
+      userId: yo,
+      bookId: String(bookId ?? '').trim(),
+      status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] },
+    },
+    select: { id: true },
+  });
+  const vacio = { ok: true, libraryId: '', comentarios: 0, reacciones: contarReaccionesProgreso([]), totalReacciones: 0 };
+  if (!lectura) return vacio;
+  const bloqueadas = await bloqueadasConmigo(yo);
+  const [comentarios, reacciones] = await Promise.all([
+    prisma.progressComment.count({
+      where: { libraryId: lectura.id, deletedAt: null, userId: { notIn: [...bloqueadas, yo] } },
+    }),
+    prisma.progressReaction.findMany({
+      where: { libraryId: lectura.id, userId: { notIn: [...bloqueadas] } },
+      select: { reaction: true },
+    }),
+  ]);
+  return {
+    ok: true,
+    libraryId: lectura.id,
+    comentarios,
+    reacciones: contarReaccionesProgreso(reacciones),
+    totalReacciones: reacciones.length,
+  };
 }

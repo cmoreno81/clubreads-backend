@@ -225,6 +225,7 @@ import {
   handleBorrarComentarioProgreso,
   handleComentarProgreso,
   handleComentariosProgreso,
+  handleResumenAmigosLectura,
   handleCrearLecturaConAmistad,
   handleEnviarInvitacionLectura,
   handleLecturasAmistades,
@@ -985,6 +986,9 @@ export async function handleApi(
 
       case 'responderLecturaAmistad':
         return handleResponderLecturaAmistad(req, res);
+
+      case 'resumenAmigosLectura':
+        return handleResumenAmigosLectura(req, res);
 
       case 'comentariosProgreso':
         return handleComentariosProgreso(req, res);

@@ -43,6 +43,12 @@ function falsear(op: Opciones = {}) {
   });
   def('user', { findUnique: async () => ({ id: 'yo', name: 'Cris' }), findMany: async () => [] });
   def('notificationPreference', { findMany: async () => [] });
+  def('progressReaction', {
+    findMany: async () => [
+      { reaction: 'THUMBS_UP', user: { name: 'Lucía', avatarUrl: null } },
+      { reaction: 'THUMBS_UP', user: { name: 'Marta', avatarUrl: null } },
+    ],
+  });
   def('notification', { create: async ({ data }: any) => { notificaciones.push(data); return data; } });
   def('progressComment', {
     count: async () => op.hoy ?? 0,
@@ -99,6 +105,9 @@ test('la lista sale de más antiguo a más reciente, sin bloqueadas y con quién
   assert.equal(r.comentarios[1].puedoBorrar, false);
   assert.deepEqual(f.filtro().where.userId.notIn, ['x9']);
   assert.equal(f.filtro().where.deletedAt, null);
+  // Reacciones: el recuento lo ve cualquiera; quién ha reaccionado, solo quien lee.
+  assert.equal(r.reacciones.THUMBS_UP, 2);
+  assert.deepEqual(r.reaccionesDe, []);
 });
 
 test('borra quien lo escribió y la dueña; el resto no', async () => {
@@ -121,4 +130,34 @@ test('rutas, denuncia y migración están conectadas', () => {
     readFileSync('prisma/migrations/20261016140000_progress_comments/migration.sql', 'utf8'),
     /CREATE TABLE "ProgressComment"/,
   );
+});
+
+test('quien lee ve quién ha reaccionado y un resumen de lo que dejan sus amigos en su lectura', async () => {
+  const { getResumenAmigosDeMiLectura } = await import('../src/services/amistades-comentarios.service.js');
+  falsear();
+  Object.defineProperty(prisma, 'library', {
+    configurable: true,
+    value: {
+      findUnique: async () => ({ id: 'l1', userId: 'yo', book: { id: 'b1', title: 'Yesteryear' } }),
+      findFirst: async (args: any) => {
+        assert.deepEqual(args.where.status.in, ['READING', 'REREADING']);
+        return { id: 'l1' };
+      },
+    },
+  });
+  const propia: any = await getComentariosProgreso('yo', 'l1');
+  assert.equal(propia.soyDuena, true);
+  assert.deepEqual(propia.reaccionesDe.map((x: any) => [x.nombre, x.reaccion]), [['Lucía', 'THUMBS_UP'], ['Marta', 'THUMBS_UP']]);
+
+  Object.defineProperty(prisma, 'progressComment', {
+    configurable: true,
+    value: { count: async ({ where }: any) => { assert.ok(where.userId.notIn.includes('yo')); return 3; } },
+  });
+  const r: any = await getResumenAmigosDeMiLectura('yo', 'b1');
+  assert.deepEqual([r.libraryId, r.comentarios, r.totalReacciones, r.reacciones.THUMBS_UP], ['l1', 3, 2, 2]);
+
+  // Si no lo está leyendo, no hay resumen.
+  Object.defineProperty(prisma, 'library', { configurable: true, value: { findFirst: async () => null } });
+  const nada: any = await getResumenAmigosDeMiLectura('yo', 'b1');
+  assert.deepEqual([nada.libraryId, nada.comentarios, nada.totalReacciones], ['', 0, 0]);
 });

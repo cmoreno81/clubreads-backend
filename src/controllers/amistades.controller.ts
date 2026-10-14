@@ -9,6 +9,7 @@ import {
   borrarComentarioProgreso,
   comentarProgreso,
   getComentariosProgreso,
+  getResumenAmigosDeMiLectura,
 } from '../services/amistades-comentarios.service.js';
 import {
   crearLecturaConAmistad,
@@ -136,4 +137,8 @@ export async function handleSalirLecturaAmistad(req: Request, res: Response) {
 
 export async function handleEnviarInvitacionLectura(req: Request, res: Response) {
   return res.json(await enviarInvitacionLectura(req.auth!.userId, texto(req, 'clubId')));
+}
+
+export async function handleResumenAmigosLectura(req: Request, res: Response) {
+  return res.json(await getResumenAmigosDeMiLectura(req.auth!.userId, String(req.query.bookId ?? '')));
 }
