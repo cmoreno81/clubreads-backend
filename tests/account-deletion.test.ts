@@ -72,6 +72,25 @@ test('clubesQueBloqueanEliminacion: solo bloquean clubes sociales con más gente
   );
 });
 
+test('una lectura a la vez con una amistad no bloquea eliminar la cuenta', () => {
+  const pareja = { id: '4', name: 'Lectura a la vez', tipo: ClubType.AMISTADES, miembros: 2 };
+  assert.deepEqual(clubesQueBloqueanEliminacion([pareja]), []);
+});
+
+test('eliminarCuenta limpia amistades, reservas, deseos e invitaciones de lectura a la vez', () => {
+  const cuerpo = authService.match(/export async function eliminarCuenta[\s\S]*?\n\}/)?.[0];
+  assert.ok(cuerpo);
+  for (const trozo of [
+    'friendship.deleteMany',
+    'wishlistReservation.deleteMany',
+    'wishlistItem.deleteMany',
+    'friendReadingInvite.deleteMany',
+    'progressComment.deleteMany',
+  ]) {
+    assert.ok(cuerpo.includes(trozo), trozo);
+  }
+});
+
 test('eliminarCuenta comprueba que la cuenta existe antes de nada', () => {
   const cuerpo = authService.match(/export async function eliminarCuenta[\s\S]*?\n\}/)?.[0];
   assert.ok(cuerpo);

@@ -678,7 +678,10 @@ export async function changeName(userId: string, rawName: string) {
 type ClubPropio = { id: string; name: string; tipo: ClubType; miembros: number };
 
 export function clubesQueBloqueanEliminacion(clubs: ClubPropio[]) {
-  return clubs.filter((c) => c.tipo !== ClubType.PERSONAL && c.miembros > 1);
+  // Las lecturas a la vez con una amistad (de dos) no bloquean: se traspasan solas.
+  return clubs.filter(
+    (c) => c.tipo !== ClubType.PERSONAL && c.tipo !== ClubType.AMISTADES && c.miembros > 1,
+  );
 }
 
 export async function eliminarCuenta(userId: string, password: string) {
@@ -709,7 +712,32 @@ export async function eliminarCuenta(userId: string, password: string) {
     );
   }
 
-  const clubIdsToDelete = ownedClubs.map((c) => c.id);
+  // Lecturas a la vez con una amistad: si ella las abrió, la otra persona pasa a ser
+  // la propietaria y conserva la conversación; si no queda nadie, se borra el espacio.
+  const amistadesPropias = ownedClubs.filter((c) => c.tipo === ClubType.AMISTADES);
+  const traspasos: Array<{ clubId: string; nuevoPropietarioId: string }> = [];
+  const clubIdsToDelete = ownedClubs
+    .filter((c) => c.tipo !== ClubType.AMISTADES)
+    .map((c) => c.id);
+  for (const c of amistadesPropias) {
+    const otra = await prisma.clubMember.findFirst({
+      where: { clubId: c.id, userId: { not: userId } },
+      select: { userId: true },
+    });
+    if (otra) traspasos.push({ clubId: c.id, nuevoPropietarioId: otra.userId });
+    else clubIdsToDelete.push(c.id);
+  }
+  // Invitaciones a leer a la vez sin aceptar donde participa: se retira el espacio.
+  const invitacionesPendientes = await prisma.friendReadingInvite.findMany({
+    where: {
+      status: 'PENDING',
+      OR: [{ fromUserId: userId }, { toUserId: userId }],
+    },
+    select: { clubId: true },
+  });
+  for (const { clubId } of invitacionesPendientes) {
+    if (!clubIdsToDelete.includes(clubId)) clubIdsToDelete.push(clubId);
+  }
   const placeholder = `eliminada-${user.id}`;
 
   // Los comentarios se conservan sin nombre, pero las fotos que la usuaria
@@ -725,10 +753,25 @@ export async function eliminarCuenta(userId: string, password: string) {
       where: { userId, OR: [{ imageUrl: { not: null } }, { imagePublicId: { not: null } }] },
       data: { imageUrl: null, imagePublicId: null },
     }),
+    ...traspasos.map((t) =>
+      prisma.club.update({ where: { id: t.clubId }, data: { ownerId: t.nuevoPropietarioId } }),
+    ),
     ...(clubIdsToDelete.length
       ? [prisma.club.deleteMany({ where: { id: { in: clubIdsToDelete } } })]
       : []),
     prisma.clubMember.deleteMany({ where: { userId } }),
+    // Amigos: se quitan sus amistades y solicitudes, sus reservas de regalo (y las que
+    // había sobre su lista), su lista de deseos y lo que escribió en el progreso de otros.
+    prisma.friendship.deleteMany({
+      where: { OR: [{ requesterId: userId }, { addresseeId: userId }] },
+    }),
+    prisma.wishlistReservation.deleteMany({ where: { reservedById: userId } }),
+    prisma.wishlistItem.deleteMany({ where: { userId } }),
+    prisma.friendReadingInvite.deleteMany({
+      where: { OR: [{ fromUserId: userId }, { toUserId: userId }] },
+    }),
+    prisma.progressReaction.deleteMany({ where: { userId } }),
+    prisma.progressComment.deleteMany({ where: { userId } }),
     prisma.authSession.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
@@ -745,6 +788,7 @@ export async function eliminarCuenta(userId: string, password: string) {
         readerPersonality: null,
         commentCategories: Prisma.DbNull,
         activeClubId: null,
+        friendCode: null,
         notificationsDisabled: [],
         profileVisibility: 'PRIVADO',
         failedLoginAttempts: 0,
