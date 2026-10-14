@@ -1,4 +1,4 @@
-import { datosTalento, listaGeneros } from '../utils/generos.utils.js';
+import { datosTalento, generoDesdeCategoriasExternas, listaGeneros } from '../utils/generos.utils.js';
 import {
   Priority,
   ReadingFormat,
@@ -226,7 +226,7 @@ function externalBook(item: ExternalVolume) {
     autores: stringList(info.authors),
     coverUrl: String(images.thumbnail ?? images.smallThumbnail ?? '')
       .replace(/^http:/, 'https:'),
-    genero: stringList(info.categories)[0] ?? 'Sin género',
+    genero: generoDesdeCategoriasExternas(stringList(info.categories)),
     isbn: String(isbn),
     paginas: Number.isInteger(info.pageCount) ? info.pageCount : null,
     anioPublicacion: /^\d{4}/.test(published)
@@ -252,7 +252,7 @@ function openLibraryBook(item: OpenLibraryDoc) {
     coverUrl: Number.isInteger(coverId) && coverId > 0
       ? `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`
       : '',
-    genero: stringList(item.subject)[0] ?? 'Sin género',
+    genero: generoDesdeCategoriasExternas(stringList(item.subject).slice(0, 12)),
     isbn,
     paginas: Number.isInteger(item.number_of_pages_median)
       ? item.number_of_pages_median
@@ -596,7 +596,8 @@ async function resolveCatalogBook(
   }
 
   if (!book && source !== 'CLUBREADS') {
-    const genreName = String(data.genero ?? '').trim() || 'Sin género';
+    // Aunque llegue una categoría externa sin normalizar («Fiction», «Boys»…), no entra tal cual.
+    const genreName = generoDesdeCategoriasExternas(String(data.genero ?? '').trim());
     const authorName = authors[0] || 'Autor desconocido';
     const pages = Number(data.paginas);
     const year = Number(data.anioPublicacion);
