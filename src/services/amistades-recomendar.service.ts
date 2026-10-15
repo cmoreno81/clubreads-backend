@@ -1,8 +1,9 @@
-import { FriendshipStatus, NotificationType } from '@prisma/client';
+import { FriendshipStatus, NotificationType, ReadingStatus } from '@prisma/client';
 
 import { prisma } from '../prisma.js';
 import { backgroundError } from '../logging/logger.js';
 import { notifyLibroRecomendado } from './notifications.service.js';
+import { amistadesQueComparten } from './amistades-ver.service.js';
 import {
   MAX_RECOMENDACIONES_POR_DIA,
   MAX_RECOMENDADAS_POR_LLAMADA,
@@ -96,4 +97,73 @@ export async function recomendarLibro(
     }
   }
   return { ok: true, enviadas, yaRecomendado: destino.length - nuevas.length };
+}
+
+export type OpcionRecomendar = {
+  bookId: string;
+  titulo: string;
+  coverUrl: string;
+  nota: number;
+  leido: boolean;
+};
+
+/// Primero lo leído (de mayor a menor nota) y después lo pendiente, por título.
+export function ordenarOpcionesRecomendar(opciones: OpcionRecomendar[]): OpcionRecomendar[] {
+  return [...opciones].sort((a, b) => {
+    if (a.leido !== b.leido) return a.leido ? -1 : 1;
+    if (a.nota !== b.nota) return b.nota - a.nota;
+    return a.titulo.localeCompare(b.titulo, 'es');
+  });
+}
+
+/// Tus libros recomendables a una amistad: tus leídos (por nota) y tus pendientes,
+/// sin los que ella ya ha leído o está leyendo —solo si lo comparte—. Sus
+/// pendientes sí se mantienen. Va por tu identificador, nunca por el nombre.
+export async function getLibrosParaRecomendar(yo: string, nombre: string) {
+  const amistades = await amistadesQueComparten(yo);
+  const amiga = amistades.find((a) => a.name.toLowerCase() === String(nombre ?? '').trim().toLowerCase());
+  if (!amiga) return { ok: false, mensaje: 'Solo puedes recomendar a una amistad.', items: [] };
+
+  const [mios, suyos] = await Promise.all([
+    prisma.library.findMany({
+      where: {
+        userId: yo,
+        status: { in: [ReadingStatus.FINISHED, ReadingStatus.PENDING] },
+        book: { deletedAt: null },
+      },
+      select: { bookId: true, status: true, book: { select: { title: true, coverUrl: true } } },
+    }),
+    prisma.library.findMany({
+      where: {
+        userId: amiga.id,
+        book: { deletedAt: null },
+        OR: [
+          ...(amiga.friendsSeeLibrary ? [{ status: ReadingStatus.FINISHED }] : []),
+          ...(amiga.friendsSeeReading ? [{ status: { in: [ReadingStatus.READING, ReadingStatus.REREADING] } }] : []),
+        ],
+      },
+      select: { bookId: true },
+    }),
+  ]);
+  const yaConoce = new Set(suyos.map((f) => f.bookId));
+  const terminados = mios.filter((m) => m.status === ReadingStatus.FINISHED).map((m) => m.bookId);
+  const notas = terminados.length
+    ? await prisma.review.findMany({
+        where: { userId: yo, bookId: { in: terminados }, deletedAt: null },
+        select: { bookId: true, rating: true },
+      })
+    : [];
+  const notaDe = new Map(notas.map((n) => [n.bookId, n.rating]));
+  const items = ordenarOpcionesRecomendar(
+    mios
+      .filter((m) => !yaConoce.has(m.bookId))
+      .map((m) => ({
+        bookId: m.bookId,
+        titulo: m.book.title,
+        coverUrl: m.book.coverUrl ?? '',
+        nota: notaDe.get(m.bookId) ?? 0,
+        leido: m.status === ReadingStatus.FINISHED,
+      })),
+  );
+  return { ok: true, items };
 }

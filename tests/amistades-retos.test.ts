@@ -40,3 +40,11 @@ test('las acciones de retos y racha están enganchadas al router (las que escrib
     assert.match(router, new RegExp(`'${a}',`));
   }
 });
+
+test('libros para recomendar: leídos por nota y luego pendientes; ruta enganchada', async () => {
+  const { ordenarOpcionesRecomendar } = await import('../src/services/amistades-recomendar.service.js');
+  const o = (bookId: string, titulo: string, nota: number, leido: boolean) => ({ bookId, titulo, coverUrl: '', nota, leido });
+  const r = ordenarOpcionesRecomendar([o('p', 'Zeta', 0, false), o('a', 'Babel', 4, true), o('b', 'Dune', 5, true), o('c', 'Ana', 0, false)]);
+  assert.deepEqual(r.map((x) => x.bookId), ['b', 'a', 'c', 'p']);
+  assert.match(readFileSync('src/routes/api.router.ts', 'utf8'), /case 'librosParaRecomendar':/);
+});

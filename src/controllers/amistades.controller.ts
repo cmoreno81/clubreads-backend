@@ -33,7 +33,7 @@ import {
   salirLecturaAmistad,
 } from '../services/lecturas-amistades.service.js';
 import { reservarRegalo } from '../services/amistades-regalos.service.js';
-import { recomendarLibro } from '../services/amistades-recomendar.service.js';
+import { getLibrosParaRecomendar, recomendarLibro } from '../services/amistades-recomendar.service.js';
 import {
   buscarPersonas,
   cancelarSolicitudAmistad,
@@ -203,4 +203,8 @@ export async function handleSalirRetoAmigos(req: Request, res: Response) {
 
 export async function handleRachasCompartidas(req: Request, res: Response) {
   return res.json(await getRachasCompartidas(req.auth!.userId));
+}
+
+export async function handleLibrosParaRecomendar(req: Request, res: Response) {
+  return res.json(await getLibrosParaRecomendar(req.auth!.userId, String(req.query.nombre ?? '')));
 }

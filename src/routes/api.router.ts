@@ -222,6 +222,7 @@ import {
   handleResumenSemanalAmigos,
   handlePedirRecomendacion,
   handleRetosAmigos,
+  handleLibrosParaRecomendar,
   handleCrearRetoAmigos,
   handleResponderRetoAmigos,
   handleSalirRetoAmigos,
@@ -1009,6 +1010,9 @@ export async function handleApi(
 
       case 'guardarPrivacidadAmistades':
         return handleGuardarPrivacidadAmistades(req, res);
+
+      case 'librosParaRecomendar':
+        return handleLibrosParaRecomendar(req, res);
 
       case 'recomendarLibro':
         return handleRecomendarLibro(req, res);
