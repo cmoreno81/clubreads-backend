@@ -217,7 +217,7 @@ const topLectoras = top(
   const mesActual = anio === ahora.getFullYear() ? ahora.getUTCMonth() : 11;
 
   // Agrupar finalizaciones por mes → lector
-  const porMes = new Map<number, Map<string, { total: number; avatarUrl: string }>>();
+  const porMes = new Map<number, Map<string, { total: number; avatarUrl: string; ultima: number }>>();
 
   for (const item of finalizaciones) {
     const mes = item.finishedAt.getUTCMonth(); // 0 = enero … 11 = diciembre
@@ -228,6 +228,7 @@ const topLectoras = top(
     lectoras.set(item.user.name, {
       total: (prev?.total ?? 0) + 1,
       avatarUrl: item.user.avatarUrl ?? '',
+      ultima: Math.max(prev?.ultima ?? 0, item.finishedAt.getTime()),
     });
   }
 
@@ -235,12 +236,13 @@ const topLectoras = top(
     .map(([mes, lectoras]) => ({
       mes,
       top: Array.from(lectoras.entries())
+        // En empate gana quien llegó antes a esa cifra.
+        .sort((a, b) => b[1].total - a[1].total || a[1].ultima - b[1].ultima || a[0].localeCompare(b[0], 'es'))
         .map(([usuario, datos]) => ({
           usuario,
           total: datos.total,
           avatarUrl: datos.avatarUrl,
         }))
-        .sort((a, b) => b.total - a.total)
         .slice(0, 3),
     }))
     .sort((a, b) => b.mes - a.mes); // más reciente primero

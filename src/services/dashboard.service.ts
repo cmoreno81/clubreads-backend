@@ -201,7 +201,7 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
         finishedAt: { gte: monthStart, lt: monthEnd },
         user: { clubMemberships: { some: { clubId: club.id } } },
       },
-      select: { userId: true, bookId: true },
+      select: { userId: true, bookId: true, trackedInApp: true, finishedAt: true },
     }), (rows) => rows.length),
     dashboardBlock('review_average', () => client.review.aggregate({
       where: {
@@ -262,18 +262,28 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
       )
     : new Set();
 
+  // Solo se descarta lo importado de verdad (marcado de golpe, fuera de la app).
+  // Un libro que alguien importó hace tiempo y vuelve a leer ahora desde la app
+  // (trackedInApp) sí cuenta: antes se perdía por haber tenido una importación.
   const genuineCompletions = monthlyCompletionsRaw.filter(
-    c => !importedRankingKeys.has(`${c.userId}:${c.bookId}`)
+    c => c.trackedInApp || !importedRankingKeys.has(`${c.userId}:${c.bookId}`)
   );
 
   // Reconstruir monthlyGroups con el mismo shape que el antiguo groupBy
   const rawCountByUser = new Map<string, number>();
+  // Cuándo llegó cada persona a su cifra: en un empate gana quien llegó antes.
+  const ultimaFinalizacion = new Map<string, number>();
   for (const c of genuineCompletions) {
     rawCountByUser.set(c.userId, (rawCountByUser.get(c.userId) ?? 0) + 1);
+    ultimaFinalizacion.set(
+      c.userId,
+      Math.max(ultimaFinalizacion.get(c.userId) ?? 0, c.finishedAt.getTime()),
+    );
   }
   const monthlyGroups = [...rawCountByUser.entries()].map(([userId, count]) => ({
     userId,
     _count: { id: count },
+    ultima: ultimaFinalizacion.get(userId) ?? 0,
   }));
 
   const monthlyUsers = monthlyGroups.length === 0
@@ -284,6 +294,7 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
       }), (rows) => rows.length);
 
   const contadorUsuarios = new Map<string, number>();
+  const ultimaPorNombre = new Map<string, number>();
   const monthlyCountByUser = new Map(
     monthlyGroups.map((item) => [item.userId, item._count.id]),
   );
@@ -292,16 +303,20 @@ export async function getDashboard(usuario = '', runtime: DashboardRuntime = {})
       item.name,
       monthlyCountByUser.get(item.id) ?? 0,
     );
+    ultimaPorNombre.set(item.name, ultimaFinalizacion.get(item.id) ?? 0);
   }
+  // Más libros primero; en empate, quien llegó antes a esa cifra; luego el nombre.
+  const compararLectoras = (a: [string, number], b: [string, number]) =>
+    b[1] - a[1] ||
+    (ultimaPorNombre.get(a[0]) ?? 0) - (ultimaPorNombre.get(b[0]) ?? 0) ||
+    a[0].localeCompare(b[0], 'es');
 
-  const topUsuario = Array.from(contadorUsuarios.entries()).sort(
-    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'),
-  )[0];
+  const topUsuario = Array.from(contadorUsuarios.entries()).sort(compararLectoras)[0];
   const avatarPorUsuario = new Map(
     monthlyUsers.map((item) => [item.name, item.avatarUrl ?? '']),
   );
   const topLectorasMes = Array.from(contadorUsuarios.entries())
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'))
+    .sort(compararLectoras)
     .slice(0, 3)
     .map(([usuario, total]) => ({
       usuario,
