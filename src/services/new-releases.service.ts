@@ -34,6 +34,24 @@ export async function getNewReleases(userName: string, limit = 40) {
       .map((w) => [normalizeTitle(w.title), w.id]),
   );
 
+  // Compras ya hechas (lista de deseos con «comprado»): también dejan constancia
+  // en la novedad aunque el ítem ya no cuente como deseo activo.
+  const userPurchased = await prisma.wishlistItem.findMany({
+    where: { userId: user.id, purchasedAt: { not: null } },
+    select: { bookId: true, isbn: true, title: true },
+  });
+  const purchasedByBookId = new Set(
+    userPurchased.filter((w) => w.bookId).map((w) => w.bookId!),
+  );
+  const purchasedByIsbn = new Set(
+    userPurchased.filter((w) => w.isbn).map((w) => w.isbn!),
+  );
+  const purchasedByTitle = new Set(
+    userPurchased
+      .filter((w) => !w.bookId && !w.isbn)
+      .map((w) => normalizeTitle(w.title)),
+  );
+
   // Biblioteca del usuario: igual que la wishlist, comprobamos por bookId,
   // ISBN y título normalizado para detectar variantes de edición.
   const userLibrary = await prisma.library.findMany({
@@ -124,6 +142,10 @@ export async function getNewReleases(userName: string, limit = 40) {
           ),
         ],
         isInWishlist: wishlistItemId !== null,
+        isPurchased:
+          purchasedByBookId.has(book.id) ||
+          (book.isbn != null && purchasedByIsbn.has(book.isbn)) ||
+          purchasedByTitle.has(normalizeTitle(book.title)),
         wishlistItemId,
         // bookId exacto → ISBN → título normalizado (captura variantes de edición)
         isInLibrary:
