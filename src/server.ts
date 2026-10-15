@@ -11,6 +11,7 @@ import {
   talentoRateLimiter,
 } from './middleware/rate-limit.middleware.js';
 import { talentoRouter } from './routes/talento.router.js';
+import { createCompressionMiddleware } from './middleware/compression.middleware.js';
 import {
   corsErrorHandler,
   createCorsMiddleware,
@@ -58,6 +59,7 @@ export function createApp() {
   app.use(createHelmetMiddleware());
   app.use(createCorsMiddleware());
   app.use(corsErrorHandler);
+  app.use(createCompressionMiddleware());
 
   app.get('/health', healthRateLimiter, healthHandler);
   app.get('/ready', healthRateLimiter, readinessHandler);
