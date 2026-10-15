@@ -1,5 +1,12 @@
 import type { Request, Response } from 'express';
 
+import {
+  crearRetoAmigos,
+  getRachasCompartidas,
+  getRetosAmigos,
+  responderRetoAmigos,
+  salirRetoAmigos,
+} from '../services/amistades-retos.service.js';
 import { getFeedAmistades } from '../services/amistades-feed.service.js';
 import {
   getAfinidadAmigos,
@@ -168,4 +175,32 @@ export async function handleEnviarInvitacionLectura(req: Request, res: Response)
 
 export async function handleResumenAmigosLectura(req: Request, res: Response) {
   return res.json(await getResumenAmigosDeMiLectura(req.auth!.userId, String(req.query.bookId ?? '')));
+}
+
+export async function handleRetosAmigos(req: Request, res: Response) {
+  return res.json(await getRetosAmigos(req.auth!.userId));
+}
+
+export async function handleCrearRetoAmigos(req: Request, res: Response) {
+  const nombres = Array.isArray(req.body?.nombres) ? req.body.nombres.map((n: unknown) => String(n ?? '')) : [];
+  return res.json(
+    await crearRetoAmigos(req.auth!.userId, {
+      titulo: texto(req, 'titulo'),
+      objetivo: Number(req.body?.objetivo),
+      periodo: texto(req, 'periodo'),
+      nombres,
+    }),
+  );
+}
+
+export async function handleResponderRetoAmigos(req: Request, res: Response) {
+  return res.json(await responderRetoAmigos(req.auth!.userId, texto(req, 'retoId'), req.body?.aceptar === true));
+}
+
+export async function handleSalirRetoAmigos(req: Request, res: Response) {
+  return res.json(await salirRetoAmigos(req.auth!.userId, texto(req, 'retoId')));
+}
+
+export async function handleRachasCompartidas(req: Request, res: Response) {
+  return res.json(await getRachasCompartidas(req.auth!.userId));
 }

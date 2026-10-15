@@ -442,6 +442,8 @@ model User {
 
   friendshipsSent     Friendship[] @relation("FriendRequester")
   friendshipsReceived Friendship[] @relation("FriendAddressee")
+  retosAmistadCreados RetoAmistad[] @relation("RetoAmistadCreador")
+  retosAmistad        RetoAmistadMiembro[]
 
   activeClubId String?
 
@@ -2084,4 +2086,41 @@ model Friendship {
   @@unique([requesterId, addresseeId])
   @@index([addresseeId, status])
   @@index([requesterId, status])
+}
+
+/// Reto de lectura entre amistades: una meta de libros común, sin clasificación.
+model RetoAmistad {
+  id String @id @default(cuid())
+
+  creadorId String
+  creador   User   @relation("RetoAmistadCreador", fields: [creadorId], references: [id], onDelete: Cascade)
+
+  titulo   String
+  objetivo Int
+  desde    DateTime
+  hasta    DateTime
+
+  createdAt DateTime @default(now())
+
+  miembros RetoAmistadMiembro[]
+
+  @@index([hasta])
+}
+
+model RetoAmistadMiembro {
+  id String @id @default(cuid())
+
+  retoId String
+  reto   RetoAmistad @relation(fields: [retoId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// false = invitada, aún sin responder.
+  aceptado Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@unique([retoId, userId])
+  @@index([userId])
 }

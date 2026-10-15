@@ -221,6 +221,11 @@ import {
   handleAmigosDelLibro,
   handleResumenSemanalAmigos,
   handlePedirRecomendacion,
+  handleRetosAmigos,
+  handleCrearRetoAmigos,
+  handleResponderRetoAmigos,
+  handleSalirRetoAmigos,
+  handleRachasCompartidas,
   handleAmistades,
   handleBuscarPersonas,
   handleCancelarSolicitudAmistad,
@@ -336,6 +341,9 @@ export const POST_ONLY_ACTIONS = new Set([
   'comentarProgreso',
   'reservarRegalo',
   'pedirRecomendacion',
+  'crearRetoAmigos',
+  'responderRetoAmigos',
+  'salirRetoAmigos',
   'crearLecturaConAmistad',
   'enviarInvitacionLectura',
   'responderLecturaAmistad',
@@ -983,6 +991,21 @@ export async function handleApi(
 
       case 'pedirRecomendacion':
         return handlePedirRecomendacion(req, res);
+
+      case 'retosAmigos':
+        return handleRetosAmigos(req, res);
+
+      case 'crearRetoAmigos':
+        return handleCrearRetoAmigos(req, res);
+
+      case 'responderRetoAmigos':
+        return handleResponderRetoAmigos(req, res);
+
+      case 'salirRetoAmigos':
+        return handleSalirRetoAmigos(req, res);
+
+      case 'rachasCompartidas':
+        return handleRachasCompartidas(req, res);
 
       case 'guardarPrivacidadAmistades':
         return handleGuardarPrivacidadAmistades(req, res);
