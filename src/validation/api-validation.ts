@@ -179,6 +179,7 @@ export const actionBodySchemas: Record<string, z.ZodType> = {
   cancelarSolicitudAmistad: body({ nombre: shortTextSchema }),
   quitarAmistad: body({ nombre: shortTextSchema }),
   perfilAmistad: body({ nombre: shortTextSchema }),
+  pedirRecomendacion: body({ nombre: shortTextSchema }),
   crearLecturaConAmistad: body({ bookId: identifierSchema, nombre: shortTextSchema }),
   enviarInvitacionLectura: body({ clubId: identifierSchema }),
   salirLecturaAmistad: body({ clubId: identifierSchema, eliminar: z.boolean().optional() }),

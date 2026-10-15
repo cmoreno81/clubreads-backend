@@ -1198,6 +1198,7 @@ export const TIPOS_NOTIFICACION: NotificationType[] = [
   NotificationType.LECTURA_AMISTAD_ACEPTADA,
   NotificationType.LECTURA_AMISTAD_ELIMINADA,
   NotificationType.AMISTAD_LIBRO_TERMINADO,
+  NotificationType.AMISTAD_PIDE_RECOMENDACION,
   NotificationType.NUEVA_MIEMBRO,
   NotificationType.LOGRO_DESBLOQUEADO,
   NotificationType.CLUB_BOOK_OF_YEAR,

@@ -2,6 +2,12 @@ import type { Request, Response } from 'express';
 
 import { getFeedAmistades } from '../services/amistades-feed.service.js';
 import {
+  getAfinidadAmigos,
+  getAmigosDelLibro,
+  getResumenSemanalAmigos,
+  pedirRecomendacion,
+} from '../services/amistades-descubrir.service.js';
+import {
   getActividadAmistades,
   getPerfilAmistad,
   guardarPrivacidadAmistades,
@@ -67,6 +73,22 @@ export async function handleQuitarAmistad(req: Request, res: Response) {
 
 export async function handlePerfilAmistad(req: Request, res: Response) {
   return res.json(await getPerfilAmistad(req.auth!.userId, String(req.query.nombre ?? '')));
+}
+
+export async function handleAfinidadAmigos(req: Request, res: Response) {
+  return res.json(await getAfinidadAmigos(req.auth!.userId));
+}
+
+export async function handleAmigosDelLibro(req: Request, res: Response) {
+  return res.json(await getAmigosDelLibro(req.auth!.userId, String(req.query.bookId ?? '')));
+}
+
+export async function handleResumenSemanalAmigos(req: Request, res: Response) {
+  return res.json(await getResumenSemanalAmigos(req.auth!.userId));
+}
+
+export async function handlePedirRecomendacion(req: Request, res: Response) {
+  return res.json(await pedirRecomendacion(req.auth!.userId, texto(req, 'nombre')));
 }
 
 export async function handleFeedAmistades(req: Request, res: Response) {

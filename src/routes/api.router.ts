@@ -217,6 +217,10 @@ import { handleAutoraDeLaSemana } from '../controllers/talento-emergente.control
 import {
   handleActividadAmistades,
   handleFeedAmistades,
+  handleAfinidadAmigos,
+  handleAmigosDelLibro,
+  handleResumenSemanalAmigos,
+  handlePedirRecomendacion,
   handleAmistades,
   handleBuscarPersonas,
   handleCancelarSolicitudAmistad,
@@ -331,6 +335,7 @@ export const POST_ONLY_ACTIONS = new Set([
   'recomendarLibro',
   'comentarProgreso',
   'reservarRegalo',
+  'pedirRecomendacion',
   'crearLecturaConAmistad',
   'enviarInvitacionLectura',
   'responderLecturaAmistad',
@@ -966,6 +971,18 @@ export async function handleApi(
 
       case 'feedAmistades':
         return handleFeedAmistades(req, res);
+
+      case 'afinidadAmigos':
+        return handleAfinidadAmigos(req, res);
+
+      case 'amigosDelLibro':
+        return handleAmigosDelLibro(req, res);
+
+      case 'resumenSemanalAmigos':
+        return handleResumenSemanalAmigos(req, res);
+
+      case 'pedirRecomendacion':
+        return handlePedirRecomendacion(req, res);
 
       case 'guardarPrivacidadAmistades':
         return handleGuardarPrivacidadAmistades(req, res);
