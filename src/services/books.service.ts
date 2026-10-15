@@ -45,6 +45,7 @@ import {
   type PaginationRequest,
 } from '../utils/cursor-pagination.js';
 import { backgroundError, logger } from '../logging/logger.js';
+import { notificarAmistadesLibroTerminado } from './amistades-feed.service.js';
 import {
   normalizePriority,
   normalizeReadingFormat,
@@ -1582,6 +1583,7 @@ export async function actualizarEstado(
 
 let startedReading = false;
 let finishedNotificationClubIds: string[] = [];
+let recienTerminado = false;
 let correctedFinalizationClubIds: string[] = [];
 
 await client.$transaction(async (tx) => {
@@ -1822,6 +1824,7 @@ await client.$transaction(async (tx) => {
         select: { clubId: true },
       });
       finishedNotificationClubIds = memberships.map(({ clubId }) => clubId);
+      recienTerminado = true;
     }
 
     await tx.review.upsert({
@@ -1913,6 +1916,16 @@ for (const clubId of finishedNotificationClubIds) {
     bookTitle: book.title,
     bookId: book.id,
   }).catch(backgroundError('book_finished_notification_failed'));
+}
+
+// Amistades que leen ahora el mismo libro: «ha terminado el libro que lees».
+if (recienTerminado) {
+  void notificarAmistadesLibroTerminado({
+    userId: user.id,
+    nombre: user.name,
+    bookId: book.id,
+    bookTitle: book.title,
+  }).catch(backgroundError('amistad_libro_terminado_failed'));
 }
 
 // Sincronizar logros al terminar un libro

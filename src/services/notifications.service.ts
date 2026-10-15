@@ -29,7 +29,7 @@ async function filterEnabledRecipients(
 }
 
 /** Crea una notificación para un usuario */
-async function createNotification({
+export async function createNotification({
   userId,
   tipo,
   titulo,
@@ -1197,6 +1197,7 @@ export const TIPOS_NOTIFICACION: NotificationType[] = [
   NotificationType.LECTURA_AMISTAD_INVITACION,
   NotificationType.LECTURA_AMISTAD_ACEPTADA,
   NotificationType.LECTURA_AMISTAD_ELIMINADA,
+  NotificationType.AMISTAD_LIBRO_TERMINADO,
   NotificationType.NUEVA_MIEMBRO,
   NotificationType.LOGRO_DESBLOQUEADO,
   NotificationType.CLUB_BOOK_OF_YEAR,

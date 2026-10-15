@@ -216,6 +216,7 @@ import { handleGetNewReleases } from '../controllers/new-releases.controller.js'
 import { handleAutoraDeLaSemana } from '../controllers/talento-emergente.controller.js';
 import {
   handleActividadAmistades,
+  handleFeedAmistades,
   handleAmistades,
   handleBuscarPersonas,
   handleCancelarSolicitudAmistad,
@@ -962,6 +963,9 @@ export async function handleApi(
 
       case 'actividadAmistades':
         return handleActividadAmistades(req, res);
+
+      case 'feedAmistades':
+        return handleFeedAmistades(req, res);
 
       case 'guardarPrivacidadAmistades':
         return handleGuardarPrivacidadAmistades(req, res);

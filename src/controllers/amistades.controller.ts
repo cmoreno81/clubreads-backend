@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 
+import { getFeedAmistades } from '../services/amistades-feed.service.js';
 import {
   getActividadAmistades,
   getPerfilAmistad,
@@ -66,6 +67,10 @@ export async function handleQuitarAmistad(req: Request, res: Response) {
 
 export async function handlePerfilAmistad(req: Request, res: Response) {
   return res.json(await getPerfilAmistad(req.auth!.userId, String(req.query.nombre ?? '')));
+}
+
+export async function handleFeedAmistades(req: Request, res: Response) {
+  return res.json(await getFeedAmistades(req.auth!.userId));
 }
 
 export async function handleActividadAmistades(req: Request, res: Response) {
