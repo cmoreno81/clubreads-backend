@@ -139,7 +139,7 @@ export async function notificarAmistadesLibroTerminado(datos: {
     await createNotification({
       userId,
       tipo: NotificationType.AMISTAD_LIBRO_TERMINADO,
-      titulo: '🎉 Tu amiga ha terminado tu lectura',
+      titulo: '🎉 Tu amigo ha terminado tu lectura',
       mensaje: `${datos.nombre} ha terminado «${datos.bookTitle}», el libro que estás leyendo`,
       bookId: datos.bookId,
       extra: { de: datos.userId, nombre: datos.nombre, bookTitle: datos.bookTitle },
