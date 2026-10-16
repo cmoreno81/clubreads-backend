@@ -35,6 +35,9 @@ function stripAccents(value: string) {
 export function normTitle(value: string | null | undefined) {
   return stripAccents((value ?? '').toLowerCase())
     .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
+    // «vol. 4», «volumen 04», «tomo 4», «nº 04», «n.° 4», «núm. 4» → solo el número
+    .replace(/\b(vol(umen)?|tomo|num(ero)?|n)[.º°o]*\s*0*(\d+)\b/g, ' $4 ')
+    .replace(/\b0+(\d)/g, '$1')
     .replace(
       /\b(edicion|ed\.|tapa (dura|blanda)|bolsillo|libro|novela|ebook|audiolibro|especial|limitada|coleccionista|bilingue|castellano|espanol)\b/g,
       ' ',
@@ -43,6 +46,31 @@ export function normTitle(value: string | null | undefined) {
     .split(/\s+/)
     .filter(Boolean)
     .join(' ');
+}
+
+/// Título sin subtítulo (lo que va antes de «:»), normalizado; '' si no hay o
+/// es demasiado corto para fiarse.
+export function titleHead(value: string | null | undefined) {
+  const raw = value ?? '';
+  const i = raw.search(/[:：]/);
+  if (i < 0) return '';
+  const head = normTitle(raw.slice(0, i));
+  return head.length >= 6 ? head : '';
+}
+
+function numeros(titulo: string) {
+  return new Set(titulo.split(' ').filter((w) => /^\d+$/.test(w)));
+}
+
+/// Dos títulos con tomos distintos («… 3» y «… 4») se parecen un 95 % como
+/// texto, pero son libros distintos. Si los dos llevan número y no coinciden,
+/// no son compatibles; si solo uno lo lleva, vale solo cuando es el «1».
+export function numerosCompatibles(a: string, b: string) {
+  const na = numeros(a);
+  const nb = numeros(b);
+  if (na.size && nb.size) return [...na].every((n) => nb.has(n)) && [...nb].every((n) => na.has(n));
+  const solo = na.size ? na : nb;
+  return solo.size === 0 || (solo.size === 1 && solo.has('1'));
 }
 
 export function authorTokens(value: string | null | undefined) {
@@ -159,6 +187,8 @@ export function editionLanguage(title: string, url: string, ean: string) {
 export type CatalogBook = {
   id: string;
   nt: string;
+  /// Título sin subtítulo, si lo tiene (para libros con subtítulo largo).
+  nh?: string;
   authors: Set<string>;
   isbn: string;
   wanted: Set<string>;
@@ -241,14 +271,22 @@ export class LinkMatcher {
 
     const language = editionLanguage(title, url, ean);
     const nt = normTitle(title);
+    const feedHead = titleHead(title);
     for (const book of candidates) {
       if (!book.wanted.has(language)) continue;
       const a = authorOverlap(book.authors, tokens);
-      const s = titleSimilarity(book.nt, nt);
+      // Un subtítulo largo en uno solo de los dos lados no debe impedir el cruce.
+      const s = Math.max(
+        titleSimilarity(book.nt, nt),
+        book.nh ? titleSimilarity(book.nh, nt) : 0,
+        feedHead ? titleSimilarity(book.nt, feedHead) : 0,
+      );
       const isbnHit = Boolean(book.isbn) && ean === book.isbn;
       let confidence: number;
       if (isbnHit && s >= 0.6 && (a === null || a >= 0.5)) confidence = 1;
-      else if (a !== null && a >= 0.5 && s >= 0.92) confidence = Math.min(s, 0.999);
+      else if (a !== null && a >= 0.5 && s >= 0.92 && numerosCompatibles(book.nt, nt)) {
+        confidence = Math.min(s, 0.999);
+      }
       else continue;
 
       const candidate: Candidate = {
@@ -311,6 +349,7 @@ export async function loadCatalog() {
   return books.map<CatalogBook>((b) => ({
     id: b.id,
     nt: normTitle(b.title),
+    nh: titleHead(b.title) || undefined,
     authors: authorTokens(b.author?.name),
     isbn: isbn13(b.isbn),
     wanted: new Set(['es', ...(b.language && b.language !== 'es' ? [b.language] : [])]),
