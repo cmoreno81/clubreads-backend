@@ -23,6 +23,7 @@ import { handleUsuarios } from '../controllers/users.controller.js';
 import {
   handleGetLibroPorId,
   handleGetEnlaceCompra,
+  handleGetEnlaceBusquedaCasaDelLibro,
   handleSetLoTengo,
   handleGetEstanteriaPendientes,
   handleGetKitLectura,
@@ -707,6 +708,9 @@ export async function handleApi(
 
       case 'libroPorId':
         return handleGetLibroPorId(req, res);
+
+      case 'enlaceBusquedaCasaDelLibro':
+        return handleGetEnlaceBusquedaCasaDelLibro(req, res);
 
       case 'enlaceCompra':
         return handleGetEnlaceCompra(req, res);

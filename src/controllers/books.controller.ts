@@ -389,3 +389,8 @@ export async function handleGuardarCategoriasComentario(req: Request, res: Respo
   const body = req.body ?? {};
   return res.json(await guardarCategoriasComentario(req.auth!.userId, body.categorias ?? null));
 }
+
+export async function handleGetEnlaceBusquedaCasaDelLibro(req: Request, res: Response) {
+  const { getEnlaceBusquedaCasaDelLibro } = await import('../services/enlace-compra.service.js');
+  return res.json(getEnlaceBusquedaCasaDelLibro(req.query.q));
+}

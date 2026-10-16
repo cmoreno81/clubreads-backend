@@ -57,3 +57,15 @@ test('el cruce con el feed enlaza el tomo correcto y no el vecino', async () => 
   assert.equal(enlaces.length, 1);
   assert.equal(enlaces[0]!.bookId, 'v4');
 });
+
+test('el buscador de Casa del Libro devuelve un enlace de afiliado con la búsqueda', async () => {
+  const { getEnlaceBusquedaCasaDelLibro } = await import('../src/services/enlace-compra.service.js');
+  const r: any = getEnlaceBusquedaCasaDelLibro('  Los leones   de Al rassan ');
+  assert.equal(r.ok, true);
+  const u = new URL(r.url);
+  assert.equal(u.hostname, 'www.awin1.com');
+  assert.equal(u.searchParams.get('clickref'), 'buscador');
+  assert.match(u.searchParams.get('ued') ?? '', /query=Los%20leones%20de%20Al%20rassan$/);
+  assert.equal((getEnlaceBusquedaCasaDelLibro('a') as any).ok, false);
+  assert.equal((getEnlaceBusquedaCasaDelLibro(undefined) as any).ok, false);
+});

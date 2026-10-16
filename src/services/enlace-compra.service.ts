@@ -349,3 +349,16 @@ export async function setLoTengo(userId: string, bookId: string, owned: boolean)
   }
   return { ok: true, loTengo: owned };
 }
+
+/// Enlace de afiliado a la búsqueda de Casa del Libro con lo que escribe la
+/// persona (el buscador de Novedades y Próximos lanzamientos). Solo se envía a
+/// la tienda al pulsar «Buscar»; nunca datos de la usuaria.
+export function getEnlaceBusquedaCasaDelLibro(texto: unknown) {
+  const q = String(texto ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (q.length < 2) return { ok: false, mensaje: 'Escribe al menos dos letras.' };
+  return {
+    ok: true,
+    url: construirEnlaceCasaDelLibro({ titulo: q, referencia: 'buscador' }),
+    aviso: AVISO_AFILIACION,
+  };
+}
