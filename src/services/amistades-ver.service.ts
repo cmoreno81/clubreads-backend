@@ -220,6 +220,8 @@ export async function getPerfilAmistad(yo: string, nombre: string) {
           where: { userId: amiga.id, purchasedAt: null },
           select: {
             id: true, bookId: true, title: true, author: true, coverUrl: true, format: true, priority: true,
+            // La portada y la autoría del libro del catálogo, por si el deseo no las copió al crearse.
+            book: { select: { coverUrl: true, author: { select: { name: true } } } },
             // Solo para amistades: quién lo ha reservado. La dueña de la lista nunca lo ve.
             reservation: { select: { reservedById: true } },
           },
@@ -254,8 +256,8 @@ export async function getPerfilAmistad(yo: string, nombre: string) {
       reservadoPorMi: d.reservation?.reservedById === yo,
       bookId: d.bookId ?? '',
       titulo: d.title,
-      autor: d.author ?? '',
-      coverUrl: d.coverUrl ?? '',
+      autor: d.author || d.book?.author?.name || '',
+      coverUrl: d.coverUrl || d.book?.coverUrl || '',
       formato: d.format,
       prioridad: d.priority,
     })),

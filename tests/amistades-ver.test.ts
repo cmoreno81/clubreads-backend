@@ -126,3 +126,44 @@ test('en el perfil de una amistad, la reseña con spoilers no enseña su texto y
   assert.equal(por['Con spoilers'].texto, ''); // nunca el texto
   assert.equal(por['Normal'].texto, 'Preciosa, os la recomiendo');
 });
+
+test('un deseo sin portada propia usa la del libro del catálogo (y la autoría); la propia gana', async () => {
+  const def = (m: string, v: unknown) => Object.defineProperty(prisma, m, { configurable: true, value: v });
+  def('userBlock', { findMany: async () => [] });
+  def('friendship', {
+    findMany: async () => [
+      {
+        requesterId: 'yo',
+        addresseeId: 'u1',
+        requester: { id: 'yo', name: 'Cris' },
+        addressee: {
+          id: 'u1', name: 'Lucía', avatarUrl: null, bio: null, readerPersonality: null,
+          friendsSeeReading: false, friendsSeeLibrary: false, friendsSeeReviews: false, friendsSeeWishlist: true,
+        },
+      },
+    ],
+  });
+  def('library', { findMany: async () => [], count: async () => 0 });
+  def('readingCompletion', { findMany: async () => [], count: async () => 0 });
+  def('review', { findMany: async () => [] });
+  def('progressReaction', { findMany: async () => [], groupBy: async () => [] });
+  def('wishlistItem', {
+    findMany: async () => [
+      { id: 'a', bookId: 'b1', title: 'La torre oscura', author: null, coverUrl: null, format: 'PHYSICAL', priority: 'HIGH',
+        book: { coverUrl: 'https://x/torre.jpg', author: { name: 'Stephen King' } } },
+      { id: 'b', bookId: 'b2', title: 'Con portada propia', author: 'Ella', coverUrl: 'https://x/propia.jpg', format: 'PHYSICAL', priority: 'LOW',
+        book: { coverUrl: 'https://x/otra.jpg', author: { name: 'Otra' } } },
+      { id: 'c', bookId: null, title: 'Sin libro', author: null, coverUrl: null, format: 'PHYSICAL', priority: 'LOW', book: null },
+    ],
+  });
+  const { getPerfilAmistad } = await import('../src/services/amistades-ver.service.js');
+  const r: any = await getPerfilAmistad('yo', 'lucía');
+  assert.deepEqual(
+    r.deseos.map((d: any) => [d.titulo, d.coverUrl, d.autor]),
+    [
+      ['La torre oscura', 'https://x/torre.jpg', 'Stephen King'],
+      ['Con portada propia', 'https://x/propia.jpg', 'Ella'],
+      ['Sin libro', '', ''],
+    ],
+  );
+});
